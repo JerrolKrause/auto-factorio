@@ -1,0 +1,16 @@
+﻿# Dependencies and build output
+node_modules/
+dist/
+coverage/
+
+# Local credentials and machine-specific configuration
+.env
+.env.*
+!.env.example
+.codex/
+
+# Generated gameplay evidence and personal saves
+runs/
+artifacts/
+saves/
+*.log
