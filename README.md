@@ -1,6 +1,6 @@
 # AutoFactorio
 
-**The Factory Needs Nobody.**
+**The factory must grow. Without humans.**
 
 A local Factorio Space Age experimentation environment where specialized AI agents design, build and repair factories while you watch, steer them, and inspect what happened afterward.
 
