@@ -8,6 +8,8 @@ Read `docs/IMPLEMENTATION_HANDOFF.md` for actual progress and the next milestone
 
 The user's current instructions govern the work. Approved product requirements are recorded in REQUIREMENTS; ARCHITECTURE is the proposed technical baseline and contains validation gates. A user request to implement a milestone authorizes that milestone: do not ask for a second approval merely because historical documents call the architecture proposed. Resolve routine reversible engineering choices, record them, and continue. Surface material conflicts with requirements or verified blockers.
 
+For an authorized milestone, work autonomously through implementation, project dependency installation, tests, dedicated local game runs, fixes and documentation. Continue through routine decisions without renewed confirmation. Ask only for material scope changes, spending, publishing, destructive changes to existing user data, or a blocker requiring user input, subject to enforced tool permissions. Keep prerequisite upgrades user-managed and use project-scoped game data. This standing instruction does not start a milestone by itself.
+
 ## Preserve the project intent
 
 - Use deterministic code for execution, calculations, measurements, scheduling and routine monitoring. Use model reasoning for planning, design and unfamiliar diagnosis.

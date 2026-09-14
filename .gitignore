@@ -14,3 +14,22 @@ runs/
 artifacts/
 saves/
 *.log
+
+# Phase 01 isolated tools and diagnostics
+.pnpm-store/
+.runtime/
+.corepack/
+*.tsbuildinfo
+auth.json
+credentials.json
+server-settings.json
+server-adminlist.json
+*.sqlite
+*.sqlite-*
+*.db
+*.db-*
+factorio-install/
+game-assets/
+*.exe
+*.dll
+*.zip

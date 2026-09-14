@@ -1,8 +1,60 @@
 # Implementation handoff
 
-Status: documentation starter prepared after the phase 2 handoff audit. No application implementation has begun. Product scope and name are approved; architecture remains the proposed technical baseline. A future user request to implement a milestone authorizes work on it; no additional approval is required solely because these documents retain historical proposal wording. Preparing this package does not itself start an implementation task.
+Status: phase 01 compatibility foundation is implemented and its gate passed on 14 September 2026. Phases 02-18 remain unimplemented. The current execution record below supersedes the historical documentation-only observations. Product requirements remain approved; later architecture gates require their own execution evidence.
 
 Update, 11 September 2026: the user approved all eight adversarial review fixes and requested documentation updates only. They are incorporated in the requirements, architecture, scenario specifications and milestones. [Decision 001](decisions/001-review-hardening.md) records the accepted changes. This approval has not started application implementation.
+
+## Current implementation handoff - phase 01, 14 September 2026
+
+**Change:** `af-01-compatibility-foundation` (`spec-driven`). **Gate:** passed; 8/8 implementation tasks complete; archived and synced to main specs. Repository `C:\@Projects\AutoFactorio`, branch `main`, tested HEAD `1cdff328c76471cae80b6c6059057da94569c755` plus the phase 01 working-tree files below. The implementation and archive are included in the commit containing this record, together with the existing planning package. No push or next-phase implementation was performed. Earlier edits to AGENTS.md, README, this handoff, the implementation guide, traceability, decision 002 and all 18 planning changes were preserved.
+
+Entry gate verified from actual Git state, the selected change's four artifacts, REQUIREMENTS, architecture sections 1 and 10-12, milestone 0 context and fresh prerequisite commands. Existing Node 24.21.0 satisfies the phase baseline; Corepack 0.36.0 runs pinned pnpm 12.4.1 without a global shim. Current Codex CLI is 0.154.0. Factorio executable and base/Space Age/quality/elevated-rails metadata are 2.0.77. These are installed-version checks, not provider/game integration proof.
+
+Completed: minimal strict TypeScript/pnpm workspace and pure diagnostic contracts; local console/JSON compatibility entry point; explicit isolated data-directory checks; SQLite real-driver transaction/rollback/reopen/backup verification; missing-driver/version/path failure reporting; ignored runtime/credential/game-binary data; exact upstream revision and notice review with a bounded original-adapter decision. [Compatibility report](COMPATIBILITY_REPORT.md), [decision 003](decisions/003-compatibility-foundation.md) and [provenance](../third_party/README.md) contain the supporting detail. No game mechanics were copied or implemented.
+
+Phase 01 implementation files: `.gitignore`, root package/lock/workspace/TypeScript/ESLint/Vitest configuration, `packages/contracts`, `scripts/{compatibility,data-directory,diagnose,sqlite-probe}.ts`, `scripts/check-docs.mjs`, `tests/foundation.test.ts`, `third_party/README.md`, `docs/COMPATIBILITY_REPORT.md`, decision 003, README/current guide status, this handoff and the selected change's task checkboxes. All other phases' artifacts remain future work.
+
+Executed checks (Windows x64):
+
+| Exact command/check | Result |
+| --- | --- |
+| `corepack pnpm install --force` after correcting project build approvals/store configuration | Exit 0; only generated dependencies recreated |
+| `corepack pnpm install --frozen-lockfile` in a fresh isolated copy | Exit 0; separate empty dependency store, no pre-existing node_modules or build output |
+| `corepack pnpm build` in that copy | Exit 0 |
+| `corepack pnpm lint` in that copy | Exit 0 |
+| `corepack pnpm test` in that copy | Exit 0; 1 test file, 11/11 tests passed |
+| Root `corepack pnpm install --frozen-lockfile`, `corepack pnpm build`, `corepack pnpm lint`, `corepack pnpm test` | Each exit 0; 11/11 tests passed in 1 file (final run at 11:25:33 local) |
+| `corepack pnpm diagnose --data-dir 'C:/@Projects/AutoFactorio/.runtime/local' --factorio-dir 'C:/Program Files (x86)/Steam/steamapps/common/Factorio'` | Exit 0; foundation PASS, later live checks explicitly unverified |
+| Same diagnostic with `--sqlite-driver unsupported` | Expected exit 1; foundation FAIL, explicit unsupported driver, no fallback |
+| `corepack pnpm diagnose` without arguments | Expected exit 1; usage error |
+| Diagnostic with personal Factorio data path / unignored repository data path | Expected exit 1 each; rejected before initialization |
+| Actual SQLite probe and test | better-sqlite3 13.0.3 / SQLite 3.53.4: WAL, commit/read, constraint rollback, reopen, backup/reopen passed |
+| Git ignore/untracked evidence checks | Reports, dependencies, runtime/build data, credentials and game asset/binary paths excluded; no tracked generated data |
+| Before/after SHA-256 or absence comparison of five Codex/Factorio config files | 5/5 unchanged |
+| `corepack pnpm check:docs` | Exit 0; 91 Markdown files, 273 local links, balanced fences, no encoding/conflict markers |
+| `openspec validate af-01-compatibility-foundation --strict --no-interactive` | Exit 0; selected change valid |
+| `git diff --check` | Exit 0; no whitespace errors |
+
+Local evidence: `.runtime/local/diagnostic-1pMoKG/compatibility.json` and its fresh probe/backup databases; failing driver report `.runtime/local/diagnostic-4VlSQ4/compatibility.json`; `.runtime/evidence/{clean-install-results,failure-results,protected-after}.json`; exact failure logs. The clean installation is `.runtime/clean-install-180dda4d5e074522b667f1c029c5dfa9`. Final root outputs/exits are in `.runtime/evidence/final-*.log` and `final-results.json`; `.runtime/evidence/final-source-manifest.json` records SHA-256 hashes of this phase's source/configuration/documentation. These paths are ignored and reproducible via README commands; this handoff and the compatibility report retain the key results in source.
+
+Remaining limitations: no inference, subscription/Astra authentication, role/tool streaming checks, game session, live Space Age profile, character action, pause/save/load run, custom mod or scenario was tested. SQLite is a probe, not the durable runtime. Windows x64 is the only tested platform; the host already had Python 3.12.1 and VS2019 BuildTools, which node-gyp invoked. Initial installs populated ordinary tool caches; no prerequisite upgrade or personal provider/game setting change occurred. The registry warned that pinned ESLint 9.39.2 is deprecated; lint still passed. Project licensing remains undecided; Agentic-Factorio notice coverage remains unresolved for any future copying.
+
+Environment issue: sandboxed shell and Node REPL startup failed with `helper_unknown_error: setup refresh had errors`. Approved unsandboxed commands permitted the authorized work; no sandbox repair was made. Initial install failures for esbuild build approval and store relocation were resolved with project-scoped configuration and a generated-dependency reinstall; they were not treated as passing checks.
+
+Next bounded action: `$openspec-apply-change af-02-subscription-provider`, following phase 02's entry gate. Phase 02 has not started. Do not start phase 05 until phase 04 records real hosted pause/save/load/reconcile/re-arm evidence.
+
+Archive and commit record, 14 September 2026: all four planning artifacts and 8/8 tasks were complete before archival. The inline spec sync preserved the delta Purpose and all four requirement/scenario blocks, then `openspec validate --specs --strict --no-interactive` passed 1/1 specs. Archived to `openspec/changes/archive/2026-09-14-af-01-compatibility-foundation/`, including `.openspec.yaml`. Main spec: `openspec/specs/compatibility-foundation/spec.md`. Guide and traceability links now point to the archive, and archived relative document links were repaired. No later phase was archived or implemented. The post-archive documentation check passed 92 Markdown files and 273 local links. `openspec validate --all --strict --no-interactive` passed all 18 current items (17 active changes and 1 main spec), with zero failures; `git diff --cached --check` passed before commit. Application sources are unchanged from the tested phase 01 source manifest; no additional provider/game runs were needed for archival. The archive/implementation commit has parent `1cdff328c76471cae80b6c6059057da94569c755`; resolve its ID with `git log -1 --format=%H -- openspec/changes/archive/2026-09-14-af-01-compatibility-foundation/tasks.md`.
+## Historical OpenSpec planning handoff — 14 September 2026
+
+The user requested conversion of the docs into bounded OpenSpec implementation phases and a copyable execution guide. Planning is complete; application implementation has not begun. Work remains in `C:\@Projects\AutoFactorio` on `main`, based on commit `1cdff32` (`Update tagline in README.md`). This planning package is an uncommitted working-tree change; no new commit or push was made.
+
+Created 18 sequential changes under `openspec/changes/af-01-compatibility-foundation` through `af-18-windows-distribution`, each with proposal, design, a capability delta spec and a task checklist. There are 145 unchecked implementation tasks. No artifact was skipped, no main spec was populated and no change was archived.
+
+Start with [IMPLEMENTATION_GUIDE](IMPLEMENTATION_GUIDE.md) for exact phase order, entry/exit gates and standalone Codex prompts. [SPEC_TRACEABILITY](SPEC_TRACEABILITY.md) maps all R01–R18 requirements and eight review corrections. [Decision 002](decisions/002-openspec-phase-plan.md) records the organization. The original milestones below remain acceptance context; execute only the selected OpenSpec phase.
+
+Executed planning validation: `openspec validate --all --strict --no-interactive` passed all 18 changes, with zero failures. Each change's status reported all four required artifacts complete. A documentation audit also passed for 81 Markdown files and 260 local links, balanced fences, encoding/conflict markers, all 18 launch prompts and requirement mappings, 18 capability specs containing 90 requirements, and 145 unchecked / zero checked implementation tasks. The largest four-artifact planning packet is 10,854 characters. git diff --check passed. These checks establish planning structure only. Application install/build/lint/unit tests, live Factorio gates and provider inference were not run; all implementation criteria remain unverified.
+
+Next bounded action: `$openspec-apply-change af-01-compatibility-foundation`. Recheck installed prerequisites; do not assume the old observations below still apply. Do not begin phase 05 until phase 04 has actual passed hosted-game pause/save/load/reconcile/re-arm evidence. The current OpenSpec schema does not enforce dependencies between changes; the guide and prerequisite tasks require checking recorded evidence.
 
 ## Start here
 
@@ -94,7 +146,7 @@ Add run comparison, intervention review, evidence export, checkpoint branches, d
 
 Repository setup, 11 September 2026: initialized in place on `main`, with `origin` set to `https://github.com/JerrolKrause/auto-factorio`. The initial commit is titled `chore: initialize AutoFactorio documentation starter` (resolve its hash with `git rev-list --max-parents=0 HEAD`). It includes the documentation, OpenSpec configuration and skills, and ignore rules for local credentials, dependencies and generated game data. This setup does not start milestone 0 or push to GitHub. No application tests apply to this documentation-only repository; implementation and live integration checks remain unexecuted. Next bounded action remains milestone 0 when requested.
 
-Documentation handoff, 11 September 2026: location `C:\@Projects\AutoFactorio`; no Git repository, branch or commit exists, as confirmed by `git status --short`. Completed: all eight approved design corrections and their milestone acceptance criteria. No source code, mod, scenario saves or dependency setup was added. Application tests and live-game/provider checks remain unexecuted; all implementation acceptance criteria above remain open. Next bounded action, when implementation is requested: recheck prerequisites and execute milestone 0 including the live pause/restore gate.
+Historical documentation handoff before Git initialization, 11 September 2026: location `C:\@Projects\AutoFactorio`; at that earlier point no Git repository, branch or commit existed, as confirmed by `git status --short`. Completed: all eight approved design corrections and their milestone acceptance criteria. No source code, mod, scenario saves or dependency setup was added. Application tests and live-game/provider checks remain unexecuted; all implementation acceptance criteria above remain open. Next bounded action, when implementation is requested: recheck prerequisites and execute milestone 0 including the live pause/restore gate.
 
 Executed documentation validation: a PowerShell check across all seven Markdown files passed for existing local-link targets, balanced fenced code blocks, absence of replacement characters/conflict markers, and removal of obsolete relocation instructions. Manual consistency review covered all eight findings across requirements, architecture, scenarios, milestone gates and decision 001, including S5 deadline handling and provider-turn admission versus active execution limits. No application build, lint, unit test, live-game test or provider inference was run.
 
@@ -111,6 +163,17 @@ Keep root `AGENTS.md` short and point to the relevant documents. A fresh task sh
 
 ## Ready-to-use next-task request
 
-Begin development of AutoFactorio: The Factory Needs Nobody in C:\@Projects\AutoFactorio. Work in the existing directory; read root README.md and AGENTS.md, docs/IMPLEMENTATION_HANDOFF.md and the relevant design documents. Adopt the architecture with its approved review corrections as the implementation baseline and begin milestone 0. Prove the ChatGPT subscription connection, two scoped agent sessions, visible activity, a small legal action batch, and live pause/save/load/reconciliation before building durable controls. Preserve the no-API-billing requirement, use the licensed Space Age installation, and keep game state and experiment history independent of model context. Resolve routine choices and record actual compatibility findings and tests in the handoff. Do not mark untested capabilities as working.
+Paste this into a fresh Codex conversation opened in this repository:
 
-Submitting the request above supplies the implementation authorization and adopts the baseline; it does not require a separate confirmation of old proposal wording. The next task can be fresh and need not fork the long planning history. The documentation audit itself has not submitted that request or started development.
+```text
+$openspec-apply-change af-02-subscription-provider
+Work in C:\@Projects\AutoFactorio. Follow phase 02 of docs/IMPLEMENTATION_GUIDE.md and verify its entry gate in docs/IMPLEMENTATION_HANDOFF.md. Implement only this change, run its required checks, record exact results and remaining limitations in the handoff, and stop before the next phase.
+```
+
+This starts only phase 02 of milestone 0 after the passed phase 01 gate. Use the guide's later prompts in order after each predecessor gate passes. A request to implement the selected phase supplies its implementation authorization; historical proposal wording does not require a second approval. Phase 01 implementation stopped before submitting this phase 02 request.
+
+## Development permissions ? 14 September 2026
+
+At existing commit 1cdff32 on main, the user authorized reducing routine development approvals. Added ignored project-local `.codex/config.toml` with `approval_policy = "on-request"`, `approvals_reviewer = "auto_review"`, `sandbox_mode = "workspace-write"`, and sandbox network access enabled. Global settings and other projects were not changed. Root AGENTS.md now records autonomous execution within an authorized milestone, including project dependencies, tests, dedicated local game runs, fixes and documentation.
+
+Verified: TOML parsing and the desktop Codex 0.153.4 app-server strict configuration load; `config/read` with this project as cwd returned all four requested values. No model inference or application/game tests ran. Existing planning changes were preserved. This running chat retains its supplied permission policy; reopen the project in a new chat to load the configuration, and check the app permissions control if it supplies an override. The Windows sandbox startup error (`setup refresh had errors`) observed in this session remains unresolved; these settings are not a verified repair for it. No implementation milestone was started and no commit or push was made. Next bounded action: verify effective permissions in a fresh project chat, then continue the user-selected implementation phase.

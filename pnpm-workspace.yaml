@@ -1,0 +1,7 @@
+packages:
+  - packages/*
+engineStrict: true
+storeDir: .pnpm-store
+allowBuilds:
+  better-sqlite3: true
+  esbuild: true
