@@ -26,7 +26,7 @@ For an authorized milestone, work autonomously through implementation, project d
 
 Use the architecture's TypeScript/Lua boundaries and a small modular application. Validate the subscription and game connection before expanding infrastructure. Inspect applicable upstream code and notices before rewriting or copying game mechanics.
 
-Use the repository's actual scripts and lockfile once created. No install, build, lint or test commands exist in this documentation-only starter yet; do not invent successful commands or results. Add accurate commands to README as implementation lands.
+Use the repository's scripts and lockfile; report only executed results. Follow [development workflow](docs/DEVELOPMENT_WORKFLOW.md) for fail-fast checks, targeted UTF-8 edits, safe process inspection and the reviewed sandbox fallback.
 
 Test important failure paths with fakes; verify legal movement, inventory accounting, placement, cancellation and save/load in Factorio itself. Keep model-backed tests deliberate and budgeted. Report exactly what ran, what passed, and what remains unverified.
 

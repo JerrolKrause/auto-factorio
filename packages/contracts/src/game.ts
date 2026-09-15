@@ -14,7 +14,7 @@ export interface Batch {
   deadline: number; steps: Step[];
 }
 export interface Receipt {
-  commandId: string; status: 'accepted' | 'running' | 'completed' | 'partial' | 'failed' | 'cancelled';
+  commandId: string; status: 'accepted' | 'running' | 'completed' | 'partial' | 'failed' | 'cancelled' | 'suspended';
   acceptedTick: number; endedTick?: number; completed: number; unexecuted: number;
   steps: { index: number; status: string; reason?: string; startedTick: number; endedTick: number; before: Item[]; after: Item[]; delta: Item[] }[];
 }
@@ -22,7 +22,8 @@ export type GameRequest =
   | { op: 'observe'; surface: string; area: [Position, Position]; offset: number; limit: number }
   | { op: 'recipe'; name: string }
   | { op: 'submit'; batch: Batch }
-  | { op: 'receipt' | 'cancel'; commandId: string };
+  | { op: 'receipt'; commandId: string }
+  | { op: 'cancel'; commandId: string; epoch: string; session: string };
 export function record(v: unknown): Record<string, unknown> { if (!v || typeof v !== 'object' || Array.isArray(v)) throw new Error('Expected object'); return v as Record<string, unknown>; }
 function keys(v: Record<string, unknown>, allowed: string[]): void { if (Object.keys(v).some(k => !allowed.includes(k)) || allowed.some(k => !(k in v))) throw new Error('Unexpected or missing fields'); }
 function integer(v: unknown, min: number, max: number): void { if (!Number.isSafeInteger(v) || (v as number) < min || (v as number) > max) throw new Error('Integer outside bounds'); }
@@ -35,7 +36,8 @@ export function validateRequest(v: unknown): GameRequest {
   switch(r.op) {
     case 'observe': keys(r,['op','surface','area','offset','limit']); name(r.surface); if(!Array.isArray(r.area)||r.area.length!==2)throw new Error('Invalid area'); r.area.forEach(position); if(r.area[0].x>r.area[1].x||r.area[0].y>r.area[1].y)throw new Error('Reversed area'); integer(r.offset,0,10000); integer(r.limit,1,50); break;
     case 'recipe': keys(r,['op','name']); name(r.name); break;
-    case 'receipt': case 'cancel': keys(r,['op','commandId']); name(r.commandId); break;
+    case 'receipt': keys(r,['op','commandId']); name(r.commandId); break;
+    case 'cancel': keys(r,['op','commandId','epoch','session']); name(r.commandId); name(r.epoch); name(r.session); break;
     case 'submit': {
       keys(r,['op','batch']); const b=record(r.batch); keys(b,['commandId','epoch','session','task','revision','actor','surface','grant','deadline','steps']);
       for(const k of ['commandId','epoch','session','task','actor','surface'])name(b[k]); integer(b.revision,1,2147483647); integer(b.deadline,1,2147483647);
@@ -73,7 +75,7 @@ export interface Observation {
 export function validateReceipt(v: unknown): Receipt | null {
   if(v===undefined||v===null)return null;
   const r=record(v);name(r.commandId);
-  if(!['accepted','running','completed','partial','failed','cancelled'].includes(String(r.status)))throw new Error('Invalid receipt status');
+  if(!['accepted','running','completed','partial','failed','cancelled','suspended'].includes(String(r.status)))throw new Error('Invalid receipt status');
   integer(r.acceptedTick,0,2147483647);integer(r.completed,0,100);integer(r.unexecuted,0,100);
   const steps=Array.isArray(r.steps)?r.steps:Object.keys(record(r.steps)).length===0?[]:null;
   if(!steps)throw new Error('Invalid receipt steps');

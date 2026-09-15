@@ -45,4 +45,11 @@ function M.actor(id)
  local index=storage.af.actors[id];local p=index and game.get_player(index)
  M.check(p and p.valid and p.connected and p.character and p.character.valid and not p.driving,"actor_unavailable");return p
 end
+function M.same(a,b)
+ if type(a)~=type(b) then return false end
+ if type(a)~="table" then return a==b end
+ for k,v in pairs(a) do if not M.same(v,b[k]) then return false end end
+ for k in pairs(b) do if a[k]==nil then return false end end
+ return true
+end
 return M

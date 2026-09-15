@@ -6,7 +6,7 @@ A local Factorio Space Age experimentation environment where specialized AI agen
 
 ## Current status
 
-Phase 01 compatibility foundation is implemented and verified on Windows: a strict TypeScript/pnpm workspace, local diagnostic and SQLite transaction/backup probe. Phase 02 now has a pinned subscription provider, authenticated synthetic MCP gateway and deterministic budget tests; its live two-role handoff, interruption and resume gate passed on 15 September 2026. Phase 03 now passes live legal character actions, cancellation, protected fixtures, lost-response reconciliation and saved receipt readback. Scenarios and the dashboard remain future phases. See the [compatibility report](docs/COMPATIBILITY_REPORT.md) and [handoff](docs/IMPLEMENTATION_HANDOFF.md) for exact evidence and limitations.
+Phase 01 compatibility foundation is implemented and verified on Windows: a strict TypeScript/pnpm workspace, local diagnostic and SQLite transaction/backup probe. Phase 02 now has a pinned subscription provider, authenticated synthetic MCP gateway and deterministic budget tests; its live two-role handoff, interruption and resume gate passed on 15 September 2026. Phase 03 now passes live legal character actions, cancellation, protected fixtures, lost-response reconciliation and saved receipt readback. Phase 04 passes its real hosted pause/checkpoint/restore/reconcile/re-arm and heartbeat-loss checks. Scenarios and the dashboard remain future phases. See the [compatibility report](docs/COMPATIBILITY_REPORT.md) and [handoff](docs/IMPLEMENTATION_HANDOFF.md) for exact evidence and limitations.
 
 All eight adversarial review fixes were approved and incorporated on 11 September 2026, covering scoring, fault controls, execution fencing, archive access, budgets and integration gates. The [accepted decision](docs/decisions/001-review-hardening.md) records the changes and required validation.
 
@@ -14,14 +14,14 @@ All eight adversarial review fixes were approved and incorporated on 11 Septembe
 
 The [implementation guide](docs/IMPLEMENTATION_GUIDE.md) provides **18 bounded OpenSpec phases**, each with a proposal, capability spec, design, task checklist and a copyable Codex launch prompt. Start one phase per fresh conversation and follow the recorded prerequisite gates. The [coverage map](docs/SPEC_TRACEABILITY.md) connects the plan to every approved requirement and review correction.
 
-Phase 03 is complete and archived with its character-execution capability synced to main specs. The next bounded implementation phase is the pause/restore gate:
+Phase 04 is complete with 9/9 tasks, a passed live gate and independent review with no findings; it is archived with its pause/restore capability synced to main specs. The next bounded implementation phase, only when requested, is the durable event runtime:
 
 ```text
-$openspec-apply-change af-04-pause-restore-gate
-Follow phase 04 of docs/IMPLEMENTATION_GUIDE.md, implement only that change, verify its exit gate and update docs/IMPLEMENTATION_HANDOFF.md.
+$openspec-apply-change af-05-durable-event-runtime
+Follow phase 05 of docs/IMPLEMENTATION_GUIDE.md, implement only that change, verify its exit gate and update docs/IMPLEMENTATION_HANDOFF.md.
 ```
 
-Phase 01 is complete and archived; its compatibility capability is synced to main specs. Phase 02 passed all eight tasks and is archived with its subscription-provider capability synced to main specs. Phase 03 passed all eight tasks and is archived; phases 04-18 remain planned and their integration gates remain open.
+Phase 01 is complete and archived; its compatibility capability is synced to main specs. Phase 02 passed all eight tasks and is archived with its subscription-provider capability synced to main specs. Phase 03 passed all eight tasks and is archived; phase 04 has passed its live pause/restore gate; phases 05-18 remain planned.
 
 ## Planned first release
 
@@ -62,6 +62,18 @@ corepack pnpm diagnose --data-dir 'C:/@Projects/AutoFactorio/.runtime/local' --f
 
 Choose an absolute empty/new directory or one previously initialized by this diagnostic. Existing personal data directories are rejected. In-repository data must be Git-ignored; `.runtime/` is the local default location shown above. Credentials, generated saves, database files, game binaries and designated game-asset directories are excluded from Git. Dependencies and data remain local; no Factorio binaries/assets are shipped.
 
+## Development verification and recovery
+
+```powershell
+corepack pnpm verify          # build, lint, tests, docs; stop on the first failure
+corepack pnpm verify --game   # then fresh headless smoke and exact-profile cleanup
+corepack pnpm game:processes  # sanitized project process inventory; build first
+```
+
+Run the inexpensive chain before a visible game trial. Full per-command logs and exact exit/skipped-step results are retained under `.runtime/verification/check-*/`; `summary.json` includes cleanup and any visible trial. `corepack pnpm verify --pause` adds the visible phase 04 trial after a passing smoke, when its ports and observer slot are free. TypeScript emits no new code for a failed project; never run older `dist` files to bypass a failed build.
+
+The [development workflow](docs/DEVELOPMENT_WORKFLOW.md) covers contextual UTF-8 edits, bounded tool output, the reviewed Windows sandbox fallback, safe process cleanup and stage-based probe recovery. Profile management records the actual graphical process separately from Steam's launcher. Instructions in this workflow do not start another phase or model trial.
+
 ## Provider diagnostic (phase 02)
 
 Build first, then supply the absolute installed Codex executable. The adapter currently pins Codex 0.154.0; it will not upgrade prerequisites or substitute a model.
@@ -97,6 +109,22 @@ corepack pnpm game:load-probe
 The normal launch starts a local dedicated server and a visible Steam client attached with `--mp-connect`; graphical `--host` did not expose RCON in the tested build. The client launch may require accepting Steam's launch-options dialog and entering a local player name. Wait until the hosted map is visible before running `game:probe`. Each launch also writes `launch.ps1` (server) and `launch-observer.ps1` (visible client) in its generated directory; `--prepare-only` creates the profile/script without opening the game. The live action checks passed: the probe tests normal character timing, reach, collision, inventory, protected fixtures, partial batches, cancellation and lost acknowledgments, and requests a quiescent save. `game:load-probe` opens that save on a separate temporary server, compares persisted receipts, verifies the loaded-world admission block, and stops its temporary server. A failed probe's state/evidence must be inspected before choosing a fresh test map. Source changes require copying/relaunching a fresh profile; running games do not hot-reload the mod.
 
 RCON credentials and game data stay in ignored `.runtime/phase03/`; do not publish `launch.json` or `launch.ps1`. The diagnostic acknowledges Factorio's console-achievement notice in its disposable map. See [decision 005](docs/decisions/005-character-execution.md) and the [current handoff](docs/IMPLEMENTATION_HANDOFF.md) for tested behavior and open gates.
+
+## Pause and restore diagnostic (phase 04)
+
+```powershell
+corepack pnpm build
+corepack pnpm game:launch --phase04
+corepack pnpm game:pause-probe
+```
+
+The fresh initial server uses game/RCON ports 34204/27024; managed restore uses 34205/27025 and a fresh RCON credential. Wait for or allow the probe to wait for the visible client. Steam may require launch-dialog confirmation. The probe captures a neutral disarmed checkpoint, cancels saved work afterward, verifies the held reload, replaces only its original project observer, then tests explicit re-arm and heartbeat loss. It leaves the restored visible world paused and disarmed. Stop only the project processes identified by their generated config paths when finished; ports must be free before launching another profile.
+
+Each trial retains incremental `.runtime/phase04/game-*/pause-probe-*/events.jsonl`, a result, completed checkpoint manifests/ZIPs, reconciliation evidence and source hashes. Interrupted or mismatched saves and native saves without a managed manifest are rejected. Remaining intent is data; resuming execution requires reconciliation and fresh authorization. The operator control port is not a gameplay tool. Generated launch files contain private RCON credentials and remain ignored.
+
+A restore-only continuation is available as `corepack pnpm game:pause-probe --continue <prior-evidence-directory>` when its atomic stage journal contains `restore-ready`. That stage records the validated checkpoint, cancellation/rollback evidence, and mod/probe source fingerprints. The original server need not run. Inspect and stop only that trial's obsolete held-load processes before continuing. `--stop-after restore-ready` deliberately records this boundary with `passed: false`; it does not pass the gate. Completed probes, mismatched sources/checksums and older trials without journals are refused. Continuation preserves the earlier checks as inherited evidence and records new checks separately.
+
+See the [M0 integration report](docs/INTEGRATION_GATE_REPORT.md), [decision 006](docs/decisions/006-pause-restore.md) and [handoff](docs/IMPLEMENTATION_HANDOFF.md). The phase 03 action diagnostic now performs explicit lifecycle reconciliation/arm and heartbeats; its legacy quiescent save remains a receipt-readback test, not a managed recovery checkpoint.
 
 ## Local setup context
 

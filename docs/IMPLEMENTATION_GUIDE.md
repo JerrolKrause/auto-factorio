@@ -1,6 +1,6 @@
 # AutoFactorio implementation guide
 
-Status: phase 01 implemented, verified and archived on 14 September 2026; phase 02 passed its software/live exit gate on 15 September 2026 and is archived; phase 03 passed its character-action and quiescent receipt-readback gate on 15 September 2026 and is archived; phases 04-18 remain planned. See the current handoff for evidence. Use this guide to start one bounded change per fresh Codex conversation in the existing `C:\@Projects\AutoFactorio` workspace.
+Status: phase 01 implemented, verified and archived on 14 September 2026; phase 02 passed its software/live exit gate on 15 September 2026 and is archived; phase 03 passed its character-action and quiescent receipt-readback gate on 15 September 2026 and is archived; phase 04 passed its real-game pause/restore gate on 15 September 2026 and is archived; phases 05-18 remain planned. See the current handoff for evidence. Use this guide to start one bounded change per fresh Codex conversation in the existing `C:\@Projects\AutoFactorio` workspace.
 
 ## Why 18 changes
 
@@ -106,7 +106,9 @@ Work in C:\@Projects\AutoFactorio. Follow phase 03 of docs/IMPLEMENTATION_GUIDE.
 
 ### 04 — Real-game pause and restore gate
 
-[Open the change](../openspec/changes/af-04-pause-restore-gate/proposal.md) · [Task checklist](../openspec/changes/af-04-pause-restore-gate/tasks.md)
+Live gate passed on 15 September 2026: 14 engine checks. See the [M0 integration report](INTEGRATION_GATE_REPORT.md) and current handoff for exact evidence and completion status. This change is archived with its capability synced to main specs.
+
+[Open the change](../openspec/changes/archive/2026-09-15-af-04-pause-restore-gate/proposal.md) · [Task checklist](../openspec/changes/archive/2026-09-15-af-04-pause-restore-gate/tasks.md)
 
 **Entry:** Phase 03 (`af-03-character-execution`) has a passed implementation gate in the handoff.
 

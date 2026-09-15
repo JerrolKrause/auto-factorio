@@ -4,10 +4,12 @@ import type { CommandPort } from './rcon.js';
 import { wrapper } from './rcon.js';
 export class GameClient {
   readonly unresolved = new Set<string>();
+  admission = true;
   constructor(private port: CommandPort, private sink: (e: unknown)=>void) {}
   replacePort(port: CommandPort): void { this.port.close(); this.port=port; }
   async request(input: unknown): Promise<Record<string, unknown>> {
     const request=validateRequest(input);
+    if(request.op==='submit'&&!this.admission)throw new Error('Game admission closed pending control reconciliation');
     if(request.op==='submit'&&this.unresolved.size)throw new Error('Unknown outcome requires receipt reconciliation');
     this.sink({at:new Date().toISOString(),kind:'game/request',request});
     let acknowledged=false;

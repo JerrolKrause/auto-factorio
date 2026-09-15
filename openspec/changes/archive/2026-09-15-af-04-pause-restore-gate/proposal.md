@@ -6,7 +6,7 @@ Durable recovery would be built on an unverified assumption unless the hosted ga
 
 - A measured pause/disarm/save/load/reconcile/re-arm demonstration with pending work and a compatibility gate report.
 - Preserve the approved product safeguards and attach explicit acceptance evidence to this bounded phase.
-- Complete phase 04 only after `af-03-character-execution` has passed its implementation gate; see the [implementation guide](../../../docs/IMPLEMENTATION_GUIDE.md).
+- Complete phase 04 only after `af-03-character-execution` has passed its implementation gate; see the [implementation guide](../../../../docs/IMPLEMENTATION_GUIDE.md).
 
 ## Capabilities
 

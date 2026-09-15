@@ -1,5 +1,7 @@
 # Phase 01 compatibility report
 
+Current M0 integration evidence is consolidated in the [integration gate report](INTEGRATION_GATE_REPORT.md) and [handoff](IMPLEMENTATION_HANDOFF.md). The phase 01 observations below remain historical; phase 02 provider, phase 03 actions and phase 04 real pause/restore now have their own executed evidence.
+
 Observed on 14 September 2026 on Windows x64 in `C:\@Projects\AutoFactorio`, branch `main`, HEAD `1cdff328c76471cae80b6c6059057da94569c755` plus the phase 01 implementation and preserved pre-existing planning edits, subsequently committed with the phase 01 archive. The handoff records how to resolve the archive commit. Phase 01's compatibility foundation gate passed. This does not complete milestone 0's provider/game integration gates.
 
 ## Current version evidence

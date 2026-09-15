@@ -7,6 +7,7 @@ import { record, requirements } from '@autofactorio/contracts';
 import type { Batch, Step, Target, Item, RecipeFacts } from '@autofactorio/contracts';
 import { Rcon, wrapper } from '../packages/factorio/src/rcon.js';
 import { GameClient, observeRequest } from '../packages/factorio/src/client.js';
+import { Lifecycle } from '../packages/factorio/src/lifecycle.js';
 import { GameTools } from '../packages/tools/src/game.js';
 const {dir}=JSON.parse(await readFile('.runtime/phase03/current.json','utf8')) as {dir:string};
 const config=JSON.parse(await readFile(path.join(dir,'launch.json'),'utf8')) as {port:number;password:string};
@@ -18,16 +19,18 @@ await rcon.command('/silent-command rcon.print("AutoFactorio diagnostic")');
 await rcon.command('/silent-command rcon.print("AutoFactorio diagnostic")');
 let drop=false;
 const client=new GameClient({command:async lua=>{const result=await rcon.command(lua);if(drop){drop=false;throw new Error('Simulated lost acknowledgment after engine response');}return result;},close:()=>rcon.close()},sink);
+const lifecycle=new Lifecycle(rcon,client,sink);
+let control=await lifecycle.inspect();control=await lifecycle.pause(control);control=await lifecycle.reconcile(control);control=await lifecycle.arm(control);
 const tools=new GameTools('engineer','builder-1',r=>client.request(r));
 let sequence=0;const results:string[]=[];const commands:string[]=[];
-async function observe(){return client.request(observeRequest);}
+async function observe(){control=await lifecycle.heartbeat(control);return client.request(observeRequest);}
 function items(v:unknown):Item[]{return Array.isArray(v)?v as Item[]:[];}
 function count(v:unknown,name:string){return items(v).filter(i=>i.name===name&&i.quality==='normal').reduce((n,i)=>n+i.count,0);}
 function actor(o:Record<string,unknown>){return record(record(o.actors)['builder-1']);}
 function target(e:Record<string,unknown>):Target{return {name:String(e.name),quality:String(e.quality),position:e.position as Target['position'],unit:typeof e.unit==='number'?e.unit:null};}
 async function find(name:string,x?:number){const o=await observe();const e=(o.entities as Record<string,unknown>[]).find(e=>e.name===name&&(x===undefined||(e.position as {x:number}).x===x));assert(e, 'Missing entity '+name);return target(e);}
-async function make(steps:Step[]):Promise<Batch>{const o=await observe();const commandId=path.basename(evidence)+'-'+ ++sequence;commands.push(commandId);return {commandId,epoch:String(o.epoch),session:String(o.session),task:'phase03-actions',revision:1,actor:'builder-1',surface:'nauvis',grant:{id:'test-area',generation:1},deadline:Number(o.tick)+3600,steps};}
-async function finish(id:string){const deadline=Date.now()+65000;while(Date.now()<deadline){const r=await client.receipt(id);assert(r);if(!['accepted','running'].includes(r.status))return r;await delay(100);}throw new Error('Receipt timeout');}
+async function make(steps:Step[]):Promise<Batch>{const o=await observe();const commandId=path.basename(evidence)+'-'+ ++sequence;commands.push(commandId);return {commandId,epoch:String(o.epoch),session:String(o.session),task:'phase03-actions',revision:1,actor:'builder-1',surface:'nauvis',grant:{id:'test-area',generation:control.generation},deadline:Number(o.tick)+3600,steps};}
+async function finish(id:string){const deadline=Date.now()+65000;while(Date.now()<deadline){control=await lifecycle.heartbeat(control);const r=await client.receipt(id);assert(r);if(!['accepted','running'].includes(r.status))return r;await delay(100);}throw new Error('Receipt timeout');}
 async function run(label:string,steps:Step[],expected='completed'){const b=await make(steps);await tools.call({op:'submit',batch:b});const r=await finish(b.commandId);assert.equal(r.status,expected,label+': '+JSON.stringify(r));results.push(label);return r;}
 const place=(item:string,x:number,y:number):Step=>({kind:'place',item,quality:'normal',direction:0,position:{x,y}});
 let failure:string|null=null;
@@ -52,15 +55,16 @@ try{
  const chest=await find('wooden-chest',2.5);const belt=await find('transport-belt',1.5);const assembler=await find('assembling-machine-1');
  await run('rotation recipe and inventory transfers',[{kind:'rotate',target:belt},{kind:'recipe',target:assembler,recipe:'automation-science-pack'},{kind:'transfer',target:chest,inventory:'chest',flow:'put',item:{name:'iron-plate',quality:'normal',count:5}},{kind:'transfer',target:chest,inventory:'chest',flow:'take',item:{name:'iron-plate',quality:'normal',count:5}}]);
  const changed=await observe();const machine=(changed.entities as Record<string,unknown>[]).find(e=>e.name==='assembling-machine-1');assert.equal(machine?.recipe,'automation-science-pack');assert.equal(machine?.craftingSpeed,0.5);const rotated=(changed.entities as Record<string,unknown>[]).find(e=>e.name==='transport-belt');assert.notEqual(rotated?.direction,0);
- const partial=await run('partial batch stops without rollback',[place('transport-belt',-1.5,3.5),place('transport-belt',-1.5,3.5),place('transport-belt',-2.5,3.5)],'partial');assert.equal(partial.completed,1);assert.equal(partial.unexecuted,1);await client.request({op:'cancel',commandId:partial.commandId});assert.equal((await client.receipt(partial.commandId))!.status,'partial');
- const cancellation=await make([{kind:'craft',recipe:'iron-gear-wheel',count:40},place('transport-belt',-4.5,3.5)]);await tools.call({op:'submit',batch:cancellation});await delay(250);await tools.call({op:'cancel',commandId:cancellation.commandId});const cancelled=await finish(cancellation.commandId);assert.equal(cancelled.status,'cancelled');assert.equal(cancelled.unexecuted,1);results.push('active crafting cancellation and native refunds');
+ const partial=await run('partial batch stops without rollback',[place('transport-belt',-1.5,3.5),place('transport-belt',-1.5,3.5),place('transport-belt',-2.5,3.5)],'partial');assert.equal(partial.completed,1);assert.equal(partial.unexecuted,1);await client.request({op:'cancel',epoch:control.epoch,session:control.session,commandId:partial.commandId});assert.equal((await client.receipt(partial.commandId))!.status,'partial');
+ const cancellation=await make([{kind:'craft',recipe:'iron-gear-wheel',count:40},place('transport-belt',-4.5,3.5)]);await tools.call({op:'submit',batch:cancellation});await delay(250);await tools.call({op:'cancel',epoch:control.epoch,session:control.session,commandId:cancellation.commandId});const cancelled=await finish(cancellation.commandId);assert.equal(cancelled.status,'cancelled');assert.equal(cancelled.unexecuted,1);results.push('active crafting cancellation and native refunds');
  const lostBefore=count(actor(await observe()).inventory,'wooden-chest');const lost=await make([place('wooden-chest',-3.5,0.5)]);drop=true;await assert.rejects(()=>tools.call({op:'submit',batch:lost}),/Simulated lost/);await assert.rejects(()=>tools.call({op:'submit',batch:{...lost,commandId:lost.commandId+'-other'}}),/reconciliation/);assert(await client.receipt(lost.commandId));const settled=await finish(lost.commandId);assert.equal(settled.completed,1);const replay=await client.request({op:'submit',batch:lost});assert.equal(record(replay.receipt).completed,1);const lostWorld=await observe();assert.equal(count(actor(lostWorld).inventory,'wooden-chest'),lostBefore-1);assert.equal((lostWorld.entities as Record<string,unknown>[]).filter(e=>e.name==='wooden-chest'&&(e.position as {x:number}).x===-3.5).length,1);results.push('lost response reconciled and duplicate ID idempotent');
  const deconstruct=await run('timed deconstruction returns item',[{kind:'mine',target:chest}]);assert(deconstruct.steps[0]!.endedTick>deconstruct.steps[0]!.startedTick);assert.equal(count(deconstruct.steps[0]!.after,'wooden-chest')-count(deconstruct.steps[0]!.before,'wooden-chest'),1);
  await appendFile(path.join(evidence,'operator.jsonl'),await rcon.command(wrapper({op:'screenshot',name:'phase03-complete'},true))+'\n');
+ control=await lifecycle.pause(control);
  const save=await rcon.command(wrapper({op:'save',name:'phase03-complete'},true));await writeFile(path.join(evidence,'save-request.json'),save);assert.equal(JSON.parse(save).ok,true,'Quiescent save accepted');
  await writeFile(path.join(dir,'completed-probe.json'),JSON.stringify({evidence,commands,saveName:'phase03-complete'}));
 }catch(error){failure=String(error);process.exitCode=1;sink({kind:'probe/failed',failure});}
 finally{
- for(const commandId of commands){try{const r=await client.receipt(commandId);if(r&&['accepted','running'].includes(r.status))await client.request({op:'cancel',commandId});}catch{/* Unknown stays recorded. */}}
+ for(const commandId of commands){try{const r=await client.receipt(commandId);if(r&&['accepted','running'].includes(r.status))await client.request({op:'cancel',epoch:control.epoch,session:control.session,commandId});}catch{/* Unknown stays recorded. */}}
  client.close();await writeFile(path.join(evidence,'result.json'),JSON.stringify({failure,results,commands},null,2));console.log(JSON.stringify({evidence,failure,checks:results.length}));
 }

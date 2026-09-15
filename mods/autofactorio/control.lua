@@ -1,6 +1,6 @@
 local C=require("common")
 local A=require("actions")
-local loaded=false
+local L=require("lifecycle")
 local function setup()
  if remote.interfaces.freeplay then
   remote.call("freeplay","set_skip_intro",true);remote.call("freeplay","set_disable_crashsite",true);remote.call("freeplay","set_created_items",{})
@@ -11,6 +11,7 @@ local function setup()
  local tiles={};for x=-34,34 do for y=-34,34 do tiles[#tiles+1]={name="grass-1",position={x,y}} end end;surface.set_tiles(tiles)
  surface.always_day=true
  storage.af={epoch="phase03",session="local-test",actors={},orders={},active={},paths={},protected={}}
+ L.init()
  local function fixture(name,pos)
   local e=surface.create_entity{name=name,position=pos,force="player"};storage.af.protected[e.unit_number or (e.name..":"..e.position.x..":"..e.position.y)]=true;return e
  end
@@ -19,9 +20,7 @@ local function setup()
  surface.create_entity{name="iron-ore",position={-3.5,2.5},amount=100,force="neutral"}
 end
 script.on_init(setup)
-script.on_load(function() loaded=true end)
 script.on_event(defines.events.on_player_created,function(event)
- if next(storage.af.orders)==nil then loaded=false end
  local p=game.get_player(event.player_index);if not p.character then p.set_controller{type=defines.controllers.god};p.create_character() end
  p.teleport({0,0},"nauvis");p.force.research_all_technologies();p.get_main_inventory().clear()
  for name,count in pairs({["transport-belt"]=30,["assembling-machine-1"]=3,["wooden-chest"]=5,["iron-plate"]=100,["copper-plate"]=20,["coal"]=20,["stone-furnace"]=2}) do p.insert{name=name,count=count,quality="normal"} end
@@ -43,23 +42,18 @@ local function receipt(o)
 end
 local function authority(b)
  C.check(b.epoch==storage.af.epoch and b.session==storage.af.session,"stale_epoch_or_session")
- C.check(b.task=="phase03-actions" and b.revision==1 and b.grant.id=="test-area" and b.grant.generation==1,"invalid_test_grant")
+ C.check(b.task=="phase03-actions" and b.revision==1 and b.grant.id=="test-area" and b.grant.generation==storage.af.control.generation,"invalid_test_grant")
  C.check(b.surface=="nauvis","surface_not_assigned");local p=C.actor(b.actor);C.check(p.surface.name==b.surface,"actor_surface_changed");return p
 end
-local function same(a,b)
- if type(a)~=type(b) then return false end
- if type(a)~="table" then return a==b end
- for k,v in pairs(a) do if not same(v,b[k]) then return false end end
- for k in pairs(b) do if a[k]==nil then return false end end
- return true
-end
+L.bind(done,receipt)
 local function submit(b)
  C.keys(b,{"commandId","epoch","session","task","revision","actor","surface","grant","deadline","steps"});for _,key in ipairs({"commandId","epoch","session","task","actor","surface"}) do C.id(b[key]) end
  C.keys(b.grant,{"id","generation"});C.integer(b.revision,1,2147483647);C.integer(b.grant.generation,1,2147483647);C.integer(b.deadline,1,2147483647)
  C.check(type(b.steps)=="table" and #b.steps>=1 and #b.steps<=100,"batch_size");for k,s in pairs(b.steps) do C.integer(k,1,#b.steps);A.validate(s) end
+ C.check(b.epoch==storage.af.epoch and b.session==storage.af.session,"stale_epoch_or_session")
  local existing=storage.af.orders[b.commandId]
- if existing then C.check(same(existing.batch,b),"command_id_conflict");return receipt(existing) end
- C.check(not loaded,"restore_requires_phase04_barrier");local p=authority(b)
+ if existing then C.check(C.same(existing.batch,b),"command_id_conflict");return receipt(existing) end
+ C.check(storage.af.control.armed and not game.tick_paused,"executor_disarmed");local p=authority(b)
  C.check(b.deadline>game.tick and b.deadline<=game.tick+36000,"invalid_deadline");C.check(not storage.af.active[b.actor],"actor_busy")
  local n=0;for _ in pairs(storage.af.orders) do n=n+1 end;C.check(n<200,"receipt_capacity")
  C.check(not p.crafting_queue or #p.crafting_queue==0,"crafting_busy")
@@ -67,7 +61,7 @@ local function submit(b)
  storage.af.orders[b.commandId]=o;storage.af.active[b.actor]=b.commandId;return receipt(o)
 end
 script.on_event(defines.events.on_tick,function()
- if loaded then return end
+ if not L.tick() then return end
  for actor,id in pairs(storage.af.active) do
   local o=storage.af.orders[id]
   local ok,result=pcall(function()
@@ -102,18 +96,18 @@ local function observe(r)
   out[#out+1]=ref
  end
  local actors={};for id,index in pairs(storage.af.actors) do local p=game.get_player(index);if p and p.character then actors[id]={position=p.position,surface=p.surface.name,inventory=inventory(p),walking=p.walking_state,mining=p.mining_state,crafting=p.crafting_queue or {},buildDistance=p.build_distance,reachDistance=p.reach_distance,runningSpeed=p.character_running_speed,miningSpeed=p.character_mining_speed_modifier,craftingSpeed=p.character_crafting_speed_modifier,connected=p.connected} end end
- return {ok=true,epoch=storage.af.epoch,session=storage.af.session,tick=game.tick,ticksPlayed=game.ticks_played,surface=r.surface,scope=r.area,coverage="entities in bounded area; player main inventories",freshness="current tick; pages are independent live reads",offset=r.offset,total=#entities,nextOffset=r.offset+r.limit<#entities and r.offset+r.limit or nil,truncated=r.offset+r.limit<#entities,entities=out,actors=actors,mods=script.active_mods,loadedReadOnly=loaded}
+ return {ok=true,epoch=storage.af.epoch,session=storage.af.session,tick=game.tick,ticksPlayed=game.ticks_played,surface=r.surface,scope=r.area,coverage="entities in bounded area; player main inventories",freshness="current tick; pages are independent live reads",offset=r.offset,total=#entities,nextOffset=r.offset+r.limit<#entities and r.offset+r.limit or nil,truncated=r.offset+r.limit<#entities,entities=out,actors=actors,mods=script.active_mods,loadedReadOnly=not storage.af.control.armed}
 end
 local function gameplay(r)
  C.check(type(r)=="table","invalid_request")
  if r.op=="observe" then return observe(r)
  elseif r.op=="submit" then C.keys(r,{"op","batch"});return {ok=true,receipt=submit(r.batch)}
  elseif r.op=="receipt" or r.op=="cancel" then
-  C.keys(r,{"op","commandId"});C.id(r.commandId);local o=storage.af.orders[r.commandId]
-  if r.op=="cancel" and o and (o.status=="accepted" or o.status=="running") then done(o,"cancelled","operator_cancelled") end
+  if r.op=="cancel" then C.keys(r,{"op","commandId","epoch","session"});C.check(r.epoch==storage.af.epoch and r.session==storage.af.session,"stale_epoch_or_session") else C.keys(r,{"op","commandId"}) end;C.id(r.commandId);local o=storage.af.orders[r.commandId]
+  if r.op=="cancel" and o and (o.status=="accepted" or o.status=="running" or o.status=="suspended") then done(o,"cancelled","operator_cancelled");o.pending=nil end
   return {ok=true,receipt=receipt(o)}
  elseif r.op=="recipe" then
-  C.keys(r,{"op","name"});C.id(r.name);local recipe=game.forces.player.recipes[r.name];C.check(recipe,"recipe_not_found")
+ C.keys(r,{"op","name"});C.id(r.name);local recipe=game.forces.player.recipes[r.name];C.check(recipe,"recipe_not_found")
   return {ok=true,tick=game.tick,mods=script.active_mods,recipe={name=recipe.name,energy=recipe.energy,category=recipe.category,ingredients=recipe.ingredients,products=recipe.products,enabled=recipe.enabled}}
  end
  error("unsupported_gameplay_operation",0)
@@ -125,6 +119,7 @@ end
 remote.add_interface("autofactorio_v1",{rpc=function(payload)return encoded(gameplay,payload)end})
 -- Operator-only diagnostics are never exposed through the gameplay validator/gateway.
 remote.add_interface("autofactorio_operator_v1",{rpc=function(payload)return encoded(function(r)
+ if r.op~="save" and r.op~="screenshot" then return L.rpc(r) end
  C.keys(r,{"op","name"});C.id(r.name)
  if r.op=="screenshot" then game.take_screenshot{player=game.players[1],position={0,0},resolution={1280,800},zoom=1,show_entity_info=true,path=r.name..".png"};return {ok=true}
  elseif r.op=="save" then C.check(next(storage.af.active)==nil,"active_orders_cannot_save");for _,index in pairs(storage.af.actors) do local p=game.get_player(index);A.neutral(p,true) end;game.server_save(r.name);return {ok=true,requestedTick=game.tick}
