@@ -1,6 +1,6 @@
 # AutoFactorio implementation guide
 
-Status: phase 01 implemented, verified and archived on 14 September 2026; phases 02-18 remain planned. See the current handoff for evidence. Use this guide to start one bounded change per fresh Codex conversation in the existing `C:\@Projects\AutoFactorio` workspace.
+Status: phase 01 implemented, verified and archived on 14 September 2026; phase 02 passed its software/live exit gate on 15 September 2026 and is archived; phases 03-18 remain planned. See the current handoff for evidence. Use this guide to start one bounded change per fresh Codex conversation in the existing `C:\@Projects\AutoFactorio` workspace.
 
 ## Why 18 changes
 
@@ -57,7 +57,7 @@ Live model calls are concentrated in phases 02 and 12. Their designs provide sma
 
 ### 01 — Compatibility foundation
 
-Completed and archived on 14 September 2026. The launch prompt below is retained as historical reference; the next phase is 02.
+Completed and archived on 14 September 2026. The launch prompt below is retained as historical reference; phase 02 has also passed and is archived before phase 03.
 
 [Open the change](../openspec/changes/archive/2026-09-14-af-01-compatibility-foundation/proposal.md) · [Task checklist](../openspec/changes/archive/2026-09-14-af-01-compatibility-foundation/tasks.md)
 
@@ -74,7 +74,9 @@ Work in C:\@Projects\AutoFactorio. Follow phase 01 of docs/IMPLEMENTATION_GUIDE.
 
 ### 02 — Subscription provider and budgets
 
-[Open the change](../openspec/changes/af-02-subscription-provider/proposal.md) · [Task checklist](../openspec/changes/af-02-subscription-provider/tasks.md)
+Completed and verified on 15 September 2026; 8/8 tasks and the live exit gate passed. Archived with its capability synced to main specs; phase 03 is next.
+
+[Open the change](../openspec/changes/archive/2026-09-15-af-02-subscription-provider/proposal.md) · [Task checklist](../openspec/changes/archive/2026-09-15-af-02-subscription-provider/tasks.md)
 
 **Entry:** Phase 01 (`af-01-compatibility-foundation`) has a passed implementation gate in the handoff.
 

@@ -1,10 +1,88 @@
 # Implementation handoff
 
-Status: phase 01 compatibility foundation is implemented and its gate passed on 14 September 2026. Phases 02-18 remain unimplemented. The current execution record below supersedes the historical documentation-only observations. Product requirements remain approved; later architecture gates require their own execution evidence.
+Status: phase 01 compatibility foundation passed on 14 September 2026. Phase 02 passed its software and live subscription-provider exit gate on 15 September 2026; it is archived with its capability synced to main specs. Phases 03-18 remain unimplemented. The current execution record below supersedes the historical documentation-only observations. Product requirements remain approved; later architecture gates require their own execution evidence.
 
 Update, 11 September 2026: the user approved all eight adversarial review fixes and requested documentation updates only. They are incorporated in the requirements, architecture, scenario specifications and milestones. [Decision 001](decisions/001-review-hardening.md) records the accepted changes. This approval has not started application implementation.
 
-## Current implementation handoff - phase 01, 14 September 2026
+## Current implementation handoff - phase 02 completed, 15 September 2026
+
+**Change:** `af-02-subscription-provider`, spec-driven, **8/8 tasks complete; exit gate passed**. Phase 01 remains the verified entry gate. Repository `C:\@Projects\AutoFactorio`, branch `main`, tested HEAD `6a7427447721c35ecdfbd774dfe8e49bd25630dc` plus the pre-existing uncommitted phase 02 files and this continuation's edits. No commit, push or archive was made. Phase 03 has not started.
+
+This continuation changed `packages/codex/src/provider.ts`, `scripts/provider-probe.ts`, `tests/provider.test.ts`, README, guide, decision 004, this handoff and phase 02 task checkboxes. It preserved all existing work. Added a bounded read-only retry for the pinned server's transient empty-rollout metadata error after turn acceptance; gateway tools remain unbound until environment verification succeeds. The accepted turn is never resubmitted. Concurrent start promises now settle before cleanup, and resumed-history checks require each original private marker to exist as well as excluding the other role's marker.
+
+Fresh versions: Node 24.21.0, Corepack pnpm 12.4.1, Codex CLI 0.154.0. Supported managed-auth preflight now reports plan identifier `prolite`, exact `gpt-6-astra` / `low`, included usage allowed, primary weekly usage 0% at no-inference preflight and 1% at the passing trial, no secondary window, and `spendControlReached: false`. These are provider observations, not a guaranteed remaining allowance. No credentials were copied, settings changed, purchases made or alternative model/provider used. Factorio was not started or revalidated.
+
+### Live evidence and accounting
+
+- No-inference preflight: `.runtime/phase02/probe-tVhEyh`, zero turns, two distinct empty-environment sessions and exact scoped catalogs; successful result.
+- Initial continuation trial: `.runtime/phase02/probe-aEdDlS`, exit 1, one submitted turn, zero gateway attempts, 3.376 seconds and no token telemetry (actual usage unknown). An immediate metadata read reported an empty rollout; terminal interruption stayed unconfirmed, synthetic cancellation was confirmed and provider processes were closed. A subsequent supported `thread/read` reconciliation still reported empty engineer metadata and an unloaded foreman thread. No unknown turn was resubmitted. The failure is preserved, not counted as a pass.
+- Corrected trial: `.runtime/phase02/probe-5Buw16/{events.jsonl,result.json}`, **exit 0**, four submitted turns, two initially overlapping roles, seven gateway attempts (including two deliberate rejections), 46.940 seconds and **68,386 cumulative reported tokens** (engineer 34,303; foreman 34,083, including cached input). Both trials declared four turns, two concurrent turns, 60 seconds/12 gateway attempts per turn, 300 seconds/run and 120,000 reported tokens. This continuation therefore recorded five total submissions, seven gateway attempts and at least 68,386 reported tokens; the failed attempt's usage is unknown. Earlier trials in the historical record retain their separate usage and evidence.
+- Passing lifecycle: foreman handoff, engineer checkpoint, acknowledged steering, confirmed terminal interruption, confirmed synthetic cancellation, engineer process replacement/resume and report `20 + 22 = 42.`, then foreman process replacement/resume and acknowledgment. Final saved histories contain two turns each; engineer statuses are interrupted/completed and foreman statuses completed/completed. Each retains its own original private marker and excludes the other's.
+- Isolation: all four turns verified empty environments before gateway binding; the metadata race required four read retries in the passing trial. Exact role catalogs and effective feature controls passed for initial and replacement processes. Live engineer requests for foreman-only handoff and spoofed identity were rejected. Public activity and tool outcomes streamed incrementally. No forbidden native-tool events occurred. Native-tool exclusion uses the pinned registration source and effective environment/features; the catalog endpoint itself only enumerates MCP tools.
+
+### Executed checks
+
+- `node --version`, `corepack pnpm --version`, `codex --version`, `git rev-parse HEAD`: versions/revision above.
+- `openspec status --change af-02-subscription-provider --json` and `openspec instructions apply --change af-02-subscription-provider --json`: ready, repo-local, spec-driven, 6/8 at entry; all four context files and required architecture sections read.
+- `corepack pnpm build`, `corepack pnpm lint`, `corepack pnpm test`: exit 0 each after the correction; **55/55 tests in two files** (44 provider, 11 foundation). New regressions cover transient and persistent metadata failures, unrelated read errors, and unsafe environments; each asserts no accepted-turn resubmission or premature tool binding.
+- Exact no-inference command: `corepack pnpm provider:probe --codex 'C:/Users/Jerrol/AppData/Roaming/npm/node_modules/@openai/codex/node_modules/@openai/codex-win32-x64/vendor/x86_64-pc-windows-msvc/bin/codex.exe'`. Both continuation live commands append `--live --turn-cap 4 --token-cap 120000`; results above.
+- `corepack pnpm check:docs`: exit 0, 93 Markdown files and 278 local links. `openspec validate af-02-subscription-provider --strict --no-interactive`: exit 0. Final apply instructions report `all_done`, 8/8 tasks. `git diff --check`: exit 0. Source hashes are saved in `.runtime/phase02/probe-5Buw16/source-manifest.json`.
+
+Remaining limits: only the pinned Windows client was tested; experimental environment controls and deprecated full-history hydration remain version-sensitive. Reported tokens and account percentages are approximate usage measures. The earlier failed attempt's terminal state/usage remains unknown. Cancellation here is synthetic; real game actions, cancellation, pause/save/load and fencing remain phases 03 onward. The Windows sandbox still fails at startup with `setup refresh had errors`; reviewed elevated tool execution permitted this work, without repairing the sandbox or changing prerequisites.
+
+**Next bounded action:** phase 03 (`af-03-character-execution`), now explicitly authorized by the user after the requested phase 02 archive and commit. Do not skip phase 04's real-game pause/restore gate before phase 05.
+
+Archive/commit continuation, 15 September 2026: verified 8/8 tasks and the passed live evidence, synced all six subscription-provider requirements and their Purpose to main specs, validated both main specs, and archived to `openspec/changes/archive/2026-09-15-af-02-subscription-provider/`. Guide/traceability links and archived relative document links were updated. The user explicitly requested this archive, commit, and subsequent phase 03 implementation. The phase 02 commit containing this record has parent `6a7427447721c35ecdfbd774dfe8e49bd25630dc`; resolve its hash with `git log -1 --format=%H -- openspec/changes/archive/2026-09-15-af-02-subscription-provider/tasks.md`. No new model trial was needed for archive.
+
+## Earlier partial implementation handoff - phase 02, 15 September 2026
+
+**Change:** `af-02-subscription-provider` (`spec-driven`). **Entry gate:** passed, from phase 01's archived implementation record and actual clean Git state at start. **Exit gate:** NOT passed. Tasks 1.1 and 2.1-2.4 are implemented/tested; 2.5 and 3.1 remain open. Task 3.2 records this partial handoff. Stop before phase 03; do not archive this change yet.
+
+Repository `C:\@Projects\AutoFactorio`, branch `main`, tested base HEAD `6a7427447721c35ecdfbd774dfe8e49bd25630dc` plus this phase's uncommitted files. No commit or push was made. Files: `packages/codex/src/{protocol,rpc,preflight,budget,provider}.ts`, `packages/tools/src/gateway.ts`, `scripts/provider-probe.ts`, `tests/provider.test.ts`, root package/TypeScript configuration, README, guide status, third-party inspection note, decision 004, this handoff and selected task checkboxes. No dependency or lockfile change; no game, scheduler, dashboard or later phase was implemented. Initial working tree was clean.
+
+Implemented: pinned app-server port and managed ChatGPT-only preflight; exact Astra/low selection with no API/provider/model/credit-reset methods; isolated role profiles and authenticated per-turn MCP capabilities; permanent late-call revocation; public console/JSONL lifecycle evidence; separate monotonic turn/run time, roster turn, gateway attempt and cumulative token accounting; explicit unknown telemetry; admission closure, interrupt outcomes and a synthetic acknowledged-cancellation callback. Provider replacements resume the recorded role history and retain the same budget object. No real game cancellation is claimed. [Decision 004](decisions/004-subscription-provider.md) records the boundaries and inspected source.
+
+Observed versions: Windows x64, Node 24.21.0, Corepack-pinned pnpm 12.4.1, Codex CLI 0.154.0. Generated stable and experimental protocol bindings into `.runtime/phase02/protocol` and `protocol-experimental`. Inspected release commit `6b9826e3aa83b1a5947db50f4332cb9c65f1b340`; no upstream implementation or generated bindings were copied. Factorio was not started or revalidated in phase 02.
+
+Managed preflight succeeded via `account/read` and `getAuthStatus` with `includeToken: false`: ChatGPT, Plus. `model/list` reported `gpt-6-astra` and low effort. At the first live trial, `ordinaryUsageAllowed` was true, with reported usage 50% of the five-hour window and 22% of the weekly window. These account-wide percentages include other concurrent activity and cannot be attributed to this probe or converted to a guaranteed allowance. Initial inspection reported no available paid credits; no credits or resets were consumed. No OAuth/browser token was read, copied or proxied.
+
+Live trial 1, `.runtime/phase02/probe-W3bsGP`, failed. Declared ceilings were 6 provider turns, 2 concurrent turns, 60 seconds and 12 gateway attempts per turn, 300 seconds/run and 30,000 reported tokens. Actual: 2 submitted, overlapping provider turns; 34,153 cumulative reported tokens including cached input; 14.028 seconds of recorded run time. Token telemetry crossed the cap after generation, demonstrating that this is an approximate ceiling. Run admission closed automatically and no new inference was started. There were 2 provider-side MCP tool attempts but 0 gateway attempts: both `checkpoint` and `handoff` were rejected by Codex with `MCP tool call requires approval, but approval policy is never`. Both roles streamed public activity and explanations, but no handoff occurred. At shutdown the foreman's interruption was acknowledged at RPC level but terminal completion remained unconfirmed; synthetic cancellation was confirmed. The engineer completed normally after its rejected tool. No failed criterion is treated as a pass.
+
+Correction: set `mcp_servers.autofactorio.default_tools_approval_mode = "approve"` only for the bounded synthetic gateway. Global approvals and unrelated tools remain restricted. The corrected no-inference check passed in `.runtime/phase02/probe-NIxkUJ`: two distinct sessions, exact model/effort, no selected local environments, empty runtime workspace roots and instruction sources, and the exact foreman (`observe`, `handoff`) versus engineer (`observe`, `report`, `checkpoint`) MCP catalogs. Native tool isolation is supported by effective launch controls plus the pinned tool-registration source; the client does not expose a unified all-native-tools listing through the used catalog endpoint. Live hostile gateway calls and resumed history-content checks still await the corrected live trial. Final code additionally requires successful session/catalog checks before `start`, and fails closed on forbidden native-tool/model/authentication events.
+
+The corrected live probe was authorized, but its continuation was blocked before execution by automatic provider usage-limit review. No workaround, alternate provider, credit purchase, model substitution or indirect execution was attempted; no additional turns were consumed. The corrected empty-environment resume fix is covered by deterministic tests only.
+
+Exact checks/results:
+
+| Command/check | Result |
+| --- | --- |
+| `git status --short`; `git log -1 --format=%H` at entry | Clean; HEAD recorded above |
+| `openspec status --change af-02-subscription-provider --json`; `openspec instructions apply --change af-02-subscription-provider --json` | Ready, repo-local, spec-driven, initially 0/8 tasks; all four context files read |
+| `node --version`; `corepack pnpm --version`; `codex --version` | 24.21.0; 12.4.1; 0.154.0 |
+| `codex app-server generate-ts --out .runtime/phase02/protocol` | Exit 0 |
+| `codex app-server generate-ts --experimental --out .runtime/phase02/protocol-experimental` | Exit 0 |
+| `node .runtime/phase02/inspect-preflight.mjs` | Exit 0, no inference; sanitized auth/model evidence in `preflight.json` |
+| `corepack pnpm provider:probe --codex 'C:/Users/Jerrol/AppData/Roaming/npm/node_modules/@openai/codex/node_modules/@openai/codex-win32-x64/vendor/x86_64-pc-windows-msvc/bin/codex.exe'` | Exit 0 before and after scoped MCP fix; 0 turns in `probe-1TDF7D` and `probe-NIxkUJ` |
+| Same provider command with `--live` | Expected recorded failure, exit 1; trial details above, not a passed gate |
+| `corepack pnpm build` | Exit 0 after fixes |
+| `corepack pnpm lint` | Exit 0 after three prefer-const findings were fixed |
+| `corepack pnpm test` | Exit 0; 2 files, 51/51 tests (40 provider, 11 foundation), final run at 08:37:26 local before documentation-only edits |
+| `corepack pnpm check:docs` | Exit 0 after handoff insertion; 93 Markdown files, 278 local links |
+| `openspec validate af-02-subscription-provider --strict --no-interactive` | Exit 0; selected change valid |
+| `git diff --check` | Exit 0; no whitespace errors |
+| Final `openspec instructions apply --change af-02-subscription-provider --json` | 6/8 tasks complete; 2.5 and 3.1 remain unchecked |
+| Protected configuration hash/absence comparison | 5/5 unchanged, `.runtime/phase02/protected-{before,after}.json` |
+| Scoped `codex.exe` process inspection after shutdown | No remaining process with this phase's path in its command line |
+
+The 40 provider tests cover managed/API/external authentication, missing exact model/effort, included-usage/paid-fallback denial, effective config defaults, final-turn admission, a long turn without usage, atomic two-role time/token/account exhaustion, rejected attempts, cumulative usage deduplication and session/controller replacement, all named gateway bypass categories, identity spoofing, revoked credentials, actual authenticated HTTP and origin rejection, correlated steering/interruption/resumption, late output, unconfirmed interruption/cancellation and summary-only reasoning. The existing SQLite real-driver test also passed. No additional dependencies were installed; prior phase foundation checks were not reclassified as new game evidence.
+
+Tooling issues: sandboxed shell, apply_patch and Node REPL startup failed with the existing Windows helper error. Automatically approved unsandboxed project commands permitted the work. An initial JSON BOM written by Windows PowerShell caused `Invalid package.json`; corrected to BOM-free UTF-8 before successful build/test runs. One outdated upstream source path returned 404; the release tree identified the correct file. These failures are not passing checks and no sandbox/prerequisite repair was attempted.
+
+Remaining limitations: the live gate is incomplete. The corrected trial proved a real handoff, public streaming, forbidden role and identity rejection, acknowledged steering, confirmed interruption and synthetic cancellation; resume isolation then blocked the run. Separate resumed histories and the live post-fix resume remain unverified because the authorized continuation was stopped before execution by the provider usage-limit review. Wait for allowance reset before a new bounded experiment. No real Factorio behavior or later lifecycle/fencing gate is claimed.
+
+Next bounded action: wait for provider allowance reset, then resume this same phase with a newly declared bounded probe budget and finish tasks 2.5 and 3.1. Do not start phase 03.
+
+## Previous implementation handoff - phase 01, 14 September 2026
 
 **Change:** `af-01-compatibility-foundation` (`spec-driven`). **Gate:** passed; 8/8 implementation tasks complete; archived and synced to main specs. Repository `C:\@Projects\AutoFactorio`, branch `main`, tested HEAD `1cdff328c76471cae80b6c6059057da94569c755` plus the phase 01 working-tree files below. The implementation and archive are included in the commit containing this record, together with the existing planning package. No push or next-phase implementation was performed. Earlier edits to AGENTS.md, README, this handoff, the implementation guide, traceability, decision 002 and all 18 planning changes were preserved.
 
@@ -161,7 +239,7 @@ Use one implementation task through a coherent milestone. Do not create a new ta
 
 Keep root `AGENTS.md` short and point to the relevant documents. A fresh task should read the current handoff and the documents relevant to its milestone; it should not need the complete planning conversation. Do not put game-agent prompts or player memory into coding-agent instructions.
 
-## Ready-to-use next-task request
+## Historical next-task request before phase 02
 
 Paste this into a fresh Codex conversation opened in this repository:
 
@@ -177,3 +255,11 @@ This starts only phase 02 of milestone 0 after the passed phase 01 gate. Use the
 At existing commit 1cdff32 on main, the user authorized reducing routine development approvals. Added ignored project-local `.codex/config.toml` with `approval_policy = "on-request"`, `approvals_reviewer = "auto_review"`, `sandbox_mode = "workspace-write"`, and sandbox network access enabled. Global settings and other projects were not changed. Root AGENTS.md now records autonomous execution within an authorized milestone, including project dependencies, tests, dedicated local game runs, fixes and documentation.
 
 Verified: TOML parsing and the desktop Codex 0.153.4 app-server strict configuration load; `config/read` with this project as cwd returned all four requested values. No model inference or application/game tests ran. Existing planning changes were preserved. This running chat retains its supplied permission policy; reopen the project in a new chat to load the configuration, and check the app permissions control if it supplies an override. The Windows sandbox startup error (`setup refresh had errors`) observed in this session remains unresolved; these settings are not a verified repair for it. No implementation milestone was started and no commit or push was made. Next bounded action: verify effective permissions in a fresh project chat, then continue the user-selected implementation phase.
+
+### Continuation update - 15 September 2026
+
+The authorized corrected live probe continuation did not execute. Automatic approval review blocked the process before launch because the ChatGPT provider usage limit had been reached, with instructions to retry after reset or upgrade. No workaround, alternate provider, credit purchase, model substitution or indirect execution was attempted. No additional provider turns were consumed.
+
+The corrected implementation now supplies an empty environment override on every turn and verifies thread state before gateway admission. This fix is covered by the deterministic test suite, but the live post-fix resume check remains unverified. The previous corrected trial remains evidence: 2 turns consumed, 28,384 reported tokens, one real handoff, public activity, forbidden role and identity calls rejected, steering acknowledged, interruption confirmed and synthetic cancellation confirmed; resume was blocked by the environment-selection check before further inference.
+
+Phase 02 remains at 6/8 tasks complete. Task 2.5 and the integrated exit gate task 3.1 remain unchecked. The next bounded action is to wait for provider allowance reset and resume this same phase with a newly declared live budget. Phase 03 must not start.

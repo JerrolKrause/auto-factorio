@@ -10,7 +10,8 @@
     "lint": "eslint scripts packages tests",
     "test": "vitest run",
     "diagnose": "node dist/scripts/diagnose.js",
-    "check:docs": "node scripts/check-docs.mjs"
+    "check:docs": "node scripts/check-docs.mjs",
+    "provider:probe": "node dist/scripts/provider-probe.js"
   },
   "dependencies": {
     "@autofactorio/contracts": "workspace:*",

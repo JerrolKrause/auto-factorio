@@ -6,7 +6,7 @@ Subscription access, effective gameplay tool isolation and visible activity are 
 
 - A supported ChatGPT-only provider adapter, two scoped synthetic sessions, public activity and deterministic execution budgets.
 - Preserve the approved product safeguards and attach explicit acceptance evidence to this bounded phase.
-- Complete phase 02 only after `af-01-compatibility-foundation` has passed its implementation gate; see the [implementation guide](../../../docs/IMPLEMENTATION_GUIDE.md).
+- Complete phase 02 only after `af-01-compatibility-foundation` has passed its implementation gate; see the [implementation guide](../../../../docs/IMPLEMENTATION_GUIDE.md).
 
 ## Capabilities
 
