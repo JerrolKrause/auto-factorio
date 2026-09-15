@@ -2,6 +2,8 @@
 
 These instructions apply to agents developing this repository. Gameplay-role prompts belong in `agents/`; do not use this file as player memory or expose private evaluator fixtures to gameplay agents.
 
+Keep all future edits to this file as context-efficient as possible: concise rules, no repetition or background narrative; link local skills/docs for detail while preserving essential constraints.
+
 ## Begin with the current task
 
 Read `docs/IMPLEMENTATION_HANDOFF.md` for actual progress and the next milestone. Read `docs/REQUIREMENTS.md` before changing product behavior, then only the relevant architecture/scenario sections. Do not require the planning conversation or reread every document on every turn.
@@ -29,6 +31,16 @@ Use the repository's actual scripts and lockfile once created. No install, build
 Test important failure paths with fakes; verify legal movement, inventory accounting, placement, cancellation and save/load in Factorio itself. Keep model-backed tests deliberate and budgeted. Report exactly what ran, what passed, and what remains unverified.
 
 The user manages prerequisite upgrades. Recheck installed versions before treating old observations as blockers. Keep personal saves, global Codex settings, credentials, game binaries and generated run data out of source control.
+
+## Independent review before completion
+
+Before committing or declaring repository edits complete, the main author must delegate a read-only review to a fresh-context subagent using [change-audit](.agents/skills/change-audit/SKILL.md) (read directly if undiscovered). The author must not invoke the skill or self-review.
+
+- Pass task intent, relevant specs, checks/results and path/hunk boundaries separating unrelated work. Inherit the authorized model/provider.
+- Review only task-scoped uncommitted changes: staged, unstaged and untracked. Unchanged code is context only. The reviewer returns findings without editing or delegating.
+- Evaluate findings; fix verified issues, reject others with evidence, rerun relevant checks and obtain review of fixes/later substantive edits. No findings is valid. Report the outcome and unresolved limits; never claim completion with outstanding actionable findings or unavailable review.
+
+The main author owns this gate; implementation subagents hand back their work. Read-only/no-change tasks and reviewers are exempt. Routine review/corrections need no renewed approval and grant no additional action authority.
 
 ## Leave a usable handoff
 

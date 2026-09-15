@@ -1,0 +1,6 @@
+interface:
+  display_name: "Change Audit"
+  short_description: "Independent review of uncommitted task changes"
+  default_prompt: "Use $change-audit as the delegated read-only reviewer of this task's uncommitted changes and return findings to the author."
+policy:
+  allow_implicit_invocation: false
