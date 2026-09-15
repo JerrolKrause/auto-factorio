@@ -1,6 +1,6 @@
 # AutoFactorio implementation guide
 
-Status: phase 01 implemented, verified and archived on 14 September 2026; phase 02 passed its software/live exit gate on 15 September 2026 and is archived; phases 03-18 remain planned. See the current handoff for evidence. Use this guide to start one bounded change per fresh Codex conversation in the existing `C:\@Projects\AutoFactorio` workspace.
+Status: phase 01 implemented, verified and archived on 14 September 2026; phase 02 passed its software/live exit gate on 15 September 2026 and is archived; phase 03 passed its character-action and quiescent receipt-readback gate on 15 September 2026 and is archived; phases 04-18 remain planned. See the current handoff for evidence. Use this guide to start one bounded change per fresh Codex conversation in the existing `C:\@Projects\AutoFactorio` workspace.
 
 ## Why 18 changes
 
@@ -91,7 +91,7 @@ Work in C:\@Projects\AutoFactorio. Follow phase 02 of docs/IMPLEMENTATION_GUIDE.
 
 ### 03 — Legal character execution
 
-[Open the change](../openspec/changes/af-03-character-execution/proposal.md) · [Task checklist](../openspec/changes/af-03-character-execution/tasks.md)
+[Open the change](../openspec/changes/archive/2026-09-15-af-03-character-execution/proposal.md) · [Task checklist](../openspec/changes/archive/2026-09-15-af-03-character-execution/tasks.md)
 
 **Entry:** Phase 02 (`af-02-subscription-provider`) has a passed implementation gate in the handoff.
 

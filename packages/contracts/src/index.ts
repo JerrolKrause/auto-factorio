@@ -20,3 +20,5 @@ export interface CompatibilityReport {
   checks: CompatibilityCheck[];
   foundationPassed: boolean;
 }
+
+export * from './game.js';

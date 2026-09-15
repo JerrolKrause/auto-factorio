@@ -4,14 +4,20 @@
   "private": true,
   "type": "module",
   "packageManager": "pnpm@12.4.1",
-  "engines": { "node": ">=24 <25" },
+  "engines": {
+    "node": ">=24 <25"
+  },
   "scripts": {
     "build": "tsc -b",
     "lint": "eslint scripts packages tests",
     "test": "vitest run",
     "diagnose": "node dist/scripts/diagnose.js",
     "check:docs": "node scripts/check-docs.mjs",
-    "provider:probe": "node dist/scripts/provider-probe.js"
+    "provider:probe": "node dist/scripts/provider-probe.js",
+    "game:launch": "node dist/scripts/game-launch.js",
+    "game:smoke": "node dist/scripts/game-smoke.js",
+    "game:probe": "node dist/scripts/game-probe.js",
+    "game:load-probe": "node dist/scripts/game-load-probe.js"
   },
   "dependencies": {
     "@autofactorio/contracts": "workspace:*",

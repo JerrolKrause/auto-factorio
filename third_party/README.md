@@ -14,3 +14,7 @@ Reproduce revision inspection with `git ls-remote <repository-url> HEAD`, then i
 ## Phase 02 provider source inspection
 
 Inspected Codex `rust-v0.154.0`, commit `6b9826e3aa83b1a5947db50f4332cb9c65f1b340`, specifically `codex-rs/core/src/tools/spec_plan.rs`, `core/src/config/mod.rs`, `core/config.schema.json` and the installed generated app-server schemas. The package README identifies Apache-2.0; no implementation or generated bindings were copied into AutoFactorio. Original adapter projections and configuration are documented in [decision 004](../docs/decisions/004-subscription-provider.md). Ignored inspection evidence lives in `.runtime/phase02/`. This adds no game-mechanics reuse or project-license decision.
+
+## Phase 03 game source inspection
+
+Re-read the pinned Agentic-Factorio `walk.lua` and `build.lua` implementations above on 15 September 2026. Used installed Factorio 2.0.77 `doc-html/runtime-api.json` for character, surface, inventory, path, crafting and placement signatures. No implementation, generated API document or game asset was copied. The original adapter and actual launch topology are described in [decision 005](../docs/decisions/005-character-execution.md).

@@ -6,7 +6,7 @@ A local Factorio Space Age experimentation environment where specialized AI agen
 
 ## Current status
 
-Phase 01 compatibility foundation is implemented and verified on Windows: a strict TypeScript/pnpm workspace, local diagnostic and SQLite transaction/backup probe. Phase 02 now has a pinned subscription provider, authenticated synthetic MCP gateway and deterministic budget tests; its live two-role handoff, interruption and resume gate passed on 15 September 2026. Game actions, scenarios and the dashboard remain future phases. See the [compatibility report](docs/COMPATIBILITY_REPORT.md) and [handoff](docs/IMPLEMENTATION_HANDOFF.md) for exact evidence and limitations.
+Phase 01 compatibility foundation is implemented and verified on Windows: a strict TypeScript/pnpm workspace, local diagnostic and SQLite transaction/backup probe. Phase 02 now has a pinned subscription provider, authenticated synthetic MCP gateway and deterministic budget tests; its live two-role handoff, interruption and resume gate passed on 15 September 2026. Phase 03 now passes live legal character actions, cancellation, protected fixtures, lost-response reconciliation and saved receipt readback. Scenarios and the dashboard remain future phases. See the [compatibility report](docs/COMPATIBILITY_REPORT.md) and [handoff](docs/IMPLEMENTATION_HANDOFF.md) for exact evidence and limitations.
 
 All eight adversarial review fixes were approved and incorporated on 11 September 2026, covering scoring, fault controls, execution fencing, archive access, budgets and integration gates. The [accepted decision](docs/decisions/001-review-hardening.md) records the changes and required validation.
 
@@ -14,14 +14,14 @@ All eight adversarial review fixes were approved and incorporated on 11 Septembe
 
 The [implementation guide](docs/IMPLEMENTATION_GUIDE.md) provides **18 bounded OpenSpec phases**, each with a proposal, capability spec, design, task checklist and a copyable Codex launch prompt. Start one phase per fresh conversation and follow the recorded prerequisite gates. The [coverage map](docs/SPEC_TRACEABILITY.md) connects the plan to every approved requirement and review correction.
 
-Phase 02 is complete and archived with spec sync. The next bounded implementation phase is legal character execution:
+Phase 03 is complete and archived with its character-execution capability synced to main specs. The next bounded implementation phase is the pause/restore gate:
 
 ```text
-$openspec-apply-change af-03-character-execution
-Follow phase 03 of docs/IMPLEMENTATION_GUIDE.md, implement only that change, verify its exit gate and update docs/IMPLEMENTATION_HANDOFF.md.
+$openspec-apply-change af-04-pause-restore-gate
+Follow phase 04 of docs/IMPLEMENTATION_GUIDE.md, implement only that change, verify its exit gate and update docs/IMPLEMENTATION_HANDOFF.md.
 ```
 
-Phase 01 is complete and archived; its compatibility capability is synced to main specs. Phase 02 passed all eight tasks and is archived with its subscription-provider capability synced to main specs. Phases 03-18 remain planned and their integration gates remain open.
+Phase 01 is complete and archived; its compatibility capability is synced to main specs. Phase 02 passed all eight tasks and is archived with its subscription-provider capability synced to main specs. Phase 03 passed all eight tasks and is archived; phases 04-18 remain planned and their integration gates remain open.
 
 ## Planned first release
 
@@ -75,6 +75,28 @@ The default performs managed-auth/model discovery, creates two empty role sessio
 Adding `--live` consumes existing ChatGPT subscription usage and runs the synthetic two-role handoff/steer/interrupt/resume checks. Defaults are 6 turns, 2 concurrent turns, 60 seconds/12 gateway attempts per turn, 5 minutes/run and 30,000 reported tokens. `--turn-cap <positive integer>` and `--token-cap <positive integer>` declare a different trial budget. Token events can arrive late; total tokens include cached input and do not measure remaining subscription allowance. An exhausted trial stops; no automatic paid usage, credit reset, model substitution or restart is implemented. Treat a rerun as a separately authorized experiment and preserve the previous evidence and aggregate usage.
 
 The corrected live gate passed with four provider turns, 68,386 reported tokens, two separate resumed histories, a synthetic handoff, public activity, acknowledged steering, confirmed interruption and synthetic cancellation. The gateway rejected forbidden role and identity calls. A transient empty-rollout metadata read is retried with tools closed; the accepted turn is never resubmitted. Earlier failed trials remain recorded. See the [handoff](docs/IMPLEMENTATION_HANDOFF.md) for exact commands, budgets and limitations and [decision 004](docs/decisions/004-subscription-provider.md) for the isolation boundary. `provider:probe` is a synthetic diagnostic; real game validation starts in phase 03.
+
+## Character diagnostic (phase 03)
+
+Build first. These commands create fresh ignored project-only game profiles using the installed Steam Factorio 2.0.77 executable:
+
+```powershell
+corepack pnpm build
+corepack pnpm game:launch --headless
+corepack pnpm game:smoke
+```
+
+The headless smoke verifies real bounded observations, inventories, mod versions, recipe facts and malformed-request rejection. It does not verify character actions or a visible client. The launcher prints its directory and process ID; only stop the corresponding dedicated process when finished. It uses game port 34199/RCON 27019 for headless checks and 34198/27018 for the visible-client server.
+
+```powershell
+corepack pnpm game:launch
+corepack pnpm game:probe
+corepack pnpm game:load-probe
+```
+
+The normal launch starts a local dedicated server and a visible Steam client attached with `--mp-connect`; graphical `--host` did not expose RCON in the tested build. The client launch may require accepting Steam's launch-options dialog and entering a local player name. Wait until the hosted map is visible before running `game:probe`. Each launch also writes `launch.ps1` (server) and `launch-observer.ps1` (visible client) in its generated directory; `--prepare-only` creates the profile/script without opening the game. The live action checks passed: the probe tests normal character timing, reach, collision, inventory, protected fixtures, partial batches, cancellation and lost acknowledgments, and requests a quiescent save. `game:load-probe` opens that save on a separate temporary server, compares persisted receipts, verifies the loaded-world admission block, and stops its temporary server. A failed probe's state/evidence must be inspected before choosing a fresh test map. Source changes require copying/relaunching a fresh profile; running games do not hot-reload the mod.
+
+RCON credentials and game data stay in ignored `.runtime/phase03/`; do not publish `launch.json` or `launch.ps1`. The diagnostic acknowledges Factorio's console-achievement notice in its disposable map. See [decision 005](docs/decisions/005-character-execution.md) and the [current handoff](docs/IMPLEMENTATION_HANDOFF.md) for tested behavior and open gates.
 
 ## Local setup context
 

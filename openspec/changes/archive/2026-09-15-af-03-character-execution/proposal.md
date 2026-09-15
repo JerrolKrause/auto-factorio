@@ -6,7 +6,7 @@ There is no verified route from structured commands to legal effects in the inst
 
 - A visible dedicated sandbox, bounded observations, deterministic calculations, character actions and reconciled asynchronous batches.
 - Preserve the approved product safeguards and attach explicit acceptance evidence to this bounded phase.
-- Complete phase 03 only after `af-02-subscription-provider` has passed its implementation gate; see the [implementation guide](../../../docs/IMPLEMENTATION_GUIDE.md).
+- Complete phase 03 only after `af-02-subscription-provider` has passed its implementation gate; see the [implementation guide](../../../../docs/IMPLEMENTATION_GUIDE.md).
 
 ## Capabilities
 
