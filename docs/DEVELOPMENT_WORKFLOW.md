@@ -70,8 +70,18 @@ A completed probe, changed source, incomplete capture, absent cancellation/rollb
 
 ## Known Windows sandbox startup failure
 
+Local repair verified on 15 September 2026: `.agents` was owned by `CodexSandboxOffline`, preventing the normal user from installing the sandbox deny ACL (`SetNamedSecurityInfoW`, error 5). An administrator-approved, non-recursive `icacls .agents /setowner '<repository-owner>'` from the repository root restored ownership while preserving existing access rules. Subsequent ordinary sandbox launches succeeded; workspace writes worked and writes to `.agents`, `.codex` and `.git` remained denied. Keep protected top-level directories owned by the repository owner; avoid recreating them through a sandbox account. Inspect the specific failure in `$HOME/.codex/.sandbox/sandbox.*.log` before selecting a repair; do not reset ACLs or recursively change ownership as a generic workaround.
+
+Git reads then exposed a separate path-format issue: Codex 0.154.0 injected backslash `safe.directory` paths that Git rejected under the sandbox account. Adding the already-trusted checkout's exact forward-slash path with `git config --global --add safe.directory C:/@Projects/AutoFactorio` restored ordinary Git reads. Never use a wildcard trust entry. These are local machine repairs, not repository permission-policy changes.
+
 Observed in this workspace: the command/patch runner can fail before execution with `helper_unknown_error: setup refresh had errors`. One ordinary workspace attempt establishes whether it still occurs. Repeated shell/path/backend variations did not repair it in the phase 01-04 sessions.
 
 For an already-authorized operation, request the tool's `require_escalated` review with its concrete project scope. Continue only if that review permits the operation. This fallback addresses startup failure; it does not bypass a permission denial or grant standing unsandboxed authority. If review rejects an action, follow the stated restriction and report any remaining blocker. Keep prerequisite/sandbox repair user-managed; do not change global settings to conceal the defect.
 
 The handoff must distinguish the failed sandbox attempt from the reviewed execution that actually ran, and report any verification that remains unavailable.
+
+## Recover an unresponsive Codex terminal
+
+Distinguish an active command from a stalled interface before stopping anything. In the 15 September incident, Codex logged `turn/completed` and continued background requests with no active shell command. Only that verified idle process and its direct tool helpers were stopped; saved session history was preserved.
+
+The ignored project `.codex/config.toml` now sets `[tui]` / `alternate_screen = "never"` for future launches. This uses inline rendering with scrollback; it is a mitigation, not a proven fix for the original interface freeze. Resume the specific saved session in a fresh terminal with `codex resume <session-id> --no-alt-screen`; avoid `--last` when several sessions are running. Do not kill all Codex/editor processes, delete session databases, or disable the sandbox. Keep prerequisite upgrades user-managed.
