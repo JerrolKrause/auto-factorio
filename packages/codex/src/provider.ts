@@ -94,7 +94,7 @@ export class Provider {
       catch (error) { this.emit('interrupt/unconfirmed', { error: String(error) }); }
     }
     // Callback is synthetic cancellation now; a real game must supply acknowledged reconciliation later.
-    try { if (await this.reconcile()) this.turn.cancellation = 'confirmed'; }
+    try { if (await this.reconcile()) this.budget.confirmCancellation(this.turn.id); }
     catch { /* Retain unconfirmed cancellation. */ }
     this.emit('cancellation/status', { status: this.turn.cancellation });
   }

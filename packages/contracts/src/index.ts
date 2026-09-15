@@ -22,3 +22,5 @@ export interface CompatibilityReport {
 }
 
 export * from './game.js';
+
+export * from './durable.js';

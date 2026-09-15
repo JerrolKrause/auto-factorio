@@ -6,7 +6,7 @@ A local Factorio Space Age experimentation environment where specialized AI agen
 
 ## Current status
 
-Phase 01 compatibility foundation is implemented and verified on Windows: a strict TypeScript/pnpm workspace, local diagnostic and SQLite transaction/backup probe. Phase 02 now has a pinned subscription provider, authenticated synthetic MCP gateway and deterministic budget tests; its live two-role handoff, interruption and resume gate passed on 15 September 2026. Phase 03 now passes live legal character actions, cancellation, protected fixtures, lost-response reconciliation and saved receipt readback. Phase 04 passes its real hosted pause/checkpoint/restore/reconcile/re-arm and heartbeat-loss checks. Scenarios and the dashboard remain future phases. See the [compatibility report](docs/COMPATIBILITY_REPORT.md) and [handoff](docs/IMPLEMENTATION_HANDOFF.md) for exact evidence and limitations.
+Phase 01 compatibility foundation is implemented and verified on Windows: a strict TypeScript/pnpm workspace, local diagnostic and SQLite transaction/backup probe. Phase 02 now has a pinned subscription provider, authenticated synthetic MCP gateway and deterministic budget tests; its live two-role handoff, interruption and resume gate passed on 15 September 2026. Phase 03 now passes live legal character actions, cancellation, protected fixtures, lost-response reconciliation and saved receipt readback. Phase 04 passes its real hosted pause/checkpoint/restore/reconcile/re-arm and heartbeat-loss checks. Phase 05 now passes durable event/outbox, evidence integrity, budget recovery, backup and live crash/receipt/managed-restore checks, with all 8 tasks complete and independent review finding no remaining issues. Scenarios and the dashboard remain future phases. See the [compatibility report](docs/COMPATIBILITY_REPORT.md) and [handoff](docs/IMPLEMENTATION_HANDOFF.md) for exact evidence and limitations.
 
 All eight adversarial review fixes were approved and incorporated on 11 September 2026, covering scoring, fault controls, execution fencing, archive access, budgets and integration gates. The [accepted decision](docs/decisions/001-review-hardening.md) records the changes and required validation.
 
@@ -14,14 +14,14 @@ All eight adversarial review fixes were approved and incorporated on 11 Septembe
 
 The [implementation guide](docs/IMPLEMENTATION_GUIDE.md) provides **18 bounded OpenSpec phases**, each with a proposal, capability spec, design, task checklist and a copyable Codex launch prompt. Start one phase per fresh conversation and follow the recorded prerequisite gates. The [coverage map](docs/SPEC_TRACEABILITY.md) connects the plan to every approved requirement and review correction.
 
-Phase 04 is complete with 9/9 tasks, a passed live gate and independent review with no findings; it is archived with its pause/restore capability synced to main specs. The next bounded implementation phase, only when requested, is the durable event runtime:
+Phase 04 is archived with its pause/restore capability synced to main specs. Phase 05 is complete with 8/8 tasks, passed software/live gates and independent review with no remaining findings. It is archived with its durable-event-runtime capability synced to main specs. The next bounded implementation phase, only when requested, is:
 
 ```text
-$openspec-apply-change af-05-durable-event-runtime
-Follow phase 05 of docs/IMPLEMENTATION_GUIDE.md, implement only that change, verify its exit gate and update docs/IMPLEMENTATION_HANDOFF.md.
+$openspec-apply-change af-06-fenced-ownership
+Follow phase 06 of docs/IMPLEMENTATION_GUIDE.md, verify its entry gate in docs/IMPLEMENTATION_HANDOFF.md, implement only that change, and stop before phase 07.
 ```
 
-Phase 01 is complete and archived; its compatibility capability is synced to main specs. Phase 02 passed all eight tasks and is archived with its subscription-provider capability synced to main specs. Phase 03 passed all eight tasks and is archived; phase 04 has passed its live pause/restore gate; phases 05-18 remain planned.
+Phase 01 is complete and archived; its compatibility capability is synced to main specs. Phase 02 passed all eight tasks and is archived with its subscription-provider capability synced to main specs. Phase 03 passed all eight tasks and is archived; phase 04 has passed its live pause/restore gate; phase 05 is complete and archived; phases 06-18 remain planned.
 
 ## Planned first release
 
@@ -125,6 +125,18 @@ Each trial retains incremental `.runtime/phase04/game-*/pause-probe-*/events.jso
 A restore-only continuation is available as `corepack pnpm game:pause-probe --continue <prior-evidence-directory>` when its atomic stage journal contains `restore-ready`. That stage records the validated checkpoint, cancellation/rollback evidence, and mod/probe source fingerprints. The original server need not run. Inspect and stop only that trial's obsolete held-load processes before continuing. `--stop-after restore-ready` deliberately records this boundary with `passed: false`; it does not pass the gate. Completed probes, mismatched sources/checksums and older trials without journals are refused. Continuation preserves the earlier checks as inherited evidence and records new checks separately.
 
 See the [M0 integration report](docs/INTEGRATION_GATE_REPORT.md), [decision 006](docs/decisions/006-pause-restore.md) and [handoff](docs/IMPLEMENTATION_HANDOFF.md). The phase 03 action diagnostic now performs explicit lifecycle reconciliation/arm and heartbeats; its legacy quiescent save remains a receipt-readback test, not a managed recovery checkpoint.
+
+## Durable runtime diagnostic (phase 05)
+
+```powershell
+corepack pnpm verify --game
+corepack pnpm game:launch --phase04 --result-file .runtime/phase05-visible-profile.json
+corepack pnpm game:durable-probe --profile-file .runtime/phase05-visible-profile.json
+```
+
+Use a fresh profile with initial game/RCON ports 34204/27024 free and no existing project observer. The probe uses the phase 04 launcher/lifecycle and restores on separate ports 34206/27026. It deliberately exits a child runtime with code 73 after a legal placement and before SQLite acknowledgement; the parent verifies receipt recovery without a duplicate entity or inventory debit. It also verifies durable task/budget reconstruction, exact observation artifacts, a consistent backup, and managed checkpoint rollback. The final visible world is paused and disarmed. No provider inference is used; budget telemetry in this diagnostic is synthetic.
+
+Evidence stays under `.runtime/phase04/game-*/durable-probe-*/`: incremental event logs, source hashes, the worker's effect-before-crash record, SQLite/WAL and checksummed artifacts, backup manifest, checkpoint pair, recovered state and aggregate result. Failed trials remain separate; this probe has no staged continuation mode. Do not rerun it against a world already changed by an earlier trial. Stop only profile-identified project processes. [Decision 007](docs/decisions/007-durable-event-runtime.md) describes the persistence and recovery boundaries; the [handoff](docs/IMPLEMENTATION_HANDOFF.md) records the actual gate.
 
 ## Local setup context
 

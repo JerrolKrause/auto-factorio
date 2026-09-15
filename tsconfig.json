@@ -10,7 +10,10 @@
     "tests/**/*.ts",
     "packages/codex/src/**/*.ts",
     "packages/tools/src/**/*.ts",
-    "packages/factorio/src/**/*.ts"
+    "packages/factorio/src/**/*.ts",
+    "packages/storage/src/**/*.ts",
+    "packages/core/**/*.ts",
+    "apps/runtime/**/*.ts"
   ],
   "references": [
     {

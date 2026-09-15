@@ -6,7 +6,7 @@ Passing integration probes do not yet preserve tasks, command intent and evidenc
 
 - Transactional event storage and projections, command outbox, receipt reconciliation and consistent artifact/checkpoint records.
 - Preserve the approved product safeguards and attach explicit acceptance evidence to this bounded phase.
-- Complete phase 05 only after `af-04-pause-restore-gate` has passed its implementation gate; see the [implementation guide](../../../docs/IMPLEMENTATION_GUIDE.md).
+- Complete phase 05 only after `af-04-pause-restore-gate` has passed its implementation gate; see the [implementation guide](../../../../docs/IMPLEMENTATION_GUIDE.md).
 
 ## Capabilities
 

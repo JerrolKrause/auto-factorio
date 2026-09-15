@@ -9,7 +9,7 @@
   },
   "scripts": {
     "build": "tsc -b --stopBuildOnErrors",
-    "lint": "eslint scripts packages tests",
+    "lint": "eslint scripts packages apps tests",
     "test": "vitest run",
     "diagnose": "node dist/scripts/diagnose.js",
     "check:docs": "node scripts/check-docs.mjs",
@@ -20,7 +20,8 @@
     "game:load-probe": "node dist/scripts/game-load-probe.js",
     "game:pause-probe": "node dist/scripts/game-pause-probe.js",
     "verify": "node scripts/verify.mjs",
-    "game:processes": "node dist/scripts/game-processes.js"
+    "game:processes": "node dist/scripts/game-processes.js",
+    "game:durable-probe": "node dist/scripts/game-durable-probe.js"
   },
   "dependencies": {
     "@autofactorio/contracts": "workspace:*",

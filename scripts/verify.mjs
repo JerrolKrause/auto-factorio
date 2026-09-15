@@ -6,7 +6,7 @@ const cwd = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const base = path.join(cwd, '.runtime/verification'); await mkdir(base, { recursive: true });
 const evidence = await mkdtemp(path.join(base, 'check-'));
 const node = (name, ...args) => ({ name, command: process.execPath, args });
-const steps = [node('build', 'node_modules/typescript/bin/tsc', '-b', '--stopBuildOnErrors'), node('lint', 'node_modules/eslint/bin/eslint.js', 'scripts', 'packages', 'tests'), node('test', 'node_modules/vitest/vitest.mjs', 'run'), node('docs', 'scripts/check-docs.mjs')];
+const steps = [node('build', 'node_modules/typescript/bin/tsc', '-b', '--stopBuildOnErrors'), node('lint', 'node_modules/eslint/bin/eslint.js', 'scripts', 'packages', 'apps', 'tests'), node('test', 'node_modules/vitest/vitest.mjs', 'run'), node('docs', 'scripts/check-docs.mjs')];
 const game = process.argv.includes('--game') || process.argv.includes('--pause');
 const profileFile = path.join(evidence, 'headless-profile.json');
 if (game) steps.push(node('headless-launch', 'dist/scripts/game-launch.js', '--headless', '--result-file', profileFile), node('headless-smoke', 'dist/scripts/game-smoke.js', '--profile-file', profileFile));
