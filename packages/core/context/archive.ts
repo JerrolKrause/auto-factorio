@@ -4,6 +4,7 @@ import type { Change, Entity, Reference } from '../execution/durable.js';
 import { permits, privateTo } from './authorization.js';
 import type { Principal } from './authorization.js';
 
+// Module map, policy rationale and regression tests: ./README.md.
 export interface Limits { bytes: number; entities: number }
 export const DEFAULT_LIMITS: Limits = { bytes: 16_384, entities: 30 };
 export interface Entry { ref: Reference; value: unknown }
@@ -28,20 +29,31 @@ export function paginate(entries: Entry[], start: number, cap: Limits): Page {
   offset(start); limits(cap);
   const result: Page = { items: [], total: entries.length, omitted: 0, next: null, truncated: false };
   let cursor = Math.min(start, entries.length);
-  const finish = () => { result.next = cursor < entries.length ? cursor : null; result.omitted = entries.length - result.items.length; result.truncated = result.omitted > 0 || result.items.some(i => typeof i.value === 'object' && i.value !== null && 'omitted' in i.value); };
+  const finish = () => {
+    result.next = cursor < entries.length ? cursor : null;
+    result.omitted = entries.length - result.items.length;
+    result.truncated = result.omitted > 0 || result.items.some(i => typeof i.value === 'object' && i.value !== null && 'omitted' in i.value);
+  };
   while (cursor < entries.length && result.items.length < cap.entities) {
     const original = entries[cursor]!;
     const entry = 1 + entityCost(original.value) > cap.entities ? { ref: original.ref, value: { omitted: 'entity-limit', detail: 'Retrieve bounded payload chunks by this reference.' } } : original;
     if (entityCost(result) + 1 + entityCost(entry.value) > cap.entities) break;
-    result.items.push(entry); cursor++; finish();
+    result.items.push(entry);
+    cursor++;
+    finish();
     if (bytes(result) > cap.bytes) {
-      result.items.pop(); cursor--; finish();
+      result.items.pop();
+      cursor--;
+      finish();
       if (result.items.length) break;
-      result.items.push({ ref: entry.ref, value: { omitted: 'byte-limit', detail: 'Retrieve bounded payload chunks by this reference.' } }); cursor++; finish();
+      result.items.push({ ref: entry.ref, value: { omitted: 'byte-limit', detail: 'Retrieve bounded payload chunks by this reference.' } });
+      cursor++;
+      finish();
       if (bytes(result) > cap.bytes) throw new Error('Context identity exceeds response limit');
     }
   }
-  finish(); return result;
+  finish();
+  return result;
 }
 
 /** Sole gameplay archive boundary. Raw journal/export APIs stay operator-internal. */
@@ -71,6 +83,8 @@ export class ContextArchive {
     return node.sources.every(r => this.authorized(nodes.get(key(r)), p, nodes, next));
   }
   private project(node: Node, p: Principal, nodes: Map<string, Node>, stack = new Set<string>()): unknown {
+    // Reference fields recognized here must also be considered in provenance(). Filtering protects
+    // this response; provenance prevents copied snippets/text from surviving later source revocation.
     const next = new Set(stack).add(key(node.ref));
     const allowed = (r: Reference) => this.authorized(nodes.get(key(r)), p, nodes);
     const scrub = (v: unknown, field = '', depth = 0): unknown => {
@@ -105,13 +119,18 @@ export class ContextArchive {
     return [...nodes.values()].filter(n => (!entity || n.ref.entity === entity) && this.authorized(n, principal, nodes)).map(n => ({ ref: n.ref, value: this.project(n, principal, nodes) }));
   }
   get(ref: Reference): Entry | null { return this.entries(ref.entity).find(e => e.ref.id === ref.id) ?? null; }
-  /** Include every visible transitive input before flattening a projection into snippets or JSON text. */
+  /**
+   * Include every visible transitive input before flattening a projection into snippets or JSON text.
+   * Keep reference recognition aligned with project(); authorization alone cannot recover links from text.
+   */
   provenance(refs: Reference[]): Reference[] {
-    const { principal, nodes } = this.snapshot(); const found = new Map<string, Reference>();
+    const { principal, nodes } = this.snapshot();
+    const found = new Map<string, Reference>();
     const visit = (ref: Reference) => {
       const node = nodes.get(key(ref));
       if (found.has(key(ref)) || !this.authorized(node, principal, nodes)) return;
-      found.set(key(ref), ref); node.sources.forEach(visit);
+      found.set(key(ref), ref);
+      node.sources.forEach(visit);
       const walk = (v: unknown, field = '', depth = 0): void => {
         if (depth > 32) return;
         if (Array.isArray(v)) { for (const x of v) walk(x, field, depth + 1); return; }
@@ -128,7 +147,8 @@ export class ContextArchive {
         if (data.available) { try { walk(JSON.parse(data.bytes.toString('utf8'))); } catch { /* Missing/corrupt content is not a source. */ } }
       } else walk(node.value);
     };
-    refs.forEach(visit); return [...found.values()];
+    refs.forEach(visit);
+    return [...found.values()];
   }
   search(query: string, start = 0, entity?: Entity | 'events'): Page {
     if (typeof query !== 'string' || query.length > 200) throw new Error('Invalid context query');
@@ -136,16 +156,27 @@ export class ContextArchive {
     return paginate(entries, start, this.cap);
   }
   detail(ref: Reference): Page { const entry = this.get(ref); return paginate(entry ? [entry] : [], 0, this.cap); }
-  /** JSON text chunks of the authorized projection, never raw artifact bytes or filenames. */
+  /**
+   * JSON text chunks of the authorized projection, never raw artifact bytes or filenames.
+   * start/next are UTF-16 string indices; total and the response cap are UTF-8 byte counts.
+   * Resume with next, not accumulated byte lengths. Never split a surrogate pair.
+   */
   download(ref: Reference, start = 0) {
-    offset(start); const entry = this.get(ref);
+    offset(start);
+    const entry = this.get(ref);
     if (!entry) return { available: false as const };
     const text = JSON.stringify(entry.value);
     if (start > text.length || (start > 0 && /[\uDC00-\uDFFF]/.test(text[start] ?? ''))) throw new Error('Invalid payload offset');
     let end = Math.min(text.length, start + Math.floor(this.cap.bytes / 4));
     if (end > start && /[\uD800-\uDBFF]/.test(text[end - 1]!)) end--;
     const result = { available: true as const, text: text.slice(start, end), next: end < text.length ? end : null, total: Buffer.byteLength(text), truncated: end < text.length || start > 0 };
-    while (bytes(result) > this.cap.bytes && end > start) { end--; if (end > start && /[\uD800-\uDBFF]/.test(text[end - 1]!)) end--; result.text = text.slice(start, end); result.next = end; result.truncated = true; }
+    while (bytes(result) > this.cap.bytes && end > start) {
+      end--;
+      if (end > start && /[\uD800-\uDBFF]/.test(text[end - 1]!)) end--;
+      result.text = text.slice(start, end);
+      result.next = end;
+      result.truncated = true;
+    }
     return result;
   }
   /** Deterministic extract, with conjunctive source provenance rechecked on every read. */

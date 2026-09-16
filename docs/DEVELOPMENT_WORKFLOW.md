@@ -31,6 +31,8 @@ When the completion review is required, load the [author workflow](../.agents/sk
 
 ## Edit narrowly with UTF-8
 
+Keep non-obvious invariants and reasons beside the code they constrain, especially cross-method dependencies, ordering and units. Use decision records for broader rationale and named regression tests for failure examples; link them from a small module guide when discovery is otherwise difficult. Expand dense branches when it makes the sequence easier to inspect; comments should explain constraints, not restate statements.
+
 Prefer contextual patches. For scripted replacements, require the expected match count and inspect the affected code afterward. Avoid global replacements of generic fragments shared by gameplay and operator dispatch. Read/write UTF-8 explicitly; preserve existing newlines and byte-order marks where practical.
 
 If the patch tool is unavailable, the checked-in fallback accepts a JSON plan:
@@ -75,7 +77,7 @@ A completed probe, changed source, incomplete capture, absent cancellation/rollb
 
 ## Keep tool context bounded
 
-- Use `rg` to locate relevant files/sections, then read those sections. Start with the current handoff entry rather than the complete historical log.
+- Use `rg` to locate relevant files/sections, then read those sections. Keep [the handoff](IMPLEMENTATION_HANDOFF.md) focused on current status, evidence, limits and the next action; consult [implementation history](IMPLEMENTATION_HISTORY.md) only for relevant past runs. Move superseded execution records there rather than growing the current handoff.
 - Batch independent reads/checks with separate labeled results; keep dependent edits/checks sequential.
 - Report status, counts, exact exits and evidence paths. Keep full logs on disk and inspect targeted excerpts when something fails. Avoid broad discovery dumps or repeatedly requesting truncated output.
 - Preserve a before-task snapshot when sharing uncommitted files with other work. Pass that boundary to the independent reviewer. Re-read before editing shared documents; a later snapshot mismatch may be another session's work, which must be preserved rather than restored from the old copy.

@@ -81,12 +81,25 @@ export class CoordinationGateway {
         case 'report': this.coordinator.report(a.id, string(input.task), Number(input.revision), input.evidence as string[]); result = { verifying: true }; break;
         case 'submit': this.coordinator.submit(a.id, object(input.batch) as unknown as Batch); result = { queued: true }; break;
       }
-      if (result instanceof Promise) { asynchronous = true; return result.then(value => {
-        this.coordinator.activity(a.id, 'tool-result', { name, result: value }); return value;
-      }, error => { this.coordinator.activity(a.id, 'tool-rejected', { name, error: String(error) }); throw error; }).finally(() => this.coordinator.budget.afterAttempt(b.turn)); }
-      this.coordinator.activity(a.id, 'tool-result', { name, result }); return result;
+      // Closing the final admitted attempt before its async query settles would invalidate the
+      // query's post-await authentication. Finish accounting once, after success or rejection.
+      if (result instanceof Promise) {
+        asynchronous = true;
+        return result.then(value => {
+          this.coordinator.activity(a.id, 'tool-result', { name, result: value });
+          return value;
+        }, error => {
+          this.coordinator.activity(a.id, 'tool-rejected', { name, error: String(error) });
+          throw error;
+        }).finally(() => this.coordinator.budget.afterAttempt(b.turn));
+      }
+      this.coordinator.activity(a.id, 'tool-result', { name, result });
+      return result;
     } catch (error) {
-      this.coordinator.activity(b.agent, 'tool-rejected', { name, error: String(error) }); throw error;
-    } finally { if (!asynchronous) this.coordinator.budget.afterAttempt(b.turn); }
+      this.coordinator.activity(b.agent, 'tool-rejected', { name, error: String(error) });
+      throw error;
+    } finally {
+      if (!asynchronous) this.coordinator.budget.afterAttempt(b.turn);
+    }
   }
 }

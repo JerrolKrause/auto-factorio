@@ -6,6 +6,7 @@ import { ContextArchive, DEFAULT_LIMITS, bytes, entityCost, limits, offset, pagi
 import type { Entry, Limits, Page } from './archive.js';
 import type { Reference } from '../execution/durable.js';
 
+// Module map, policy rationale and regression tests: ./README.md.
 const pick = (v: Record<string, unknown>, keys: string[]) => Object.fromEntries(keys.filter(k => k in v).map(k => [k, v[k]]));
 /** Instance survives session replacement; facts never include force/research availability. */
 export class RecipeCache {
@@ -36,15 +37,26 @@ export class AgentContext {
   private delivered(value: unknown, telemetry: unknown = value, sources: Reference[] = []) {
     const p = this.principal();
     if (bytes(value) > this.cap.bytes || entityCost(value) > this.cap.entities) throw new Error('Context response exceeds limit');
-    if (!this.recordDelivery) { this.telemetry.push({ value, telemetry }); return value; }
+    // Replacement components are internal evidence, not separate observations delivered to an agent.
+    // recordDelivery=false buffers them as telemetry; only the final bounded composite is recorded.
+    if (!this.recordDelivery) {
+      this.telemetry.push({ value, telemetry });
+      return value;
+    }
     return this.coordinator.runtime.observation(value, telemetry, privateTo(p.agent), this.archive.provenance(sources));
   }
   briefing(start = 0) {
-    const p = this.principal(); const runtime = this.coordinator.runtime;
+    const p = this.principal();
+    const runtime = this.coordinator.runtime;
     const manifest = runtime.journal.get<RunManifest>(runtime.run, 'runs', runtime.run);
     const visibleTasks = this.archive.entries('tasks');
     const visibleCommands = this.archive.entries('commands');
-    const isPending = (e: Entry) => { const c = e.value as { state: string; receipt?: { status: string } }; return c.state !== 'rolled_back' && !['completed', 'failed', 'partial', 'cancelled'].includes(c.receipt?.status ?? ''); };
+    const isPending = (e: Entry) => {
+      const c = e.value as { state: string; receipt?: { status: string } };
+      return c.state !== 'rolled_back' && !['completed', 'failed', 'partial', 'cancelled'].includes(c.receipt?.status ?? '');
+    };
+    // Terminal task status does not settle game effects or release ownership. Keep that work visible
+    // until reconciliation finishes, even when a newer active task would otherwise displace it.
     const unsettled = new Set([
       ...visibleCommands.filter(isPending).map(e => String((e.value as { batch?: { task?: string } }).batch?.task)),
       ...runtime.ownership.list().filter(r => r.state !== 'released').map(r => r.task),
@@ -87,21 +99,30 @@ export class AgentContext {
     const result = { briefing, world, briefingNext: briefing.next === null ? null : { tool: 'briefing', offset: briefing.next }, worldNext: continuation(world.next) };
     const exceeds = () => bytes(result) > this.cap.bytes || entityCost(result) > this.cap.entities;
     // Prefer a useful durable briefing over a large first world page; the fresh tick and valid replay scope remain explicit.
-    if (exceeds()) { result.world = { tick: world.tick, omitted: hasArea ? 'Combined response limit; retrieve the refreshed scope with worldNext.' : 'No world area assigned' }; result.worldNext = continuation(start); }
+    if (exceeds()) {
+      result.world = { tick: world.tick, omitted: hasArea ? 'Combined response limit; retrieve the refreshed scope with worldNext.' : 'No world area assigned' };
+      result.worldNext = continuation(start);
+    }
     while (exceeds() && briefing.items.length) {
-      briefing.items.pop(); briefing.next = briefing.items.length; briefing.omitted = briefing.total - briefing.items.length; briefing.truncated = true;
+      briefing.items.pop();
+      briefing.next = briefing.items.length;
+      briefing.omitted = briefing.total - briefing.items.length;
+      briefing.truncated = true;
       result.briefingNext = { tool: 'briefing', offset: briefing.next };
     }
     return this.delivered(result, { kind: 'replacement-with-world', components: child.telemetry }, [{ entity: 'tasks', id: taskId }, ...briefing.items.map(t => t.ref)]);
   }
   async world(taskId: string, areaIndex: number, start: number) {
-    const p = this.principal(); offset(start); offset(areaIndex);
+    const p = this.principal();
+    offset(start);
+    offset(areaIndex);
     const task = this.archive.get({ entity: 'tasks', id: taskId })?.value as CoordinatedTask | undefined;
     const area = task?.reservations.filter(r => r.kind === 'area')[areaIndex];
     if (!task || !p.tasks.includes(taskId) || !area || area.kind !== 'area') throw new Error('World scope forbidden');
     const response = await this.coordinator.runtime.query({ op: 'observe', surface: area.surface, area: area.bounds, offset: start, limit: this.cap.entities });
     // A role/task/session may change while the game query is in flight.
-    this.principal(); const current = this.archive.get({ entity: 'tasks', id: taskId })?.value as CoordinatedTask | undefined;
+    this.principal();
+    const current = this.archive.get({ entity: 'tasks', id: taskId })?.value as CoordinatedTask | undefined;
     if (!current || current.revision !== task.revision || JSON.stringify(current.reservations) !== JSON.stringify(task.reservations)) throw new Error('World scope changed');
     const entities = (response.entities as Record<string, unknown>[]).map(e => pick(e, ['name', 'quality', 'position', 'unit', 'direction', 'type', 'protected', 'inventories', 'recipe', 'craftingSpeed']));
     const receivedCount = entities.length;
@@ -109,13 +130,26 @@ export class AgentContext {
     const ownActors = this.coordinator.agent(p.agent).actors.filter(a => a === task.actor && actors[a]).map(a => ({ id: a, ...pick(actors[a]!, ['position', 'surface', 'inventory', 'walking', 'mining', 'crafting', 'connected', 'buildDistance', 'reachDistance', 'runningSpeed', 'miningSpeed', 'craftingSpeed']) }));
     const output = { tick: response.tick, surface: area.surface, scope: { from: area.bounds[0], to: area.bounds[1] }, entities, actors: ownActors, total: response.total, next: response.nextOffset ?? null, truncated: response.truncated === true, omitted: '', freshness: 'Independent live page; refresh after replacement or world changes.' };
     const exceeds = () => bytes(output) > this.cap.bytes || entityCost(output) > this.cap.entities;
-    if (exceeds() && output.actors.length) { output.actors = []; output.omitted = 'Actor detail exceeds response limits. '; output.truncated = true; }
-    while (exceeds() && output.entities.length) { output.entities.pop(); output.next = start + output.entities.length; output.truncated = true; }
-    if (receivedCount > 0 && output.entities.length === 0) { output.next = start + 1; output.omitted += 'Oversized entity at offset ' + start; }
+    if (exceeds() && output.actors.length) {
+      output.actors = [];
+      output.omitted = 'Actor detail exceeds response limits. ';
+      output.truncated = true;
+    }
+    while (exceeds() && output.entities.length) {
+      output.entities.pop();
+      output.next = start + output.entities.length;
+      output.truncated = true;
+    }
+    if (receivedCount > 0 && output.entities.length === 0) {
+      output.next = start + 1;
+      output.omitted += 'Oversized entity at offset ' + start;
+    }
     return this.delivered(output, response, [{ entity: 'tasks', id: taskId }]);
   }
   async recipe(name: string) {
-    this.principal(); const response = await this.coordinator.runtime.query({ op: 'recipe', name }); this.principal();
+    this.principal();
+    const response = await this.coordinator.runtime.query({ op: 'recipe', name });
+    this.principal();
     const result = this.recipes.read(response.mods, response.recipe as Record<string, unknown>, response.tick);
     const page = paginate([{ ref: { entity: 'observations', id: name }, value: result }], 0, this.cap);
     return this.delivered(page, response);
