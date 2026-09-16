@@ -97,3 +97,18 @@ The handoff must distinguish the failed sandbox attempt from the reviewed execut
 Distinguish an active command from a stalled interface before stopping anything. In the 15 September incident, Codex logged `turn/completed` and continued background requests with no active shell command. Only that verified idle process and its direct tool helpers were stopped; saved session history was preserved.
 
 The ignored project `.codex/config.toml` now sets `[tui]` / `alternate_screen = "never"` for future launches. This uses inline rendering with scrollback; it is a mitigation, not a proven fix for the original interface freeze. Resume the specific saved session in a fresh terminal with `codex resume <session-id> --no-alt-screen`; avoid `--last` when several sessions are running. Do not kill all Codex/editor processes, delete session databases, or disable the sandbox. Keep prerequisite upgrades user-managed.
+
+The freeze recurred on 16 September with inline rendering enabled in Codex 0.154.0. The completed session continued background requests, but Esc and `/status` produced no visible response. Its console had raw input enabled and no active selection; these checks do not identify the root cause. The process tree showed VS Code hosting PowerShell. Stopping only the identity-checked idle Codex process also ended its helpers, preserving the parent shell and other sessions.
+
+For a separate interactive PowerShell window, use the checked-in launcher from the repository root:
+
+```powershell
+# New conversation:
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts/codex-terminal.ps1
+# Resume only after the previous owner of this conversation has exited:
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts/codex-terminal.ps1 -SessionId <session-id>
+```
+
+The launcher opens an independent console with inline rendering and no PowerShell profile. It preserves Codex authentication, model and permission configuration, and never stops processes or chooses the most recent conversation. `-Preview` prints the launch plan without opening a window. The execution-policy flag applies only to that invocation; it does not change machine/user policy. This is an alternative launch path, not a verified cure for the Codex freeze. Verify typing and `/status` after resuming; record any recurrence before selecting further changes.
+
+The user confirmed the separate-window resume works and only the old VS Code terminal has shown the problem. A workspace-only `terminal.integrated.gpuAcceleration = "off"` trial did not improve typing/output, so its sole-purpose `.vscode/settings.json` was removed. The [documented renderer fallback](https://code.visualstudio.com/docs/terminal/appearance#gpu-acceleration) is not a demonstrated fix here. Shell integration and the bundled ConPTY backend remain unchanged. Continue isolating the affected terminal's input/output state rather than stacking settings or restarting active sessions.
