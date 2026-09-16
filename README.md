@@ -6,22 +6,18 @@ A local Factorio Space Age experimentation environment where specialized AI agen
 
 ## Current status
 
-Phase 01 compatibility foundation is implemented and verified on Windows: a strict TypeScript/pnpm workspace, local diagnostic and SQLite transaction/backup probe. Phase 02 now has a pinned subscription provider, authenticated synthetic MCP gateway and deterministic budget tests; its live two-role handoff, interruption and resume gate passed on 15 September 2026. Phase 03 now passes live legal character actions, cancellation, protected fixtures, lost-response reconciliation and saved receipt readback. Phase 04 passes its real hosted pause/checkpoint/restore/reconcile/re-arm and heartbeat-loss checks. Phase 05 now passes durable event/outbox, evidence integrity, budget recovery, backup and live crash/receipt/managed-restore checks, with all 8 tasks complete and independent review finding no remaining issues. Phase 06 is complete: 8/8 tasks, 157 software tests, 10 live ownership/restore checks and independent review with no remaining findings. Phase 07 has passed its software/live coordination gate: 174 software tests, 5 live checks and independent source review with no remaining findings. Phase 08 is complete: bounded authorized context, 205 software tests, 9 headless smoke checks and independent review with no remaining findings. Phase 09 adds the local operator dashboard, persisted steering and reconciled controls; its final gate is recorded in the handoff. Scenarios remain future phases. See the [compatibility report](docs/COMPATIBILITY_REPORT.md) and [handoff](docs/IMPLEMENTATION_HANDOFF.md) for exact evidence and limitations.
-
-All eight adversarial review fixes were approved and incorporated on 11 September 2026, covering scoring, fault controls, execution fencing, archive access, budgets and integration gates. The [accepted decision](docs/decisions/001-review-hardening.md) records the changes and required validation.
+Phases 01–09 are complete and archived: subscription access, legal character execution, pause/restore, durable coordination and the local dashboard. Phase 10 has passed the deterministic verification-engine and live mutation-guard gate and is archived with its capability synced to main specs. Scenarios begin with phase 11. See the [handoff](docs/IMPLEMENTATION_HANDOFF.md) for exact evidence and limits, the [compatibility report](docs/COMPATIBILITY_REPORT.md), and the [accepted safeguards](docs/decisions/001-review-hardening.md).
 
 ## Phased implementation
 
-The [implementation guide](docs/IMPLEMENTATION_GUIDE.md) provides **18 bounded OpenSpec phases**, each with a proposal, capability spec, design, task checklist and a copyable Codex launch prompt. Start one phase per fresh conversation and follow the recorded prerequisite gates. The [coverage map](docs/SPEC_TRACEABILITY.md) connects the plan to every approved requirement and review correction.
-
-Phase 04 is archived with its pause/restore capability synced to main specs. Phase 05 is complete with 8/8 tasks, passed software/live gates and independent review with no remaining findings. It is archived with its durable-event-runtime capability synced to main specs. Phase 06 is complete with 8/8 tasks, passed software/live gates and independent review with no remaining findings. Phases 06 and 07 are archived with their capabilities synced to main specs; phase 07 has passed its coordination gate. Phase 08 is complete with 8/8 tasks and independent review with no remaining findings; it is archived with its capability synced to main specs. Phase 09 is complete with its software, browser and live control gate passed; it is archived with its live-control-dashboard capability synced to main specs. The next bounded phase, only when requested, is:
+The [implementation guide](docs/IMPLEMENTATION_GUIDE.md) defines 18 bounded phases and their acceptance gates; the [coverage map](docs/SPEC_TRACEABILITY.md) connects them to requirements. The next implementation phase, only on instruction, is:
 
 ```text
-$openspec-apply-change af-10-verification-engine
-Follow phase 10 of docs/IMPLEMENTATION_GUIDE.md, verify its entry gate in docs/IMPLEMENTATION_HANDOFF.md, implement only that change, and stop before phase 11.
+$openspec-apply-change af-11-first-shift-reference
+Follow phase 11 of docs/IMPLEMENTATION_GUIDE.md, verify its entry gate in docs/IMPLEMENTATION_HANDOFF.md, implement only that change, and stop before phase 12.
 ```
 
-Phase 01 is complete and archived; its compatibility capability is synced to main specs. Phase 02 passed all eight tasks and is archived with its subscription-provider capability synced to main specs. Phase 03 passed all eight tasks and is archived; phase 04 has passed its live pause/restore gate; phase 05 is complete and archived; phase 06 has passed its software/live gate; phase 07 has passed its software/live coordination gate; phase 08 has passed its bounded-context gate with independent review complete; phase 09 has passed its live control/dashboard gate; phases 10–18 remain planned.
+Phases 11–18 remain planned. Completing the evaluator does not establish a ready scenario; phase 11 must calibrate S1 against the real engine.
 
 ## Planned first release
 
@@ -177,6 +173,18 @@ corepack pnpm game:coordination-probe --profile-file .runtime/phase07-visible-pr
 Use a fresh visible profile with game/RCON ports 34204/27024 free. Inspect project processes before launching. The probe uses synthetic provider sessions, durable team handoff, a third bodyless specialist, legal placement, dependency scheduling, and real crafting cancellation at a synthetic reported-token ceiling. It reconstructs the runtime and verifies the spent budget remains closed. It consumes no model inference and leaves the world paused, neutral and disarmed. Failed probes require a fresh profile; preserve their evidence.
 
 Evidence lives under `.runtime/phase04/game-*/coordination-probe-*/`: exact game/control events, source hashes, SQLite history, recovered state and results. [Decision 009](docs/decisions/009-agent-coordination.md) describes the programmatic gateway and scheduler, receipt/message criteria and remaining context/provider integration limits. Solo restart and failure paths use deterministic tests; this phase does not claim provider-backed gameplay or scenario scoring.
+
+## Verification guard diagnostic (phase 10)
+
+```powershell
+corepack pnpm verify --game
+corepack pnpm game:launch --phase04 --result-file .runtime/phase10-profile.json
+corepack pnpm game:verification-probe --profile-file .runtime/phase10-profile.json
+```
+
+Use a fresh dedicated visible profile, free game/RCON ports 34204/27024 and no existing project observer. The probe checks admission cancellation before the baseline, submitted and stale queued mutation guards, legal walking, explicit repair, benchmark science/fixture restrictions, human edit invalidation and pause/replacement clocks. It leaves its world held; stop only the exact profile's server and observer with `game:processes --stop-profile`. Failed trials need fresh profiles.
+
+Evidence stays in `.runtime/phase04/game-*/verification-probe-*/` with source hashes, versions, raw control/game events and results. Delayed command replay and the diagnostic player-build event are explicit. No model inference runs. [The evaluator](packages/core/evaluation/README.md) evaluates deterministic traces; real S1 flow instrumentation and calibration remain phase 11.
 
 ## Local setup context
 

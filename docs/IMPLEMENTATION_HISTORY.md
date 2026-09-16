@@ -579,3 +579,54 @@ Consult only the relevant execution record:
 - [Terminal recurrence](IMPLEMENTATION_HISTORY.md#terminal-recurrence---16-september-2026) and [local tooling repair](IMPLEMENTATION_HISTORY.md#local-tooling-repair---15-september-2026). Current operating instructions remain in the [development workflow](DEVELOPMENT_WORKFLOW.md).
 
 Keep this handoff current: move superseded execution detail to history, retain concise evidence/limits here, and do not carry historical next-action instructions forward as current authorization.
+
+
+## Phase 09 closeout retained at phase 10
+
+
+## Current implementation — 16 September 2026
+
+Phases **01–09 are complete and archived**. Phase **09**, [live control dashboard](../openspec/changes/archive/2026-09-16-af-09-live-control-dashboard/proposal.md), has **8/8 tasks complete** and its capability synced to main specs. Commit: **`Implement phase 09 dashboard and verified agent workflows`** (this closeout commit, parent `c3d4add`). Phases **10–18 remain unimplemented**.
+
+**Next bounded action:** start phase 10, [verification engine](../openspec/changes/archive/2026-09-16-af-10-verification-engine/proposal.md), only on the user's instruction.
+
+Phase 09 adds a protected loopback Fastify service, React dashboard, durable-cursor SSE, persisted steering with separate receipt/interpretation, human-attributed reprioritization, assistance records, explicit telemetry availability and reconciled pause/stop/resume. Admission closes and inference interruption dispatches before game waits; replacement recovers the held game identity before ownership revocations. Budget stops permanently close original-run scoring. See the [runtime guide](../apps/runtime/README.md) and [Decision 011](decisions/011-live-control-dashboard.md).
+
+## Verification and review
+
+- Final `corepack.cmd pnpm verify --game` passed build, dashboard build, lint, **226/226 tests**, docs (**117 Markdown files / 372 local links**), **9/9** fresh headless engine smoke checks and exact-profile cleanup. Evidence `.runtime/verification/check-pLU0rm/`; smoke profile `.runtime/phase03/game-J8oGFP/`.
+- Browser: `corepack.cmd pnpm test:ui` passed **2/2** in installed Edge: role states, evidence, steering, assistance, pause/resume, disconnection, tab close/reopen, unconfirmed inference and missing telemetry. Final rerun: **2 passed, 0 failed**. Result `.runtime/ui-results.json`; inspected screenshots `.runtime/ui-dashboard.png` and `.runtime/ui-dashboard-disconnected.png`.
+- Live: `corepack.cmd pnpm game:dashboard-probe --profile-file .runtime/phase09-reviewed-profile.json` passed **8/8** in visible **Factorio 2.0.77 + Space Age**. Evidence `.runtime/phase04/game-m7xvir/dashboard-probe-Nvq85c/`: source hashes, events, snapshot and result. Covers local auth, two synthetic roles, legal placement excluded from human assistance, advice during crafting, cancellation and frozen tick/production/inventory under polling, refreshed authority/reprioritization, diagnostic player-build detection, injected disconnection, **runtime replacement with an active reservation**, and permanent budget scoring closure.
+- Independent review: **4 issues (1 P1, 3 P2); 4 fixed, 0 rejected, 0 remaining; code re-review: no findings.** Fixed replacement revocation identity ordering, missing reprioritization assistance, false complete telemetry, and interruption delayed by recovery. Final documentation review: **no findings**. Strict OpenSpec validation passed **18/18**; whitespace checks passed.
+
+Earlier successful game traces remain in `game-ilbQq0/dashboard-probe-rIRd8t/` and `game-9bUpB0/dashboard-probe-5wv3z2/` under `.runtime/phase04/` (7 checks each); they do not replace final recovery/attribution evidence. Browser development failures were ambiguous selectors and incomplete synthetic agent shapes; both were corrected. Normal game-process inspection/launch failed under the sandbox; reviewed project-scoped escalations succeeded. An inline observer helper failed quoting before execution; its file-backed replacement succeeded. Personal saves, global settings, game binaries and credentials were preserved. All three phase 09 visible trial profiles were cleaned up by exact config/process identity after a held state; the pre-existing phase 03 server was preserved. The fixture launcher returned an authenticated snapshot with two roles. Terminal interrupt injection did not stop that synthetic host; it was paused through its authenticated control route. PowerShell Stop-Process failed; readback confirmed it remained running, then the identity-checked native process API stopped it and HTTP readback confirmed the listener closed.
+
+## Use and remaining limits
+
+`corepack.cmd pnpm dashboard --fixture` starts a synthetic demonstration; `--profile-file <dedicated profile JSON>` attaches a game operator host, initially paused. Open the `url` in the launcher-reported `dashboard.json`. The tab does not own the run; `--directory` reopens durable data without resetting budgets. One SQLite writer owns a directory. Host shutdown requests a held game state.
+
+No fresh model inference ran: live evidence uses real game actions and **synthetic provider callbacks**. Autonomous provider/scenario composition remains in later scenario/trial phases. Advice receipt means availability in the authorized bounded inbox; the authenticated `interpret` operation separately records understanding and task links. Controls do not implicitly create disk checkpoints. Ordinary worlds without production coverage show unavailable telemetry; probe furnace measurements are diagnostic, not evaluator scores.
+
+Edit hooks cover player build/mine/rotate/settings/tile events, excluding matched executor events. Arbitrary inventory edits and script mutations are not fully observable; unknown overlap remains unknown. The bounded 2,000-event game buffer explicitly invalidates completeness on overflow. The live edit check used a recorded diagnostic player API call. Evaluation begins in phase 10. Snapshot projections and some existing coordinator/archive scans remain unbounded; SSE replay is paged and honors backpressure.
+
+## Verification workflow maintenance - 16 September 2026
+
+Added the explicit final-source acceptance/completion gate and the [verification author workflow](../.agents/skills/verify-change/author-workflow.md). Routine milestone verification uses a fresh-context `gpt-5.6-luna` / `medium` worker; independent review retains the author's authorized model. The author owns coverage, diagnosis and completion. Baseline remains `c3d4add` plus uncommitted work; no commit or phase transition was requested.
+
+The documentation-only verifier trial passed completion/delegation criteria, documentation checks (**119 files / 379 links**) and whitespace checks, with stable input hashes. Its skill check correctly returned unverified when Python lacked `yaml`; the author installed PyYAML 6.0.3 in an ignored task virtual environment and reran the bundled `quick_validate.py`: **passed, exit 0**. Two sandbox install attempts stalled and were interrupted; reviewed project-scoped installation succeeded. Final documentation checks including this handoff passed **119 files / 380 links**. Independent workflow review: **0 findings**. Evidence and before-task snapshots: `.runtime/verification-workflow-20260916/`, including `verifier/report.md`, `skill-validation.log` and `final-docs.log`. No application/game/provider runs were needed for these instruction changes. Usage metadata was unavailable, so token/cost savings remain unmeasured; next evaluate this verifier on a future authorized implementation task.
+
+## Structured developer-agent contracts - 16 September 2026
+
+The [shared handoff contract](AGENT_CONTRACTS.md) now defines versioned assignments and role-specific results, with criterion/scope accounting, pinned source, actions/resources/budgets and explicit return conditions. `node scripts/check-agent-contract.mjs` validates packets and reports; `--check-source --require-ready` rejects incomplete or stale results at closeout. Structurally valid findings/failures remain reportable without implying readiness. Both skills use this contract; reviewers return JSON without writing files. No gameplay contract or phase status changed, and no commit was requested.
+
+Targeted contract regressions passed **27/27**. A fresh Luna/medium assignment then ran `corepack.cmd pnpm verify`: both builds, lint, **253/253 tests in 12 files**, documentation checks and both separate skill validations passed. Its result validated **ready with matching source**; evidence `.runtime/verification/check-eCt45b/` and `.runtime/agent-contracts-20260916/verification/result.json`. Before-task snapshots and structured assignments are retained under `.runtime/agent-contracts-20260916/`; independent review results belong in its `review/` directory. Validation checks report structure and consistency; the author still assesses evidence truth and scope. Worker usage metadata remains unavailable, and no game/provider runs were needed for this developer-tool change. Next: use the contracts for future authorized verification/review and measure omissions, corrections and usage when available.
+
+## Archive and commit closeout - 16 September 2026
+
+User requested archive and commit. Phase 09 is archived at `openspec/changes/archive/2026-09-16-af-09-live-control-dashboard/`, preserving `.openspec.yaml`; its new main spec preserves the delta Purpose and all five requirement/scenario blocks. README, guide, traceability and historical links now point to the archive. This closeout supersedes earlier uncommitted/unarchived notes and includes the completed dashboard plus both developer-workflow improvements.
+
+Fresh `openspec.cmd validate --all --strict` passed **18/18**, `corepack.cmd pnpm check:docs` passed **121 files / 387 links**, and whitespace checks passed. The first docs check encountered unstaged archive deletions; staging the move resolved it. The PowerShell OpenSpec shim was blocked by execution policy; the existing `.cmd` shim succeeded without policy changes. No implementation source changed during archive: retain the **253-test** software result and the earlier **2 browser / 8 live / 9 headless** results with their recorded boundaries. Agent-contract review finished with **0 findings**; archive-review records and before-task snapshots are under `.runtime/phase09-archive-20260916/`. Phase 10 remains unstarted.
+
+## History on demand
+
+The preceding phase 08/maintenance handoff is retained in [implementation history](IMPLEMENTATION_HISTORY.md#pre-phase-09-handoff--16-september-2026), with links to older evidence. Keep this file focused on current state and the next bounded action.

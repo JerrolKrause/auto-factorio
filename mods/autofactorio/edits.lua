@@ -1,5 +1,6 @@
 -- Operator-only event evidence. Ambiguous overlap is never attributed to a human with certainty.
 local E={}
+local V=require('verification')
 function E.record(event,kind)
  if not storage.af then return end
  local entity=event.entity or event.created_entity or event.destination
@@ -14,6 +15,7 @@ function E.record(event,kind)
   if entity.name==target.name and entity.surface.name==order.batch.surface and entity.position.x==target.position.x and entity.position.y==target.position.y then return end
  end
  storage.af.edits=storage.af.edits or {sequence=0,events={},overflow=false}
+ V.invalidate('human_or_uncertain_edit:'..kind)
  local log=storage.af.edits
  if #log.events>=2000 then log.overflow=true;return end
  log.sequence=log.sequence+1

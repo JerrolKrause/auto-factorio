@@ -1,6 +1,7 @@
 local C=require("common")
 local A=require("actions")
 local F=require("ownership")
+local V=require("verification")
 local M={}
 local done,receipt
 function M.bind(d,r) done=d;receipt=r end
@@ -12,6 +13,8 @@ function M.check(r)
  C.check(r.revision==storage.af.control.revision,"stale_control_revision")
 end
 function M.disarm(reason,pause)
+ -- An ordinary pause preserves the interval; a lost heartbeat creates an evidence gap.
+ if reason~='operator_pause' then V.invalidate(reason) end
  local c=storage.af.control;c.armed=false;c.ready=false;c.revision=c.revision+1;c.reason=reason;c.checkpoint=false
  local ids={};for _,id in pairs(storage.af.active) do ids[#ids+1]=id end
  for _,id in ipairs(ids) do
@@ -76,6 +79,7 @@ function M.rpc(r)
   C.check(not c.armed and game.tick_paused and game.ticks_to_run==0 and M.state().neutral,"reconcile_requires_barrier")
   C.check(r.checkpoint==c.checkpoint,"checkpoint_mismatch");C.check(C.same(r.ledger,M.state().ledger),"ledger_mismatch")
   C.check(r.newEpoch~=storage.af.epoch and r.newSession~=storage.af.session and r.generation==c.generation+1,"fresh_authority_required")
+  V.invalidate('authority_replaced_requires_new_baseline')
   -- Interrupted timed work is never replayed: its world effects and refunds are in the saved receipt.
   for _,o in pairs(storage.af.orders) do if o.status=="suspended" then o.status="cancelled";o.reason="reconciled_requires_new_command";o.pending=nil end end
   storage.af.active={};storage.af.paths={};storage.af.epoch=r.newEpoch;storage.af.session=r.newSession;c.generation=r.generation;c.revision=c.revision+1;c.ready=true;c.checkpoint=false

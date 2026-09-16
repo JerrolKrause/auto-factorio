@@ -6,7 +6,7 @@ Output counters alone allow manual supply, old buffers and unrelated production 
 
 - A deterministic verification lifecycle, measurement windows, source-to-collector flow accounting and invalid-evidence handling.
 - Preserve the approved product safeguards and attach explicit acceptance evidence to this bounded phase.
-- Complete phase 10 only after `af-09-live-control-dashboard` has passed its implementation gate; see the [implementation guide](../../../docs/IMPLEMENTATION_GUIDE.md).
+- Complete phase 10 only after `af-09-live-control-dashboard` has passed its implementation gate; see the [implementation guide](../../../../docs/IMPLEMENTATION_GUIDE.md).
 
 ## Capabilities
 

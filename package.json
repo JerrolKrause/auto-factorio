@@ -12,6 +12,7 @@
     "dashboard": "node dist/scripts/dashboard.js",
     "test:ui": "playwright test",
     "game:dashboard-probe": "node dist/scripts/game-dashboard-probe.js",
+    "game:verification-probe": "node dist/scripts/game-verification-probe.js",
     "lint": "eslint scripts packages apps tests",
     "test": "vitest run",
     "diagnose": "node dist/scripts/diagnose.js",
