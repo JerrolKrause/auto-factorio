@@ -31,7 +31,7 @@ Before completion, map the task's acceptance criteria to executed checks and obs
 
 Use the [verification author workflow](../.agents/skills/verify-change/author-workflow.md) to delegate routine milestone checks with a small fresh-context packet. The verifier executes checks and reports evidence; the main author chooses coverage, fixes failures and owns completion. This is separate from independent code review.
 
-When the completion review is required, load the [author workflow](../.agents/skills/change-audit/author-workflow.md) for delegation, adjudication, console reporting and closeout. The reviewer follows its separate read-only procedure.
+Prepare implementation and substantive documentation for one combined independent review. Use the [author workflow](../.agents/skills/change-audit/author-workflow.md) to distinguish required review from routine documentation maintenance, run the applicable author checks, and handle findings. Routine status/evidence updates, link fixes and faithful archive/spec sync do not trigger another reviewer; changes to requirements, permissions or behavior still do.
 
 Verifier/reviewer exchanges use the shared [agent handoff contracts](AGENT_CONTRACTS.md). Validate assignments before dispatch and returned results before relying on them; use the readiness check when closing a gate. Structural checks catch omissions and contradictions, while the author assesses evidence quality and required coverage. Keep packets/results and full logs in the task's ignored evidence directory.
 

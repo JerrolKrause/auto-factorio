@@ -2,6 +2,14 @@
 
 The main author loads this file when repository edits need the completion review required by [AGENTS.md](../../../AGENTS.md). It coordinates review; it does not authorize self-review. Implementation subagents hand back work to the main author. Read-only/no-change tasks and reviewers are exempt from the completion gate.
 
+## Choose the review scope
+
+Prepare implementation and substantive documentation together for one review. Review changes to requirements, permissions or behavior even when they live only in Markdown or skills. Fixes and later substantive changes need follow-up review; routine closeout edits do not.
+
+Routine documentation-only maintenance needs no independent reviewer: status and task-checkbox updates supported by existing evidence, test/review summaries, commit references, spelling/formatting, link repairs, and faithful archive/spec sync of already reviewed behavior. Do not use this exception for new claims without evidence, changed acceptance criteria, authorization rules, operational instructions or spec semantics. Mixed changes still receive review of their substantive scope.
+
+For the exception, the author checks the diff and runs `node scripts/check-docs.mjs` and `git diff --check` (also `--cached` for staged edits). Reconcile status/counts against retained results and confirm relevant implementation source is unchanged before reusing evidence. For archive/spec sync, compare Purpose, requirements, scenarios and metadata against the reviewed source, verify only intended relocation/format changes, and run strict OpenSpec validation. Record checks and the exemption in the handoff; do not create a reviewer assignment or claim an independent review ran. Uncertain or substantive differences require review.
+
 ## Prepare and delegate
 
 Resolve known acceptance gaps before submitting a stable implementation candidate. Include required long-run, replacement and in-flight transition cases early in relevant tests. Later discoveries still require fixes and re-review; avoid announcing final verification while known implementation work remains.
@@ -28,4 +36,4 @@ After fixes, run affected checks and the required integrated gate. Reuse earlier
 
 Report unique findings by severity, fixed/rejected/remaining totals, the final review result and material verification limits. Example: `6 found (1 P1, 5 P2); 6 fixed, 0 rejected, 0 remaining; re-review: no findings.` An initially clean review should say zero found. Do not count the same issue again on follow-up.
 
-Never commit or declare completion with outstanding actionable findings or an unavailable review. The author owns adjudication and the completion report; the reviewer does not grant commit, publish or other action authority.
+Never commit or declare completion with outstanding actionable findings or an unavailable required review. The author owns adjudication and the completion report; the reviewer does not grant commit, publish or other action authority.

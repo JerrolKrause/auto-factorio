@@ -1,6 +1,6 @@
 ---
 name: change-audit
-description: Review task-scoped uncommitted changes in an independent, read-only subagent and return actionable findings to the author. For delegated pre-completion review only; the main/author agent dispatches this skill to a subagent and never performs it itself. Excludes branch/PR reviews and pre-existing defects.
+description: Review task-scoped uncommitted changes in an independent, read-only subagent and return actionable findings to the author. For delegated pre-completion review only; the main/author agent dispatches this skill to a subagent and never performs it itself. Excludes routine documentation-only maintenance, branch/PR reviews and pre-existing defects; use the author workflow for the review boundary.
 ---
 
 # Change audit

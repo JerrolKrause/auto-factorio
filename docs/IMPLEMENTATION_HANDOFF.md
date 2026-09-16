@@ -2,7 +2,7 @@
 
 ## Current implementation — 16 September 2026
 
-Phases **01–10 are complete and archived**. Phase **11**, [First Shift reference](../openspec/changes/archive/2026-09-16-af-11-first-shift-reference/proposal.md), has **8/8 tasks complete**, passed its software/live S1/twice-reset implementation gate and completed independent review with **zero findings**. Implementation tested against parent **`130c281196e87cc0517d1692e5609b1fa60148b2` plus the phase 11 source included here**. Commit: **`Implement and archive phase 11 First Shift reference`** (this closeout commit). Phase 11 is archived and its [capability is synced to main specs](../openspec/specs/first-shift-reference/spec.md). No phase 12 work or model inference was performed.
+Phases **01–10 are complete and archived**. Phase **11**, [First Shift reference](../openspec/changes/archive/2026-09-16-af-11-first-shift-reference/proposal.md), has **8/8 tasks complete**, passed its software/live S1/twice-reset implementation gate and completed independent review with **zero findings**. Implementation tested against parent **`130c281196e87cc0517d1692e5609b1fa60148b2` plus the phase 11 source included here**. Commit: **`47ca8cd` — `Implement and archive phase 11 First Shift reference`**. Phase 11 is archived and its [capability is synced to main specs](../openspec/specs/first-shift-reference/spec.md). No phase 12 work or model inference was performed.
 
 **Next bounded action, only on instruction:** phase 12 [agent trials](../openspec/changes/af-12-first-shift-agent-trials/proposal.md), with its own provider preflight and deliberate model budget. Phase 11 archive and commit were explicitly requested by the user.
 
@@ -38,5 +38,9 @@ Archived the completed spec-driven change to `openspec/changes/archive/2026-09-1
 This closeout changes only planning and documentation relative to the reviewed implementation. The **293 software tests / 9 headless checks / 9 live S1 checks / two resets** remain applicable; no new game or provider run was needed. Archive checks passed **128 Markdown files / 420 local links**, strict OpenSpec **18/18**, and staged whitespace checks. Before-archive snapshots, exact spec comparison, validation and independent archive review are retained in `.runtime/phase11-archive-20260916/`. No push or phase 12 work is included.
 
 ## History on demand
+
+Workflow update approved on 16 September 2026: combine implementation and substantive documentation in one independent review. Routine documentation closeout and faithful archive/spec sync use author-run deterministic checks; requirements, permission and behavior changes retain independent review. See the [author workflow](../.agents/skills/change-audit/author-workflow.md). This instruction change is recorded separately from phase 11; phase 12 remains unstarted.
+
+Workflow commit: **`Avoid repeated review for routine documentation closeout`**, parent `47ca8cd`. One focused permission-change review returned **0 findings**; its validated contract is in `.runtime/review-policy-20260916/`. Author checks passed: `check-docs.mjs` (**128 files / 421 links**), skill `quick_validate.py`, and whitespace checks. The skill validator used project-local PyYAML after the initial missing-dependency failure; no global prerequisites changed. This final evidence summary uses the routine-closeout exemption, with no second reviewer. No application/game tests were needed for these instruction-only edits.
 
 The [phase 10 closeout and earlier evidence](IMPLEMENTATION_HISTORY.md#phase-10-closeout-retained-at-phase-11) preserve prior verification, archive and review records.

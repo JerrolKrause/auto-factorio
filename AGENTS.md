@@ -38,7 +38,7 @@ The user manages prerequisite upgrades. Recheck installed versions before treati
 
 ## Independent review before completion
 
-Before committing or declaring repository edits complete, the main author must load the [author workflow](.agents/skills/change-audit/author-workflow.md) and delegate task-scoped, read-only review to a fresh-context subagent. The author must not self-review. Read-only/no-change tasks and reviewers are exempt.
+Before committing or declaring implementation or changes to requirements, permissions or behavior complete, load the [author workflow](.agents/skills/change-audit/author-workflow.md) and delegate one combined implementation/documentation review to a fresh-context, read-only subagent. The author must not self-review; fixes and later substantive changes require follow-up review. Routine documentation-only maintenance and faithful archive/spec sync use the workflow's author-run checks without a reviewer. Read-only/no-change tasks and reviewers are exempt.
 
 ## Leave a usable handoff
 
