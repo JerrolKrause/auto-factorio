@@ -6,18 +6,18 @@ A local Factorio Space Age experimentation environment where specialized AI agen
 
 ## Current status
 
-Phases 01–09 are complete and archived: subscription access, legal character execution, pause/restore, durable coordination and the local dashboard. Phase 10 has passed the deterministic verification-engine and live mutation-guard gate and is archived with its capability synced to main specs. Scenarios begin with phase 11. See the [handoff](docs/IMPLEMENTATION_HANDOFF.md) for exact evidence and limits, the [compatibility report](docs/COMPATIBILITY_REPORT.md), and the [accepted safeguards](docs/decisions/001-review-hardening.md).
+Phases 01–10 are complete and archived: subscription access, legal character execution, pause/restore, durable coordination, the local dashboard and verification engine. Phase 11 is implemented and verified: First Shift has a legal reference factory, calibrated flow checks and safe resets. Evidence is recorded in the [handoff](docs/IMPLEMENTATION_HANDOFF.md). See also the [compatibility report](docs/COMPATIBILITY_REPORT.md) and [accepted safeguards](docs/decisions/001-review-hardening.md).
 
 ## Phased implementation
 
 The [implementation guide](docs/IMPLEMENTATION_GUIDE.md) defines 18 bounded phases and their acceptance gates; the [coverage map](docs/SPEC_TRACEABILITY.md) connects them to requirements. The next implementation phase, only on instruction, is:
 
 ```text
-$openspec-apply-change af-11-first-shift-reference
-Follow phase 11 of docs/IMPLEMENTATION_GUIDE.md, verify its entry gate in docs/IMPLEMENTATION_HANDOFF.md, implement only that change, and stop before phase 12.
+$openspec-apply-change af-12-first-shift-agent-trials
+Follow phase 12 of docs/IMPLEMENTATION_GUIDE.md, verify its entry gate in docs/IMPLEMENTATION_HANDOFF.md, implement only that change, and stop before phase 13.
 ```
 
-Phases 11–18 remain planned. Completing the evaluator does not establish a ready scenario; phase 11 must calibrate S1 against the real engine.
+Phase 11 has 8/8 tasks complete and is archived with its capability synced to main specs. Phases 12–18 remain planned; model-backed S1 trials belong to phase 12.
 
 ## Planned first release
 
@@ -85,6 +85,20 @@ The launcher reports the path of its `dashboard.json`. Open that file's `url` in
 Pause/stop close new admission, interrupt bound sessions and establish acknowledged game cancellation. Resume reconciles and refreshes authority; old task revisions need new plans/grants. Unknown controls and missing telemetry remain explicit. Closing/reopening the tab does not stop the host or reset budgets. `--directory <project .runtime path>` reopens existing run data; the SQLite writer lock rejects concurrent owners. Press Ctrl+C in the host terminal to request a held game state and shut down.
 
 Browser tests use the installed Microsoft Edge. `game:dashboard-probe --profile-file <fresh-visible-profile.json>` tests the HTTP controls in Factorio using synthetic role callbacks, without model inference. Read [Decision 011](docs/decisions/011-live-control-dashboard.md) for security, event replay, edit-detection coverage and the later provider/scenario composition boundary.
+
+## First Shift (phase 11)
+
+```powershell
+corepack.cmd pnpm build
+corepack.cmd pnpm scenario:launch --scenario 01-first-shift --roster team
+# --roster solo uses the same fixture and rules.
+# After closing the previous controller with Ctrl+C:
+corepack.cmd pnpm scenario:launch --reset '<previous-run-directory>/run.json' --roster team
+```
+
+The launcher opens a dedicated visible world, records its finite kit, grants and installed recipes, and prints the new run directory. Open that directory's `dashboard.json` URL for pause/resume/stop controls. It starts safely paused with the selected roster and a shared briefing; it does not start model inference. Reset validates the cached disarmed fixture, preserves previous histories, and creates a new run/epoch. Close the previous controller before resetting. Source/game changes require a fresh fixture.
+
+For deterministic operator validation, add `--hold --result-file <file>` to leave the initial world paused and release the controller, then run `corepack.cmd pnpm game:first-shift-probe --run-file '<run-directory>/run.json'`. This consumes no model usage. It records a legal reference, exact five-window input/output balances and explicit bypass controls in private evidence under that profile. See the [scenario guide](scenarios/01-first-shift/README.md) and [measurement decision](docs/decisions/013-first-shift-reference.md).
 
 ## Provider diagnostic (phase 02)
 
@@ -184,7 +198,7 @@ corepack pnpm game:verification-probe --profile-file .runtime/phase10-profile.js
 
 Use a fresh dedicated visible profile, free game/RCON ports 34204/27024 and no existing project observer. The probe checks admission cancellation before the baseline, submitted and stale queued mutation guards, legal walking, explicit repair, benchmark science/fixture restrictions, human edit invalidation and pause/replacement clocks. It leaves its world held; stop only the exact profile's server and observer with `game:processes --stop-profile`. Failed trials need fresh profiles.
 
-Evidence stays in `.runtime/phase04/game-*/verification-probe-*/` with source hashes, versions, raw control/game events and results. Delayed command replay and the diagnostic player-build event are explicit. No model inference runs. [The evaluator](packages/core/evaluation/README.md) evaluates deterministic traces; real S1 flow instrumentation and calibration remain phase 11.
+Evidence stays in `.runtime/phase04/game-*/verification-probe-*/` with source hashes, versions, raw control/game events and results. Delayed command replay and the diagnostic player-build event are explicit. No model inference runs. [The evaluator](packages/core/evaluation/README.md) also receives the calibrated S1 engine samples implemented in phase 11; see the handoff for live acceptance evidence.
 
 ## Local setup context
 

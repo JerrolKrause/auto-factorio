@@ -3,6 +3,8 @@ local A=require("actions")
 local L=require("lifecycle")
 local F=require("ownership")
 local V=require("verification")
+local S=require("first_shift")
+local SM=require("first_shift_measurement")
 local function setup()
  if remote.interfaces.freeplay then
   remote.call("freeplay","set_skip_intro",true);remote.call("freeplay","set_disable_crashsite",true);remote.call("freeplay","set_created_items",{})
@@ -30,8 +32,10 @@ for _,entry in ipairs({{defines.events.on_built_entity,'build'},{defines.events.
 end
 script.on_event(defines.events.on_player_created,function(event)
  local p=game.get_player(event.player_index);if not p.character then p.set_controller{type=defines.controllers.god};p.create_character() end
+ if not S.player(p) then
  p.teleport({0,0},"nauvis");p.force.research_all_technologies();p.get_main_inventory().clear()
  for name,count in pairs({["transport-belt"]=30,["assembling-machine-1"]=3,["wooden-chest"]=5,["iron-plate"]=100,["copper-plate"]=20,["coal"]=20,["stone-furnace"]=2}) do p.insert{name=name,count=count,quality="normal"} end
+ end
  storage.af.actors["builder-"..event.player_index]=event.player_index
  p.print("AutoFactorio phase 03: dedicated test kit; normal character speed, reach and timing. Structured RPC ready.")
 end)
@@ -53,7 +57,7 @@ local function authority(b)
 end
 L.bind(done,receipt)
 F.bind(done,receipt)
-V.bind(done,receipt,A.neutral)
+V.bind(done,receipt,A.neutral,SM.admit)
 local function submit(b)
  C.keys(b,{"commandId","epoch","session","task","revision","actor","surface","grants","deadline","steps"});for _,key in ipairs({"commandId","epoch","session","task","actor","surface"}) do C.id(b[key]) end
  C.integer(b.revision,1,2147483647);C.integer(b.deadline,1,2147483647);C.check(type(b.grants)=="table" and #b.grants>=3 and #b.grants<=32,"incomplete_reservation_set")
@@ -62,7 +66,7 @@ local function submit(b)
  local existing=storage.af.orders[b.commandId]
  if existing then C.check(C.same(existing.batch,b),"command_id_conflict");return receipt(existing) end
  C.check(storage.af.control.armed and not game.tick_paused,"executor_disarmed");local p=authority(b)
- for _,s in ipairs(b.steps) do V.guard(s) end
+ for _,s in ipairs(b.steps) do V.guard(s);S.guard(s) end
  C.check(b.deadline>game.tick and b.deadline<=game.tick+36000,"invalid_deadline");C.check(not storage.af.active[b.actor],"actor_busy")
  local n=0;for _ in pairs(storage.af.orders) do n=n+1 end;C.check(n<200,"receipt_capacity")
  C.check(not p.crafting_queue or #p.crafting_queue==0,"crafting_busy")
@@ -70,7 +74,10 @@ local function submit(b)
  storage.af.orders[b.commandId]=o;storage.af.active[b.actor]=b.commandId;return receipt(o)
 end
 script.on_event(defines.events.on_tick,function()
- if not L.tick() then return end
+ local armed=L.tick()
+ S.tick()
+ SM.tick()
+ if not armed then return end
  for actor,id in pairs(storage.af.active) do
   local o=storage.af.orders[id]
   -- Synchronous player build/rotation events can identify the executor that caused them.
@@ -79,6 +86,7 @@ script.on_event(defines.events.on_tick,function()
    local p=authority(o.batch);C.check(game.tick<=o.batch.deadline,"deadline_exceeded");o.status="running"
    local step=o.batch.steps[o.completed+1]
    V.guard(step)
+   S.guard(step)
    if not o.work then o.work={startedTick=game.tick,before=inventory(p)} end
    if A.tick(p,o,step) then
     A.neutral(p,false);local after=inventory(p);o.steps[#o.steps+1]={index=o.completed+1,status="completed",startedTick=o.work.startedTick,endedTick=game.tick,before=o.work.before,after=after,delta=C.delta(o.work.before,after)}
@@ -110,6 +118,7 @@ local function observe(r)
  local out={};for i=r.offset+1,math.min(#entities,r.offset+r.limit) do local e=entities[i];local ref=C.ref(e);ref.protected=C.protected(e);ref.direction=e.direction;ref.type=e.type;ref.inventories={}
   for name in pairs(C.inventory_ids) do local ok,inv=pcall(function()return C.entity_inventory(e,name)end);if ok and inv then ref.inventories[name]=C.inventory(inv) end end
   if e.type=="assembling-machine" then local recipe=e.get_recipe();ref.recipe=recipe and recipe.name;ref.craftingSpeed=e.crafting_speed end
+  if e.type=="underground-belt" then ref.beltType=e.belt_to_ground_type;ref.neighbour=e.neighbours and C.ref(e.neighbours) end
   out[#out+1]=ref
  end
  local actors={};for id,index in pairs(storage.af.actors) do local p=game.get_player(index);if p and p.character then actors[id]={position=p.position,surface=p.surface.name,inventory=inventory(p),walking=p.walking_state,mining=p.mining_state,crafting=p.crafting_queue or {},buildDistance=p.build_distance,reachDistance=p.reach_distance,runningSpeed=p.character_running_speed,miningSpeed=p.character_mining_speed_modifier,craftingSpeed=p.character_crafting_speed_modifier,connected=p.connected} end end
@@ -136,6 +145,8 @@ end
 remote.add_interface("autofactorio_v1",{rpc=function(payload)return encoded(gameplay,payload)end})
 -- Operator-only diagnostics are never exposed through the gameplay validator/gateway.
 remote.add_interface("autofactorio_operator_v1",{rpc=function(payload)return encoded(function(r)
+ if r.op=="scenario" then return S.rpc(r) end
+ if r.op=="scenario-measurements" then return SM.read(r) end
  if r.op=="verification" then return V.rpc(r) end
  if r.op=="edits" then C.keys(r,{"op","after"});C.integer(r.after,0,2147483647);return E.read(r.after) end
  if r.op=="ownership" then C.keys(r,{"op","control"});return {ok=true,ack=F.control(r.control)} end

@@ -2,8 +2,8 @@
 -- calibrated science/flow telemetry (scenario instrumentation arrives in phase 11).
 local C=require('common')
 local V={}
-local done,receipt,neutral
-function V.bind(d,r,n) done=d;receipt=r;neutral=n end
+local done,receipt,neutral,capture
+function V.bind(d,r,n,c) done=d;receipt=r;neutral=n;capture=c end
 local function current() return storage.af.verification end
 local function held(v) return v and v.state~='building' and v.state~='aborted' end
 function V.guard(s)
@@ -61,6 +61,10 @@ function V.rpc(r)
   storage.af.paths={}
   v.state='admitted';v.reason=nil;v.invalidTick=nil
   v.baseline={attempt=r.attempt,scope=v.scope,tick=game.tick,mutationsClosed=true,pendingMutations=0,neutral=true,actors=actors,receipts=receipts,coverage='character inventories and final receipts only; calibrated factory measurement unavailable'}
+  if capture then
+   local ok,err=pcall(capture)
+   if not ok then V.invalidate('measurement_admission:'..tostring(err));error(tostring(err),0) end
+  end
  elseif r.action=='repair' then
   C.check(v.attempt==r.attempt,'attempt_mismatch')
   -- Terminal state is committed before mutation admission reopens.

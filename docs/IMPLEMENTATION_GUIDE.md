@@ -1,6 +1,6 @@
 # AutoFactorio implementation guide
 
-Status: phases 01–09 are implemented, verified and archived. Phase 10 has passed its verification-engine software/live guard gate (8/8 tasks) and is archived with its capability synced to main specs. Phases 11–18 remain planned. See the current handoff for evidence. Start one bounded change per fresh conversation in the existing workspace.
+Status: phases 01–10 are implemented, verified and archived. Phase 11 has passed its software/live S1 and twice-reset gate, with 8/8 tasks and independent review complete; it is archived with its capability synced to main specs. See the current handoff for evidence. Phases 12–18 remain planned. Start one bounded change per fresh conversation in the existing workspace.
 
 ## Why 18 changes
 
@@ -215,7 +215,7 @@ Work in C:\@Projects\AutoFactorio. Follow phase 10 of docs/IMPLEMENTATION_GUIDE.
 
 ### 11 — First Shift reference
 
-[Open the change](../openspec/changes/af-11-first-shift-reference/proposal.md) · [Task checklist](../openspec/changes/af-11-first-shift-reference/tasks.md)
+[Open the change](../openspec/changes/archive/2026-09-16-af-11-first-shift-reference/proposal.md) · [Task checklist](../openspec/changes/archive/2026-09-16-af-11-first-shift-reference/tasks.md)
 
 **Entry:** Phase 10 (`af-10-verification-engine`) has a passed implementation gate in the handoff.
 

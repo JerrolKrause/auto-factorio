@@ -1,6 +1,6 @@
 ## Context
 
-See [proposal](proposal.md) for motivation and [capability spec](specs/first-shift-reference/spec.md) for behavior. The baseline is documentation-only at planning revision `1cdff32`; no proposed runtime package exists yet. Source reading for this phase: SCENARIOS: Shared world, Deliverable structure, Common kit, §01 and Evaluation rules. Prior phases supply the interfaces described below only after their gates pass.
+See [proposal](proposal.md) for motivation and [capability spec](specs/first-shift-reference/spec.md) for behavior. Phases 01–10 have passed their gates at implementation baseline `130c281`. Source reading for this phase: SCENARIOS: Shared world, Deliverable structure, Common kit, §01 and Evaluation rules. [Decision 013](../../../../docs/decisions/013-first-shift-reference.md) records the implemented fixture, measurement and restore choices.
 
 ## Goals / Non-Goals
 
@@ -22,7 +22,7 @@ Feed geometry or kit inadequate → adjust the fixture version and rerun control
 
 ## Migration Plan
 
-Prerequisite: `af-10-verification-engine` implementation gate recorded passed in the handoff. Read the [implementation guide](../../../docs/IMPLEMENTATION_GUIDE.md) and only this change's artifacts plus the listed source sections. Implement its tasks; do not begin the next change. Record interface decisions and exact executed checks in the handoff. If a live gate fails, retain the evidence and keep the relevant task open. Roll back software through a reviewed change and recover only from validated disarmed game checkpoints; never reset personal saves or discard user work.
+Prerequisite: `af-10-verification-engine` implementation gate recorded passed in the handoff. Read the [implementation guide](../../../../docs/IMPLEMENTATION_GUIDE.md) and only this change's artifacts plus the listed source sections. Implement its tasks; do not begin the next change. Record interface decisions and exact executed checks in the handoff. If a live gate fails, retain the evidence and keep the relevant task open. Roll back software through a reviewed change and recover only from validated disarmed game checkpoints; never reset personal saves or discard user work.
 
 ## Exit Gate
 

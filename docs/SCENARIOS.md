@@ -1,6 +1,6 @@
 # Five early-game sandboxes
 
-Status: approved scenario scope, proposed implementation fixtures. These are specifications, not playable saves yet. Validate equipment and geometry with reference runs before declaring them ready to launch.
+Status: approved scenario scope. S1 has a playable fixture and passed live reference/bypass/reset checks; see the [current handoff](IMPLEMENTATION_HANDOFF.md) for final review status and evidence. S2–S5 remain proposed fixtures requiring their own reference validation.
 
 Scoring and negative-control requirements incorporate the review corrections approved on 11 September 2026. Numerical fixtures remain subject to reference validation; the safeguards below are acceptance requirements.
 

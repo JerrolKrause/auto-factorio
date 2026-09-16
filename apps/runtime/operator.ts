@@ -3,6 +3,8 @@ import { Interventions, assistanceChanges } from '../../packages/core/orchestrat
 import { barrier } from '../../packages/factorio/src/lifecycle.js';
 import type { ControlState } from '../../packages/factorio/src/lifecycle.js';
 import { randomUUID } from 'node:crypto';
+import { runDeadline } from '../../packages/core/evaluation/run-clock.js';
+import type { RunClock } from '../../packages/core/evaluation/run-clock.js';
 
 export interface OperatorState {
   admission: boolean; requested: 'pause' | 'stop' | 'resume' | null;
@@ -106,6 +108,13 @@ export class Operator {
       if (!this.state().admission) c.interruptForControl();
       await c.pump();
       let control = await c.runtime.inspectControl();
+      const clock = c.runtime.journal.get<RunClock>(c.runtime.run, 'runs', 'scenario-clock');
+      const deadline = clock && runDeadline(clock, control.tick, Date.now());
+      if (deadline && !this.state().scoringClosed) {
+        c.stop(deadline);
+        this.save({ ...this.state(), admission: false, scoringClosed: true, requested: 'stop', status: 'unconfirmed' });
+        c.runtime.record('verification/deadline-closed', [{ entity: 'runs', id: 'verification', value: { valid: false, reason: deadline } }]);
+      }
       if (this.state().admission && (!control.armed || control.paused)) {
         // A watchdog or external hold can revoke execution while the transport remains healthy.
         this.save({ ...this.state(), admission: false, requested: 'pause', status: 'unconfirmed', cancellation: 'unconfirmed', error: 'Game execution authority lost' });

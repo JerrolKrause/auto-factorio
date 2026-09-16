@@ -13,6 +13,8 @@
     "test:ui": "playwright test",
     "game:dashboard-probe": "node dist/scripts/game-dashboard-probe.js",
     "game:verification-probe": "node dist/scripts/game-verification-probe.js",
+    "scenario:launch": "node dist/scripts/scenario.js",
+    "game:first-shift-probe": "node dist/scripts/game-first-shift-probe.js",
     "lint": "eslint scripts packages apps tests",
     "test": "vitest run",
     "diagnose": "node dist/scripts/diagnose.js",

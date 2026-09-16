@@ -23,7 +23,9 @@ function M.disarm(reason,pause)
  end
  for _,index in pairs(storage.af.actors) do local p=game.get_player(index);if p and p.character then A.neutral(p,true) end end
  storage.af.paths={}
- if pause then c.pausePending=true end
+ -- A second pause while already frozen cannot rely on another on_tick callback
+ -- to clear the latch: that callback would otherwise immediately re-pause arm.
+ if pause then c.pausePending=not game.tick_paused end
 end
 function M.tick()
  local c=storage.af.control
