@@ -6,7 +6,7 @@ A Node lease expiry cannot prevent already queued Lua work from acting after own
 
 - Atomic reservation sets and acknowledged game-side revocation, task revision fences and safe reassignment.
 - Preserve the approved product safeguards and attach explicit acceptance evidence to this bounded phase.
-- Complete phase 06 only after `af-05-durable-event-runtime` has passed its implementation gate; see the [implementation guide](../../../docs/IMPLEMENTATION_GUIDE.md).
+- Complete phase 06 only after `af-05-durable-event-runtime` has passed its implementation gate; see the [implementation guide](../../../../docs/IMPLEMENTATION_GUIDE.md).
 
 ## Capabilities
 

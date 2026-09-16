@@ -6,7 +6,7 @@ Separate provider sessions need durable tasks, identity, scoped messages and evi
 
 - A deterministic dependency scheduler, foreman/engineer role definitions, solo configuration and integrated roster budget enforcement.
 - Preserve the approved product safeguards and attach explicit acceptance evidence to this bounded phase.
-- Complete phase 07 only after `af-06-fenced-ownership` has passed its implementation gate; see the [implementation guide](../../../docs/IMPLEMENTATION_GUIDE.md).
+- Complete phase 07 only after `af-06-fenced-ownership` has passed its implementation gate; see the [implementation guide](../../../../docs/IMPLEMENTATION_GUIDE.md).
 
 ## Capabilities
 

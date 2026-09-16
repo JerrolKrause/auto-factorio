@@ -1,0 +1,18 @@
+# 008: Acknowledged ownership sets
+
+Status: phase 06 implementation. Acceptance results and review are recorded in the [handoff](../IMPLEMENTATION_HANDOFF.md).
+
+## Boundaries
+
+- A durable assignment names an agent owner independently of its physical actor and task revision. Construction rectangles, actor lanes and actor main-inventory allocations are acquired as one sorted set in one event/projection transaction. Overlapping rectangles conflict even when their reservation IDs differ. Item allocation is initially exclusive over the actor's entire main inventory, including crafting inputs, outputs and cancellation refunds; fractional stock scheduling is not implemented.
+- The execution module exposes a transport-independent reservation port. The SQLite journal persists whole-set transitions and monotonic generations. No task scheduler, provider-backed gameplay or phase 07 coordination policy is introduced. The existing durable execution lane remains conservative; disjoint actor assignments are tested with fakes, while the live diagnostic uses one builder.
+- Revocation first records intent and closes assignment admission. An unconfirmed grant or revoke retains all reservations. Exact request IDs survive process replacement; Lua caches matching acknowledgements and rejects conflicting reuse. Lua advances generations, neutralizes timed controls, cancels pending steps and returns final receipts at the effective tick. Node reconciles those receipts with its outbox in the same transaction that releases reservations. A lease timeout is only a reason to request revocation, never authority to release resources.
+- Admission and each Lua tick validate epoch, session, task revision and the complete grant set. Areas cover entity footprints and character movement, including path waypoints and a conservative next-tick sweep. The installed 2.0.77 runtime API documents `character_running_speed` as including tile, equipment, sticker and shooting effects; that engine value drives the guard. A footprint/sweep must fit one reserved rectangle, so some safe paths across adjacent rectangles can be conservatively refused.
+- Dispatch rechecks authorization and durable command state after asynchronous world inspection, before the non-yielding send boundary. Revocation during inspection leaves an unsent command pending or retired; it does not manufacture an unknown transport outcome that could require a nonexistent game receipt.
+- Controlled restore retains the phase 04 held barrier. Epoch reconciliation clears saved Lua authorizations and cancels suspended queues; durable reservations retire behind that barrier. The runtime arms with an empty authorization set. New work needs a fresh assignment and current durable task revision; cancelled tasks and late old plans remain inadmissible. Diagnostic phase 03/04 adapters explicitly install a complete diagnostic set instead of relying on the old hard-coded single grant.
+
+## Compatibility and validation
+
+`Batch.grant` becomes `Batch.grants`; all in-repository consumers use the complete set. Reservations use the existing generic journal projections and append-only event format, so no database schema migration or new dependency is required. Old diagnostic checkpoints with a different mod fingerprint remain ineligible for the new source; no personal save or existing evidence is rewritten.
+
+Use `corepack pnpm verify --game`, then a fresh project visible profile and `corepack pnpm game:ownership-probe --profile-file <profile.json>`. The live probe retains requests, observations, receipts, source hashes, a managed checkpoint, restore data and its exact result. Failed trials remain failed; a new profile is required after diagnosis. The probe consumes no provider inference.

@@ -1,5 +1,6 @@
 local C=require("common")
 local A=require("actions")
+local F=require("ownership")
 local M={}
 local done,receipt
 function M.bind(d,r) done=d;receipt=r end
@@ -78,6 +79,7 @@ function M.rpc(r)
   -- Interrupted timed work is never replayed: its world effects and refunds are in the saved receipt.
   for _,o in pairs(storage.af.orders) do if o.status=="suspended" then o.status="cancelled";o.reason="reconciled_requires_new_command";o.pending=nil end end
   storage.af.active={};storage.af.paths={};storage.af.epoch=r.newEpoch;storage.af.session=r.newSession;c.generation=r.generation;c.revision=c.revision+1;c.ready=true;c.checkpoint=false
+  F.reset()
   return M.state()
  end
  error("unsupported_control_operation",0)

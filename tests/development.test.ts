@@ -1,3 +1,4 @@
+import { diagnosticGrants } from '@autofactorio/contracts';
 ﻿import { beforeAll, describe, it, expect } from 'vitest';
 import { mkdir, mkdtemp, readFile, writeFile, access } from 'node:fs/promises';
 import { spawnSync } from 'node:child_process';
@@ -11,7 +12,7 @@ import type { Batch } from '@autofactorio/contracts';
 const tempRoot=path.resolve('.runtime/retro-improvements');
 beforeAll(async()=>{await mkdir(tempRoot,{recursive:true});});
 const temp=()=>mkdtemp(path.join(tempRoot,'test-'));
-const batch:Batch={commandId:'pending',epoch:'e1',session:'s1',task:'phase03-actions',revision:1,actor:'builder-1',surface:'nauvis',grant:{id:'test-area',generation:1},deadline:200,steps:[{kind:'craft',recipe:'iron-gear-wheel',count:2}]};
+const batch:Batch={commandId:'pending',epoch:'e1',session:'s1',task:'phase03-actions',revision:1,actor:'builder-1',surface:'nauvis',grants: diagnosticGrants(1),deadline:200,steps:[{kind:'craft',recipe:'iron-gear-wheel',count:2}]};
 async function resumeFixture(){
  const dir=await temp();const bytes=Buffer.alloc(68);bytes.writeUInt32LE(0x02014b50);bytes.writeUInt32LE(0x06054b50,46);bytes.writeUInt16LE(1,54);bytes.writeUInt16LE(1,56);bytes.writeUInt32LE(46,58);
  const captured:ControlState={ok:true,epoch:'e1',session:'s1',revision:2,generation:1,armed:false,ready:false,paused:true,neutral:true,ticksToRun:0,tick:100,ticksPlayed:200,experimentTick:100,scenarioElapsed:100,injections:1,checkpoint:'save',ledger:{pending:{commandId:'pending',status:'suspended',acceptedTick:10,completed:0,unexecuted:1,steps:[]}},intents:{pending:batch.steps},production:{},mods:{}};

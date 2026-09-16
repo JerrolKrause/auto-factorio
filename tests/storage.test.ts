@@ -1,3 +1,4 @@
+import { diagnosticGrants } from '@autofactorio/contracts';
 import { describe, it, expect } from 'vitest';
 import { mkdtempSync, readFileSync, writeFileSync, unlinkSync } from 'node:fs';
 import os from 'node:os';
@@ -16,7 +17,7 @@ import type { ControlState } from '../packages/factorio/src/lifecycle.js';
 import { Budget, PROBE_CAPS } from '../packages/codex/src/budget.js';
 const context: EventContext = { run: 'run', epoch: 'e1', wallTime: '2026-09-15T12:00:00Z', gameTick: 100, actor: 'engineer', task: 'task', causation: 'cause', correlation: 'correlation', visibility: { kind: 'operator' } };
 const temp = () => mkdtempSync(path.join(os.tmpdir(), 'af-durable-'));
-const batch: Batch = { commandId: 'command', epoch: 'e1', session: 's1', actor: 'builder-1', task: 'task', revision: 1, surface: 'nauvis', grant: { id: 'test-area', generation: 1 }, deadline: 1000, steps: [{ kind: 'place', item: 'wooden-chest', quality: 'normal', direction: 0, position: { x: 2.5, y: 2.5 } }] };
+const batch: Batch = { commandId: 'command', epoch: 'e1', session: 's1', actor: 'builder-1', task: 'task', revision: 1, surface: 'nauvis', grants: diagnosticGrants(1 ), deadline: 1000, steps: [{ kind: 'place', item: 'wooden-chest', quality: 'normal', direction: 0, position: { x: 2.5, y: 2.5 } }] };
 const receipt: Receipt = { commandId: 'command', status: 'completed', acceptedTick: 100, endedTick: 101, completed: 1, unexecuted: 0, steps: [{ index: 1, status: 'completed', startedTick: 100, endedTick: 101, before: [], after: [], delta: [] }] };
 const change = (id = 'task') => [{ entity: 'tasks' as const, id, value: { owner: 'engineer', committedPlan: 'place one chest', status: 'pending', evidence: [] } }];
 function fakeRuntime(dir: string, configure?: (game: GameClient, control: ControlState, life: Lifecycle) => void) {

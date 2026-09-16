@@ -3,8 +3,8 @@ import { mkdir, readFile, writeFile, rename, stat, copyFile } from 'node:fs/prom
 import path from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
 import { isDeepStrictEqual } from 'node:util';
-import { record, validateReceipt } from '@autofactorio/contracts';
-import type { Receipt } from '@autofactorio/contracts';
+import { record, validateReceipt, diagnosticAssignment } from '@autofactorio/contracts';
+import type { Receipt, Assignment, OwnershipControl, OwnershipAck } from '@autofactorio/contracts';
 import type { CommandPort } from './rcon.js';
 import { wrapper } from './rcon.js';
 import type { GameClient } from './client.js';
@@ -64,9 +64,21 @@ export class Lifecycle {
     throw new Error('Neutral pause unconfirmed');
   }
   heartbeat(s:ControlState) {return this.rpc({op:'heartbeat',...fence(s)});}
-  async reconcile(s:ControlState) {
+  async ownership(request: OwnershipControl): Promise<OwnershipAck> {
+    this.sink({kind:'ownership/request',request});
+    const response=record(JSON.parse(await this.port.command(wrapper({op:'ownership',control:request},true))));
+    this.sink({kind:'ownership/response',response});
+    if(response.ok!==true)throw new Error(String(response.error??'Ownership unconfirmed'));
+    const ack=record(response.ack);const raw=ack.receipts;
+    const receipts=Array.isArray(raw)?raw:Object.keys(record(raw)).length===0?[]:null;
+    if(!receipts)throw new Error('Invalid ownership receipts');
+    return {...ack,receipts:receipts.map(r=>{const v=validateReceipt(r);if(!v)throw new Error('Missing final receipt');return v;})} as unknown as OwnershipAck;
+  }
+  async reconcile(s:ControlState, assignments?:Assignment[]) {
     this.game.admission=false;barrier(s);
-    return this.rpc({op:'reconcile',...fence(s),checkpoint:s.checkpoint,ledger:s.ledger,newEpoch:randomUUID(),newSession:randomUUID(),generation:s.generation+1});
+    const next=await this.rpc({op:'reconcile',...fence(s),checkpoint:s.checkpoint,ledger:s.ledger,newEpoch:randomUUID(),newSession:randomUUID(),generation:s.generation+1});
+    for(const assignment of assignments??[diagnosticAssignment(next.generation)])await this.ownership({id:randomUUID(),epoch:next.epoch,session:next.session,operation:'grant',assignment});
+    return next;
   }
   async arm(s:ControlState) {
     if(this.game.unresolved.size)throw new Error('Unknown game outcomes require reconciliation before arm');

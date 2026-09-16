@@ -1,3 +1,4 @@
+import { diagnosticGrants } from '@autofactorio/contracts';
 import assert from 'node:assert/strict';
 import { readFile, mkdir, mkdtemp, writeFile, appendFile } from 'node:fs/promises';
 import { appendFileSync } from 'node:fs';
@@ -29,7 +30,7 @@ function count(v:unknown,name:string){return items(v).filter(i=>i.name===name&&i
 function actor(o:Record<string,unknown>){return record(record(o.actors)['builder-1']);}
 function target(e:Record<string,unknown>):Target{return {name:String(e.name),quality:String(e.quality),position:e.position as Target['position'],unit:typeof e.unit==='number'?e.unit:null};}
 async function find(name:string,x?:number){const o=await observe();const e=(o.entities as Record<string,unknown>[]).find(e=>e.name===name&&(x===undefined||(e.position as {x:number}).x===x));assert(e, 'Missing entity '+name);return target(e);}
-async function make(steps:Step[]):Promise<Batch>{const o=await observe();const commandId=path.basename(evidence)+'-'+ ++sequence;commands.push(commandId);return {commandId,epoch:String(o.epoch),session:String(o.session),task:'phase03-actions',revision:1,actor:'builder-1',surface:'nauvis',grant:{id:'test-area',generation:control.generation},deadline:Number(o.tick)+3600,steps};}
+async function make(steps:Step[]):Promise<Batch>{const o=await observe();const commandId=path.basename(evidence)+'-'+ ++sequence;commands.push(commandId);return {commandId,epoch:String(o.epoch),session:String(o.session),task:'phase03-actions',revision:1,actor:'builder-1',surface:'nauvis',grants: diagnosticGrants(control.generation),deadline:Number(o.tick)+3600,steps};}
 async function finish(id:string){const deadline=Date.now()+65000;while(Date.now()<deadline){control=await lifecycle.heartbeat(control);const r=await client.receipt(id);assert(r);if(!['accepted','running'].includes(r.status))return r;await delay(100);}throw new Error('Receipt timeout');}
 async function run(label:string,steps:Step[],expected='completed'){const b=await make(steps);await tools.call({op:'submit',batch:b});const r=await finish(b.commandId);assert.equal(r.status,expected,label+': '+JSON.stringify(r));results.push(label);return r;}
 const place=(item:string,x:number,y:number):Step=>({kind:'place',item,quality:'normal',direction:0,position:{x,y}});

@@ -1,3 +1,4 @@
+import { diagnosticGrants } from '@autofactorio/contracts';
 import assert from 'node:assert/strict';
 import { readFile, writeFile, mkdtemp } from 'node:fs/promises';
 import { appendFileSync } from 'node:fs';
@@ -20,7 +21,7 @@ const launch=await readProfile(dir);
 const evidence=await mkdtemp(path.join(dir,'pause-probe-'));let cursor=0;const checks:string[]=[];
 const sink=(event:unknown)=>{appendFileSync(path.join(evidence,'events.jsonl'),JSON.stringify({sequence:++cursor,...record(event)})+'\n');};
 const pass=(label:string)=>{checks.push(label);sink({kind:'probe/pass',label});console.log(label);};
-const sourceFiles=['mods/autofactorio/control.lua','mods/autofactorio/lifecycle.lua','mods/autofactorio/actions.lua','mods/autofactorio/common.lua','mods/autofactorio/info.json'];
+const sourceFiles=['mods/autofactorio/control.lua','mods/autofactorio/lifecycle.lua','mods/autofactorio/ownership.lua','mods/autofactorio/actions.lua','mods/autofactorio/common.lua','mods/autofactorio/info.json'];
 const hashes=Object.fromEntries(await Promise.all(sourceFiles.map(async file=>[file,sha256(await readFile(file))])));const modHash=sha256(Buffer.from(JSON.stringify(hashes)));
 await writeFile(path.join(evidence,'source-manifest.json'),JSON.stringify(hashes,null,2));
 // A live profile must use exactly the sources being tested.
@@ -30,7 +31,7 @@ const stages=new ProbeStages(evidence,{profile:dir,modHash,probeFingerprint});
 let port!:Rcon;let game!:GameClient;let life!:Lifecycle;let control!:ControlState;let serial=0;let stoppedAfter:string|undefined;
 const observe=()=>game.request(observeRequest);
 const actor=(w:Record<string,unknown>)=>record(record(w.actors)['builder-1']);
-const batch=(steps:Step[]):Batch=>({commandId:path.basename(evidence)+'-'+ ++serial,epoch:control.epoch,session:control.session,task:'phase03-actions',revision:1,actor:'builder-1',surface:'nauvis',grant:{id:'test-area',generation:control.generation},deadline:control.tick+36000,steps});
+const batch=(steps:Step[]):Batch=>({commandId:path.basename(evidence)+'-'+ ++serial,epoch:control.epoch,session:control.session,task:'phase03-actions',revision:1,actor:'builder-1',surface:'nauvis',grants: diagnosticGrants(control.generation),deadline:control.tick+36000,steps});
 const submit=async(steps:Step[])=>{control=await life.heartbeat(control);const b=batch(steps);await game.request({op:'submit',batch:b});return b;};
 async function finish(b:Batch){for(let i=0;i<200;i++){control=await life.heartbeat(control);const r=await game.receipt(b.commandId);assert(r);if(!['running','accepted'].includes(r.status))return r;await delay(80);}throw new Error('Timed action did not finish');}
 async function rearm(){control=await life.reconcile(control);control=await life.arm(control);}

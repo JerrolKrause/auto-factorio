@@ -1,3 +1,4 @@
+import { diagnosticGrants } from '@autofactorio/contracts';
 import assert from 'node:assert/strict';
 import { readFile, writeFile, mkdir, stat } from 'node:fs/promises';
 import { openSync, closeSync } from 'node:fs';
@@ -21,6 +22,6 @@ try{
  for(let i=0;!rcon;i++){try{rcon=await Rcon.connect(27020,config.password);}catch(e){if(i>=60)throw e;await delay(200);}}
  const client=new GameClient(rcon,e=>trace.push(e));const o=await client.request(observeRequest);assert.equal(o.loadedReadOnly,true);
  for(const id of completed.commands){const r=await client.receipt(id);assert.deepEqual(r,expected.get(id),'Persisted receipt '+id);}
- await assert.rejects(()=>client.request({op:'submit',batch:{commandId:'readback-new',epoch:o.epoch,session:o.session,task:'phase03-actions',revision:1,actor:'builder-1',surface:'nauvis',grant:{id:'test-area',generation:1},deadline:Number(o.tick)+100,steps:[{kind:'walk',position:{x:0,y:0}}]}}),/executor_disarmed/);
+ await assert.rejects(()=>client.request({op:'submit',batch:{commandId:'readback-new',epoch:o.epoch,session:o.session,task:'phase03-actions',revision:1,actor:'builder-1',surface:'nauvis',grants: diagnosticGrants(1),deadline:Number(o.tick)+100,steps:[{kind:'walk',position:{x:0,y:0}}]}}),/executor_disarmed/);
  await writeFile(path.join(loadDir,'result.json'),JSON.stringify({passed:true,receipts:completed.commands.length,loadedReadOnly:true},null,2));console.log(JSON.stringify({passed:true,receipts:completed.commands.length,loadDir}));
 }finally{rcon?.close();child.kill();closeSync(fd);await writeFile(path.join(loadDir,'events.jsonl'),trace.map(e=>JSON.stringify(e)).join('\n')+'\n');}

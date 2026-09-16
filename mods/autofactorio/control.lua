@@ -1,6 +1,7 @@
 local C=require("common")
 local A=require("actions")
 local L=require("lifecycle")
+local F=require("ownership")
 local function setup()
  if remote.interfaces.freeplay then
   remote.call("freeplay","set_skip_intro",true);remote.call("freeplay","set_disable_crashsite",true);remote.call("freeplay","set_created_items",{})
@@ -12,6 +13,7 @@ local function setup()
  surface.always_day=true
  storage.af={epoch="phase03",session="local-test",actors={},orders={},active={},paths={},protected={}}
  L.init()
+ F.init()
  local function fixture(name,pos)
   local e=surface.create_entity{name=name,position=pos,force="player"};storage.af.protected[e.unit_number or (e.name..":"..e.position.x..":"..e.position.y)]=true;return e
  end
@@ -41,14 +43,13 @@ local function receipt(o)
  return {commandId=o.commandId,status=o.status,reason=o.reason,acceptedTick=o.acceptedTick,endedTick=o.endedTick,completed=o.completed,unexecuted=o.unexecuted,steps=o.steps}
 end
 local function authority(b)
- C.check(b.epoch==storage.af.epoch and b.session==storage.af.session,"stale_epoch_or_session")
- C.check(b.task=="phase03-actions" and b.revision==1 and b.grant.id=="test-area" and b.grant.generation==storage.af.control.generation,"invalid_test_grant")
- C.check(b.surface=="nauvis","surface_not_assigned");local p=C.actor(b.actor);C.check(p.surface.name==b.surface,"actor_surface_changed");return p
+ return F.authority(b)
 end
 L.bind(done,receipt)
+F.bind(done,receipt)
 local function submit(b)
- C.keys(b,{"commandId","epoch","session","task","revision","actor","surface","grant","deadline","steps"});for _,key in ipairs({"commandId","epoch","session","task","actor","surface"}) do C.id(b[key]) end
- C.keys(b.grant,{"id","generation"});C.integer(b.revision,1,2147483647);C.integer(b.grant.generation,1,2147483647);C.integer(b.deadline,1,2147483647)
+ C.keys(b,{"commandId","epoch","session","task","revision","actor","surface","grants","deadline","steps"});for _,key in ipairs({"commandId","epoch","session","task","actor","surface"}) do C.id(b[key]) end
+ C.integer(b.revision,1,2147483647);C.integer(b.deadline,1,2147483647);C.check(type(b.grants)=="table" and #b.grants>=3 and #b.grants<=32,"incomplete_reservation_set")
  C.check(type(b.steps)=="table" and #b.steps>=1 and #b.steps<=100,"batch_size");for k,s in pairs(b.steps) do C.integer(k,1,#b.steps);A.validate(s) end
  C.check(b.epoch==storage.af.epoch and b.session==storage.af.session,"stale_epoch_or_session")
  local existing=storage.af.orders[b.commandId]
@@ -81,7 +82,11 @@ script.on_event(defines.events.on_script_path_request_finished,function(e)
  local id=storage.af.paths[e.id];storage.af.paths[e.id]=nil;local o=id and storage.af.orders[id]
  if not o or not o.work or o.work.request~=e.id then return end
  local w=o.work;if not e.path then w.pathFailed=true;return end
- w.path={};for _,v in ipairs(e.path) do w.path[#w.path+1]=v.position end;w.waypoint=1
+ w.path={};for _,v in ipairs(e.path) do
+  local ok=pcall(function()F.movement(o.batch,C.actor(o.batch.actor),v.position,0)end)
+  if not ok then w.pathFailed=true;return end
+  w.path[#w.path+1]=v.position
+ end;w.waypoint=1
 end)
 script.on_event(defines.events.on_player_mined_item,function(e)
  local id=storage.af.active["builder-"..e.player_index];local o=id and storage.af.orders[id]
@@ -119,6 +124,7 @@ end
 remote.add_interface("autofactorio_v1",{rpc=function(payload)return encoded(gameplay,payload)end})
 -- Operator-only diagnostics are never exposed through the gameplay validator/gateway.
 remote.add_interface("autofactorio_operator_v1",{rpc=function(payload)return encoded(function(r)
+ if r.op=="ownership" then C.keys(r,{"op","control"});return {ok=true,ack=F.control(r.control)} end
  if r.op~="save" and r.op~="screenshot" then return L.rpc(r) end
  C.keys(r,{"op","name"});C.id(r.name)
  if r.op=="screenshot" then game.take_screenshot{player=game.players[1],position={0,0},resolution={1280,800},zoom=1,show_entity_info=true,path=r.name..".png"};return {ok=true}

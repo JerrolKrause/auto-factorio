@@ -1,3 +1,4 @@
+import { diagnosticGrants } from '@autofactorio/contracts';
 import { describe, it, expect } from 'vitest';
 import net from 'node:net';
 import { validateRequest, validateReceipt, requirements } from '@autofactorio/contracts';
@@ -5,7 +6,7 @@ import type { Batch, RecipeFacts } from '@autofactorio/contracts';
 import { Rcon, wrapper } from '../packages/factorio/src/rcon.js';
 import { GameTools } from '../packages/tools/src/game.js';
 import { GameClient } from '../packages/factorio/src/client.js';
-const batch: Batch={commandId:'c1',epoch:'phase03',session:'local-test',task:'phase03-actions',revision:1,actor:'builder-1',surface:'nauvis',grant:{id:'test-area',generation:1},deadline:1000,steps:[{kind:'walk',position:{x:1,y:2}}]};
+const batch: Batch={commandId:'c1',epoch:'phase03',session:'local-test',task:'phase03-actions',revision:1,actor:'builder-1',surface:'nauvis',grants: diagnosticGrants(1),deadline:1000,steps:[{kind:'walk',position:{x:1,y:2}}]};
 const recipe: RecipeFacts={name:'iron-gear-wheel',energy:0.5,category:'crafting',ingredients:[{type:'item',name:'iron-plate',amount:2}],products:[{type:'item',name:'iron-gear-wheel',amount:1}]};
 describe('structured game boundary',()=>{
  it('validates a bounded grant-bearing batch',()=>{expect(validateRequest({op:'submit',batch})).toEqual({op:'submit',batch});});

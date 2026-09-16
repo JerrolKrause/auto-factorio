@@ -1,4 +1,5 @@
 local C=require("common")
+local F=require("ownership")
 local M={}
 function M.validate(s)
  C.check(type(s)=="table","invalid_step")
@@ -28,6 +29,9 @@ local function move(p,o,s)
  if not w.path then C.check(game.tick-w.startedTick<300,"path_timeout");return false end
  while w.waypoint<=#w.path and C.distance(p.position,w.path[w.waypoint])<0.2 do w.waypoint=w.waypoint+1 end
  local goal=w.path[w.waypoint] or s.position; C.pos(goal)
+ -- Engine movement happens between Lua ticks. Reserve the entire possible next-tick sweep.
+ F.movement(o.batch,p,p.position,p.character_running_speed+1/256)
+ F.movement(o.batch,p,goal,0)
  if game.tick-w.check>=60 then C.check(C.distance(p.position,w.last)>0.02,"movement_blocked");w.last=p.position;w.check=game.tick end
  local angle=math.atan2(goal.y-p.position.y,goal.x-p.position.x);local direction=(math.floor(angle/(math.pi/4)+0.5)*2+4)%16
  p.walking_state={walking=true,direction=direction};return false
@@ -41,6 +45,7 @@ function M.tick(p,o,s)
   C.check(not p.cursor_stack.valid_for_read,"cursor_busy");local inv=p.get_main_inventory();C.check(inv.get_item_count{name=s.item,quality=s.quality}>=1,"insufficient_inventory")
   -- Manual building permits fast replacement; this bounded action must never replace an occupant.
   local box=proto.place_result.collision_box;local radius=math.max(math.abs(box.left_top.x),math.abs(box.left_top.y),math.abs(box.right_bottom.x),math.abs(box.right_bottom.y))
+  F.box(o.batch,{left_top={x=s.position.x-radius,y=s.position.y-radius},right_bottom={x=s.position.x+radius,y=s.position.y+radius}})
   for _,e in pairs(p.surface.find_entities_filtered{area={{s.position.x-radius,s.position.y-radius},{s.position.x+radius,s.position.y+radius}}}) do
    C.check(e.type=="resource" or e.type=="item-entity", "occupied_or_collision")
   end
@@ -55,14 +60,16 @@ function M.tick(p,o,s)
   return not p.crafting_queue or #p.crafting_queue==0
  elseif s.kind=="mine" then
   if w.mined then M.neutral(p,false);return true end
-  local e=entity(p,s);C.check(e.minable,"not_minable");p.update_selected_entity(e.position);C.check(p.selected==e,"selection_blocked");p.mining_state={mining=true,position=e.position};return false
- elseif s.kind=="rotate" then local e=entity(p,s);C.check(e.rotate{by_player=p},"rotation_failed");return true
+  local e=entity(p,s);F.box(o.batch,e.bounding_box);C.check(e.minable,"not_minable");p.update_selected_entity(e.position);C.check(p.selected==e,"selection_blocked");p.mining_state={mining=true,position=e.position};return false
+ elseif s.kind=="rotate" then local e=entity(p,s);local box=e.prototype.collision_box;local radius=math.max(math.abs(box.left_top.x),math.abs(box.left_top.y),math.abs(box.right_bottom.x),math.abs(box.right_bottom.y));F.box(o.batch,{left_top={x=e.position.x-radius,y=e.position.y-radius},right_bottom={x=e.position.x+radius,y=e.position.y+radius}});C.check(e.rotate{by_player=p},"rotation_failed");return true
  elseif s.kind=="recipe" then
   local e=entity(p,s);C.check(e.type=="assembling-machine","not_assembler");local recipe=p.force.recipes[s.recipe];C.check(recipe and recipe.enabled,"recipe_unavailable")
+  F.box(o.batch,e.bounding_box)
   local returned=e.set_recipe(s.recipe,"normal");for _,i in pairs(returned) do local n=p.insert(i);if n<i.count then p.surface.spill_item_stack{position=p.position,stack={name=i.name,quality=i.quality,count=i.count-n},enable_looted=true,force=p.force} end end
   C.check(e.get_recipe() and e.get_recipe().name==s.recipe,"recipe_failed");return true
  elseif s.kind=="transfer" then
   local e=entity(p,s);local inv=C.entity_inventory(e,s.inventory);C.check(inv,"unsupported_inventory");local main=p.get_main_inventory();local source=s.flow=="put" and main or inv;local dest=s.flow=="put" and inv or main
+  F.box(o.batch,e.bounding_box)
   C.check(source.get_item_count(s.item)>=s.item.count,"insufficient_inventory");C.check(dest.get_insertable_count(s.item)>=s.item.count,"destination_full")
   local n=source.remove(s.item);local inserted=dest.insert{name=s.item.name,quality=s.item.quality,count=n};if inserted<n then C.check(source.insert{name=s.item.name,quality=s.item.quality,count=n-inserted}==n-inserted,"transfer_refund_failed") end;C.check(inserted==s.item.count,"partial_transfer");return true
  end

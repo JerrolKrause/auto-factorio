@@ -10,7 +10,7 @@ export type Step =
   | { kind: 'craft'; recipe: string; count: number };
 export interface Batch {
   commandId: string; epoch: string; session: string; task: string; revision: number;
-  actor: string; surface: string; grant: { id: string; generation: number };
+  actor: string; surface: string; grants: import('./ownership.js').Grant[];
   deadline: number; steps: Step[];
 }
 export interface Receipt {
@@ -39,9 +39,10 @@ export function validateRequest(v: unknown): GameRequest {
     case 'receipt': keys(r,['op','commandId']); name(r.commandId); break;
     case 'cancel': keys(r,['op','commandId','epoch','session']); name(r.commandId); name(r.epoch); name(r.session); break;
     case 'submit': {
-      keys(r,['op','batch']); const b=record(r.batch); keys(b,['commandId','epoch','session','task','revision','actor','surface','grant','deadline','steps']);
+      keys(r,['op','batch']); const b=record(r.batch); keys(b,['commandId','epoch','session','task','revision','actor','surface','grants','deadline','steps']);
       for(const k of ['commandId','epoch','session','task','actor','surface'])name(b[k]); integer(b.revision,1,2147483647); integer(b.deadline,1,2147483647);
-      const g=record(b.grant);keys(g,['id','generation']);name(g.id);integer(g.generation,1,2147483647);
+      if(!Array.isArray(b.grants)||b.grants.length<3||b.grants.length>32)throw new Error('Incomplete reservation set');
+      const ids=new Set();for(const value of b.grants){const g=record(value);keys(g,['id','generation']);name(g.id);integer(g.generation,1,2147483647);if(ids.has(g.id))throw new Error('Duplicate reservation');ids.add(g.id);}
       if(!Array.isArray(b.steps)||b.steps.length<1||b.steps.length>100)throw new Error('Batch must have 1-100 steps');
       for(const value of b.steps){const s=record(value); switch(s.kind){
         case 'walk':keys(s,['kind','position']);position(s.position);break;

@@ -1,3 +1,4 @@
+import { diagnosticAssignment } from '@autofactorio/contracts';
 import assert from 'node:assert/strict';
 import { appendFileSync, writeFileSync } from 'node:fs';
 import { readFile, writeFile, mkdtemp, mkdir } from 'node:fs/promises';
@@ -22,14 +23,14 @@ const evidence = worker ? argument('--evidence', '') : await mkdtemp(path.join(p
 const data = path.join(evidence, 'runtime'); const run = path.basename(evidence); const checks: string[] = [];
 const sink = (event: unknown) => appendFileSync(path.join(evidence, worker ? 'worker-events.jsonl' : 'events.jsonl'), JSON.stringify(event) + '\n');
 const pass = (label: string) => { checks.push(label); sink({ kind: 'probe/pass', label }); console.log(label); };
-const mods = ['control.lua', 'lifecycle.lua', 'actions.lua', 'common.lua', 'info.json'];
+const mods = ['control.lua', 'lifecycle.lua', 'ownership.lua', 'actions.lua', 'common.lua', 'info.json'];
 const hashes = Object.fromEntries(await Promise.all(mods.map(async name => [name, sha256(await readFile('mods/autofactorio/' + name))])));
 for (const name of mods) assert.equal(sha256(await readFile(path.join(profile.mods, 'autofactorio_0.1.0', name))), hashes[name], 'Live mod source mismatch');
 const modHash = sha256(Buffer.from(JSON.stringify(hashes)));
 let activeProfile: GameProfile = profile; let port = await waitForServer(profile); let control: ControlState;
 let game!: GameClient; let life!: Lifecycle; let runtime: DurableRuntime | undefined;
 const actor = (w: Record<string, unknown>) => record(record(w.actors)['builder-1']);
-const batch = (id: string, steps: Step[]): Batch => ({ commandId: id, epoch: control.epoch, session: control.session, task: 'phase03-actions', revision: 1, actor: 'builder-1', surface: 'nauvis', grant: { id: 'test-area', generation: control.generation }, deadline: control.tick + 36000, steps });
+const batch = (id: string, steps: Step[]): Batch => ({ commandId: id, epoch: control.epoch, session: control.session, task: 'phase03-actions', revision: assignment.revision, actor: 'builder-1', surface: 'nauvis', grants: assignment.resources.map(r => r.grant), deadline: control.tick + 36000, steps });
 const place: Step[] = [{ kind: 'place', item: 'wooden-chest', quality: 'normal', direction: 0, position: { x: 2.5, y: 2.5 } }];
 const observe = () => game.request(observeRequest);
 async function finish(id: string) {
@@ -52,13 +53,20 @@ function connect(crash = false) {
   game = crash ? new CrashAfterEffectClient(port, sink) : new GameClient(port, sink); life = new Lifecycle(port, game, sink);
   runtime = new DurableRuntime(data, run, 'initial', game, life, [activeProfile.password]);
 }
+let assignment: import('@autofactorio/contracts').Assignment;
+async function grant() {
+  const prior = runtime!.recovery().tasks.find(t => t.id === 'phase03-actions')!;
+  const revision = prior.revision + 1; runtime!.task({ ...prior, revision });
+  const next = runtime!.ownership.acquire({ id: 'diagnostic-' + revision, owner: 'engineer', task: prior.id, revision, actor: 'builder-1', resources: diagnosticAssignment(1).resources.map(r => r.resource) });
+  assignment = await runtime!.ownership.flush(next.id);
+}
 let failure: string | null = null; let manifestPath: string | undefined; let restoredDirectory: string | undefined;
 try {
   await port.command('/silent-command rcon.print("AutoFactorio phase05")'); await port.command('/silent-command rcon.print("AutoFactorio phase05")');
   connect(worker);
   if (worker) {
     runtime!.createBudget(PROBE_CAPS, () => performance.now(), () => {});
-    control = await runtime!.recover(); control = await runtime!.resume(control);
+    control = await runtime!.recover(); control = await runtime!.resume(control); await grant();
     const b = batch('effect-before-ack', place); runtime!.intent(b); await runtime!.dispatch(b.commandId); throw new Error('Crash point did not exit');
   }
   await writeFile(path.join(evidence, 'source-manifest.json'), JSON.stringify({ mods: hashes, sources: Object.fromEntries(await Promise.all(['scripts/game-durable-probe.ts', 'apps/runtime/durable-runtime.ts', 'packages/storage/src/journal.ts', 'packages/storage/src/artifacts.ts', 'packages/core/execution/durable.ts', 'packages/codex/src/budget.ts'].map(async file => [file, sha256(await readFile(file))]))) }, null, 2));
@@ -69,7 +77,7 @@ try {
   runtime!.task({ id: 'phase03-actions', goal: 'place one chest', parent: null, owner: 'engineer', dependencies: [], scope: { surface: 'nauvis' }, resources: { 'wooden-chest': 1 }, successCriteria: ['one entity and one consumed item'], deadline: null, revision: 1, committedPlan: 'Place at 2.5,2.5 after reconciliation', status: 'pending', evidence: [] });
   runtime!.record('coordination/recorded', [{ entity: 'agents', id: 'engineer', value: { id: 'engineer', role: 'engineer', assignment: 'phase03-actions', session: null, status: 'waiting' } }, { entity: 'messages', id: 'assignment', value: { sender: 'foreman', recipient: 'engineer', task: 'phase03-actions', intent: 'assignment', content: 'place one chest', evidence: [] } }]);
   const budget = runtime!.createBudget(PROBE_CAPS, () => performance.now(), () => {}); const turn = budget.admit('synthetic-accounting'); budget.attempt(turn.id); budget.usage('synthetic-session', 42); budget.finish(turn.id); // Fake usage only, no inference.
-  control = await runtime!.recover(); control = await runtime!.resume(control);
+  control = await runtime!.recover(); control = await runtime!.resume(control); await grant();
   const before = await observe(); const inventoryBefore = actor(before).inventory;
   runtime!.observation({ tick: before.tick, actors: before.actors, truncated: false }, before, { kind: 'restricted', agents: ['engineer'], roles: [], tasks: [] });
   runtime!.intent(batch('unsent-at-checkpoint', place));
@@ -104,7 +112,7 @@ try {
   assert.equal(runtime!.journal.get<Command>(run, 'commands', 'effect-before-ack')?.state, 'rolled_back');
   assert.equal((await observe()).entities instanceof Array, true); assert.equal(((await observe()).entities as Record<string, unknown>[]).filter(e => e.name === 'wooden-chest').length, 0); pass('Verified managed load retires post-checkpoint receipts; no saved intent replays behind the barrier');
   runtime!.createBudget(PROBE_CAPS, () => performance.now(), () => {});
-  control = await runtime!.resume(control); const fresh = batch('fresh-after-restore', place); runtime!.intent(fresh); await runtime!.dispatch(fresh.commandId); assert.equal((await finish(fresh.commandId)).status, 'completed');
+  control = await runtime!.resume(control); await grant(); const fresh = batch('fresh-after-restore', place); runtime!.intent(fresh); await runtime!.dispatch(fresh.commandId); assert.equal((await finish(fresh.commandId)).status, 'completed');
   control = await runtime!.recover(); barrier(control); assert.equal(((await observe()).entities as Record<string, unknown>[]).filter(e => e.name === 'wooden-chest').length, 1); pass('Explicit re-arm plus fresh intent creates exactly one chest in the restored world; final world held');
   const finalRecovery = runtime!.recovery(); assert.equal(finalRecovery.complete, true); writeFileSync(path.join(evidence, 'recovered-state.json'), JSON.stringify(finalRecovery, null, 2));
   // Check the self-contained backup after its source runtime has accumulated later history.

@@ -6,6 +6,7 @@ import type { Batch, RunManifest, TaskRecord } from '@autofactorio/contracts';
 import { Budget } from '../../packages/codex/src/budget.js';
 import type { BudgetState, Caps, StopCallback } from '../../packages/codex/src/budget.js';
 import { DurableExecution } from '../../packages/core/execution/durable.js';
+import { Ownership } from '../../packages/core/execution/ownership.js';
 import type { Change, EventContext, Visibility } from '../../packages/core/execution/durable.js';
 import { SqliteJournal } from '../../packages/storage/src/journal.js';
 import { Artifacts, redactor } from '../../packages/storage/src/artifacts.js';
@@ -20,17 +21,23 @@ export class DurableRuntime {
   readonly journal: SqliteJournal;
   readonly artifacts: Artifacts;
   readonly execution: DurableExecution;
+  readonly ownership: Ownership;
+  private session = '';
   private ready = false;
   private active = false;
   private budget?: Budget;
+  /** Additional synchronous scheduler admission check, including the post-inspection send boundary. */
+  admissionGuard: ((batch: Batch) => void) | undefined;
   constructor(readonly directory: string, readonly run: string, private epoch: string, private game: GameClient, private lifecycle: Lifecycle, secrets: string[] = []) {
     mkdirSync(directory, { recursive: true });
     const sanitize = redactor(secrets);
     this.journal = new SqliteJournal(path.join(directory, 'runtime.sqlite'), sanitize);
     this.artifacts = new Artifacts(path.join(directory, 'artifacts'), sanitize);
     this.game.admission = false;
+    this.ownership = new Ownership(this.journal, () => this.context(), { control: request => this.lifecycle.ownership(request) }, () => this.session);
     this.execution = new DurableExecution(this.journal, () => this.context(), {
       inspect: () => this.lifecycle.inspect(),
+      authorize: batch => this.authorize(batch),
       submit: async batch => {
         const result = await this.game.request({ op: 'submit', batch });
         const receipt = validateReceipt(result.receipt); if (!receipt) throw new Error('Missing command acknowledgement'); return receipt;
@@ -43,7 +50,19 @@ export class DurableRuntime {
     if (this.journal.get(this.run, 'runs', this.run)) throw new Error('Run already exists');
     this.record('run/created', [{ entity: 'runs', id: this.run, value: { ...manifest } }]);
   }
-  task(task: TaskRecord): void { this.record('task/committed', [{ entity: 'tasks', id: task.id, value: { ...task } }]); }
+  task(task: TaskRecord): void {
+    const prior = this.journal.get<TaskRecord>(this.run, 'tasks', task.id);
+    if (prior && task.revision <= prior.revision) throw new Error('Task revision must increase');
+    for (const r of this.ownership.list().filter(r => r.task === task.id && r.state !== 'released')) this.ownership.revoke(r.id);
+    this.record('task/committed', [{ entity: 'tasks', id: task.id, value: { ...task } }]);
+  }
+  private authorize(batch: Batch): void {
+    this.checkBudget();
+    this.admissionGuard?.(batch);
+    const task = this.journal.get<TaskRecord>(this.run, 'tasks', batch.task);
+    if (!task?.owner || task.revision !== batch.revision || ['cancelled', 'superseded', 'succeeded', 'failed'].includes(task.status)) throw new Error('Task admission closed');
+    this.ownership.authorize(batch, task.owner);
+  }
   createBudget(caps: Caps, now: () => number, stop: StopCallback): Budget {
     if (this.budget) throw new Error('One roster budget per runtime');
     const saved = this.journal.get<SavedBudget>(this.run, 'budgets', this.run);
@@ -105,6 +124,7 @@ export class DurableRuntime {
       this.ready = false; this.game.admission = false;
       const control = await this.hold();
       this.epoch = control.epoch;
+      this.session = control.session;
       await this.execution.reconcile(); this.syncClientUncertainty();
       if (!this.recovery().complete) throw new Error('Incomplete evidence blocks recovery');
       if (this.execution.pending().some(c => c.state === 'unknown' || c.state === 'sending')) throw new Error('Unknown effects require managed checkpoint reconciliation');
@@ -118,8 +138,10 @@ export class DurableRuntime {
       if (!this.recovery().complete) throw new Error('Incomplete evidence blocks resume');
       await this.execution.reconcile();
       if (this.execution.pending().some(c => c.state === 'unknown' || c.state === 'sending')) throw new Error('Unknown effects block resume');
-      const reconciled = await this.lifecycle.reconcile(control);
+      const reconciled = await this.lifecycle.reconcile(control, []);
       this.epoch = reconciled.epoch;
+      this.session = reconciled.session;
+      this.ownership.restoreHeld();
       // Reconcile cancels suspended work and changes epochs. Retire all old intents against its held ledger.
       barrier(reconciled); this.execution.checkpointLedger(reconciled); this.syncClientUncertainty();
       const armed = await this.lifecycle.arm(reconciled);
@@ -127,7 +149,7 @@ export class DurableRuntime {
       await this.execution.reconcile(); this.ready = true; return armed;
     });
   }
-  intent(batch: Batch): void { validateRequest({ op: 'submit', batch }); if (!this.ready) throw new Error('Runtime admission closed'); this.execution.intent(batch); }
+  intent(batch: Batch): void { validateRequest({ op: 'submit', batch }); if (!this.ready) throw new Error('Runtime admission closed'); this.authorize(batch); this.execution.intent(batch); }
   async dispatch(id: string) {
     return this.exclusive(async () => {
       this.checkBudget();
@@ -173,6 +195,7 @@ export class DurableRuntime {
       const file = path.join(dir, name + '.json'); writeFileSync(file, manifestEvidence.bytes); writeFileSync(path.join(dir, m.save), saveEvidence.bytes);
       const validated = await validateCheckpoint(file, modHash); verifyLoaded(validated, loaded, world);
       this.epoch = loaded.epoch; this.execution.checkpointLedger(loaded); this.syncClientUncertainty();
+      this.session = loaded.session; this.ownership.restoreHeld();
       this.record('checkpoint/restored-held', [{ entity: 'checkpoints', id: name, value: { ...checkpoint, restoredHeld: true } }], { kind: 'operator' }, loaded.tick);
     });
   }

@@ -1,7 +1,7 @@
 import type { Batch, Receipt } from '@autofactorio/contracts';
 
 export type Visibility = { kind: 'operator' } | { kind: 'shared' } | { kind: 'restricted'; agents: string[]; roles: string[]; tasks: string[] };
-export type Entity = 'runs' | 'agents' | 'tasks' | 'messages' | 'observations' | 'commands' | 'measurements' | 'interventions' | 'checkpoints' | 'budgets' | 'artifacts';
+export type Entity = 'runs' | 'agents' | 'tasks' | 'messages' | 'observations' | 'commands' | 'measurements' | 'interventions' | 'checkpoints' | 'budgets' | 'artifacts' | 'reservations' | 'agentHistory';
 export interface EventContext {
   run: string; epoch: string; wallTime: string; gameTick: number | null; actor: string | null; task: string | null;
   causation: string | null; correlation: string | null; visibility: Visibility;
@@ -18,7 +18,7 @@ export interface Command {
   receipt: Receipt | null; receiptEpoch: string | null; reason: string | null;
 }
 export interface WorldReceipts { epoch: string; session: string; ledger: Record<string, Receipt> }
-export interface ExecutionPort { inspect(): Promise<WorldReceipts>; submit(batch: Batch): Promise<Receipt> }
+export interface ExecutionPort { inspect(): Promise<WorldReceipts>; authorize?(batch: Batch): void; submit(batch: Batch): Promise<Receipt> }
 /** One conservative execution lane now; ownership scheduling belongs to phase 06/07. */
 export class DurableExecution {
   private reconciled = false;
@@ -69,6 +69,9 @@ export class DurableExecution {
     try {
       const world = await this.game.inspect();
       if (command.batch.epoch !== world.epoch || command.batch.session !== world.session) throw new Error('Stale command requires reconciliation');
+      // Inspection yielded: revocation may have retired this still-unsent intent in the meantime.
+      if (this.journal.get<Command>(this.context().run, 'commands', id)?.state !== 'pending') throw new Error('Command retired before dispatch');
+      this.game.authorize?.(command.batch);
       // This transaction commits the outbox's send boundary BEFORE any transport effect.
       this.save({ ...command, state: 'sending' }, 'command/dispatching');
       const receipt = await this.game.submit(command.batch);
