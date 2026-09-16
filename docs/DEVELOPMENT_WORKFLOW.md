@@ -11,7 +11,7 @@ corepack pnpm verify --game
 corepack pnpm verify --pause
 ```
 
-`verify` runs build, lint, tests and documentation checks sequentially. `--game` adds a fresh headless launch/smoke and cleanup of that exact profile. `--pause` adds the visible phase 04 launcher/probe only after the earlier chain and cleanup pass. No later step starts after a failed exit. Existing observers must be reused or explicitly stopped by project profile before a fresh visible launch. No command starts a model trial.
+`verify` runs TypeScript/dashboard builds, lint, tests and documentation checks sequentially. `--game` adds a fresh headless launch/smoke and cleanup of that exact profile. `--pause` adds the visible phase 04 launcher/probe only after the earlier chain and cleanup pass. No later step starts after a failed exit. Existing observers must be reused or explicitly stopped by project profile before a fresh visible launch. No command starts a model trial.
 
 Each invocation creates `.runtime/verification/check-*/`. `results.json` records command/arguments, exit, elapsed time, log path and skipped steps. Full output stays in per-check logs; console output is a concise status stream. Inspect the failed log before selecting another run. Cleanup has its own result; `summary.json` records the aggregate software/smoke, cleanup and optional visible outcome. TypeScript uses `noEmitOnError`; previously emitted JavaScript can still exist after a failed build, so never bypass the failed gate by launching `dist` manually.
 
@@ -27,7 +27,13 @@ In this checkout, `pnpm test -- <test paths>` forwarded an extra `--` and ran th
 
 ## Review and closeout
 
+Before completion, map the task's acceptance criteria to executed checks and observed outcomes on the final relevant source. Select software, browser and real-game checks according to the changed behavior; the standard runner does not cover every phase criterion. For documentation-only changes, documentation/skill validation can be sufficient. Mark missing required coverage as unverified and keep the task incomplete.
+
+Use the [verification author workflow](../.agents/skills/verify-change/author-workflow.md) to delegate routine milestone checks with a small fresh-context packet. The verifier executes checks and reports evidence; the main author chooses coverage, fixes failures and owns completion. This is separate from independent code review.
+
 When the completion review is required, load the [author workflow](../.agents/skills/change-audit/author-workflow.md) for delegation, adjudication, console reporting and closeout. The reviewer follows its separate read-only procedure.
+
+Verifier/reviewer exchanges use the shared [agent handoff contracts](AGENT_CONTRACTS.md). Validate assignments before dispatch and returned results before relying on them; use the readiness check when closing a gate. Structural checks catch omissions and contradictions, while the author assesses evidence quality and required coverage. Keep packets/results and full logs in the task's ignored evidence directory.
 
 ## Edit narrowly with UTF-8
 

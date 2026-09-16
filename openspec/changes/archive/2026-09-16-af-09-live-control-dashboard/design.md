@@ -1,6 +1,6 @@
 ## Context
 
-See [proposal](proposal.md) for motivation and [capability spec](specs/live-control-dashboard/spec.md) for behavior. The baseline is documentation-only at planning revision `1cdff32`; no proposed runtime package exists yet. Source reading for this phase: ARCHITECTURE §§2, 8–9; REQUIREMENTS: Observability definition. Prior phases supply the interfaces described below only after their gates pass.
+See [proposal](proposal.md) for motivation and [capability spec](specs/live-control-dashboard/spec.md) for behavior. This packet was originally written against planning revision `1cdff32`. At implementation entry (`c3d4add`), phases 01–08 are implemented and archived; the existing runtime, journal, coordinator, ownership and lifecycle interfaces are reused. Source reading for this phase: ARCHITECTURE §§2, 8–9; REQUIREMENTS: Observability definition. Their recorded prerequisite gates have passed. [Decision 011](../../../../docs/decisions/011-live-control-dashboard.md) records the concrete control, replay, intervention and telemetry boundaries.
 
 ## Goals / Non-Goals
 
@@ -22,7 +22,7 @@ SSE gaps/duplicates → cursor reconciliation tests. Advice racing an active bat
 
 ## Migration Plan
 
-Prerequisite: `af-08-bounded-context` implementation gate recorded passed in the handoff. Read the [implementation guide](../../../docs/IMPLEMENTATION_GUIDE.md) and only this change's artifacts plus the listed source sections. Implement its tasks; do not begin the next change. Record interface decisions and exact executed checks in the handoff. If a live gate fails, retain the evidence and keep the relevant task open. Roll back software through a reviewed change and recover only from validated disarmed game checkpoints; never reset personal saves or discard user work.
+Prerequisite: `af-08-bounded-context` implementation gate recorded passed in the handoff. Read the [implementation guide](../../../../docs/IMPLEMENTATION_GUIDE.md) and only this change's artifacts plus the listed source sections. Implement its tasks; do not begin the next change. Record interface decisions and exact executed checks in the handoff. If a live gate fails, retain the evidence and keep the relevant task open. Roll back software through a reviewed change and recover only from validated disarmed game checkpoints; never reset personal saves or discard user work.
 
 ## Exit Gate
 

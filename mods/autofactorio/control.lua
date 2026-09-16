@@ -22,6 +22,11 @@ local function setup()
  surface.create_entity{name="iron-ore",position={-3.5,2.5},amount=100,force="neutral"}
 end
 script.on_init(setup)
+local E=require('edits')
+for _,entry in ipairs({{defines.events.on_built_entity,'build'},{defines.events.on_player_mined_entity,'mine'},{defines.events.on_player_rotated_entity,'rotate'},{defines.events.on_entity_settings_pasted,'settings'},{defines.events.on_player_built_tile,'tile-build'},{defines.events.on_player_mined_tile,'tile-mine'}}) do
+ local kind=entry[2]
+ script.on_event(entry[1],function(event) E.record(event,kind) end)
+end
 script.on_event(defines.events.on_player_created,function(event)
  local p=game.get_player(event.player_index);if not p.character then p.set_controller{type=defines.controllers.god};p.create_character() end
  p.teleport({0,0},"nauvis");p.force.research_all_technologies();p.get_main_inventory().clear()
@@ -65,6 +70,8 @@ script.on_event(defines.events.on_tick,function()
  if not L.tick() then return end
  for actor,id in pairs(storage.af.active) do
   local o=storage.af.orders[id]
+  -- Synchronous player build/rotation events can identify the executor that caused them.
+  storage.af.executing=id
   local ok,result=pcall(function()
    local p=authority(o.batch);C.check(game.tick<=o.batch.deadline,"deadline_exceeded");o.status="running"
    local step=o.batch.steps[o.completed+1]
@@ -75,6 +82,7 @@ script.on_event(defines.events.on_tick,function()
     if o.completed==#o.batch.steps then done(o,"completed") end
    end
   end)
+  storage.af.executing=nil
   if not ok then done(o,o.completed>0 and "partial" or "failed",tostring(result)) end
  end
 end)
@@ -124,6 +132,7 @@ end
 remote.add_interface("autofactorio_v1",{rpc=function(payload)return encoded(gameplay,payload)end})
 -- Operator-only diagnostics are never exposed through the gameplay validator/gateway.
 remote.add_interface("autofactorio_operator_v1",{rpc=function(payload)return encoded(function(r)
+ if r.op=="edits" then C.keys(r,{"op","after"});C.integer(r.after,0,2147483647);return E.read(r.after) end
  if r.op=="ownership" then C.keys(r,{"op","control"});return {ok=true,ack=F.control(r.control)} end
  if r.op~="save" and r.op~="screenshot" then return L.rpc(r) end
  C.keys(r,{"op","name"});C.id(r.name)

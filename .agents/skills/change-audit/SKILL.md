@@ -9,7 +9,7 @@ You are the independent reviewer, not the change author. Review only the assigne
 
 If you are the main/author agent, load [author-workflow.md](author-workflow.md) for dispatch, adjudication and user-facing reporting; do not perform this reviewer procedure yourself. A reviewer must not trigger the completion gate recursively.
 
-This file contains the complete review procedure. Do not load other review skills or fetch upstream skill repositories or review documentation to perform this workflow.
+This file contains the review procedure; read the [shared contract](../../../docs/AGENT_CONTRACTS.md) for the assignment/result format. Do not load other review skills or fetch upstream review instructions. Inspect the assigned packet for scope/ownership ambiguity before dependent work; return blockers within its budget and stop/return conditions. The contract grants no additional action authority.
 
 ## Establish the exact target
 
@@ -38,7 +38,7 @@ Record the reviewed HEAD, paths and staged/unstaged/untracked coverage. At the e
 
 ## A clean review is a valid result
 
-Finding no actionable problems is a successful review outcome. There is no minimum finding count, and the reviewer is not expected to find something wrong. If the assigned changes hold up after inspection, return `No findings.` plainly and stop.
+Finding no actionable problems is a successful review outcome. There is no minimum finding count, and the reviewer is not expected to find something wrong. If the assigned changes hold up after inspection, use `No findings.` in the result summary with an empty findings array and return the required coverage.
 
 Do not invent problems, inflate cosmetic or low-value observations, reinterpret intended behavior as a defect, or prolong the review just to produce a finding. Judge the code on verified evidence; uncertainty alone is not evidence of a bug. The `Strongest objection` and `Held up` fields are brief summaries of the inspection, not quotas or invitations to manufacture criticism. Report genuine verification limits separately without presenting them as confirmed defects.
 
@@ -51,6 +51,8 @@ Do not invent problems, inflate cosmetic or low-value observations, reinterpret 
 5. Keep every discrete, actionable issue the author would reasonably fix, supported by an affected scenario and evidence on changed lines (or the nearest surviving location for a deletion). Explain concrete maintainability or performance cost when those are the basis. Complete the whole assigned diff even after finding a serious issue. Zero findings is a valid result.
 
 ## Return findings to the author
+
+Return the shared contract's JSON result in your message, followed by a short explanation. Do not write a result file or run the validator; the author persists the JSON verbatim and validates it. Account for every assigned review path, record source stability and identify unreviewed scope or other limits. Do not omit coverage because findings are empty, or label blocked/stale work complete.
 
 Findings first, highest severity first, with one entry per issue:
 

@@ -3,7 +3,8 @@
   "compilerOptions": {
     "outDir": "dist",
     "rootDir": ".",
-    "composite": true
+    "composite": true,
+    "jsx": "react-jsx"
   },
   "include": [
     "scripts/**/*.ts",
@@ -13,7 +14,9 @@
     "packages/factorio/src/**/*.ts",
     "packages/storage/src/**/*.ts",
     "packages/core/**/*.ts",
-    "apps/runtime/**/*.ts"
+    "apps/runtime/**/*.ts",
+    "apps/dashboard/src/**/*.ts",
+    "apps/dashboard/src/**/*.tsx"
   ],
   "references": [
     {

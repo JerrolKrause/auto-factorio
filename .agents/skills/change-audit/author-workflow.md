@@ -8,6 +8,8 @@ Resolve known acceptance gaps before submitting a stable implementation candidat
 
 Delegate to a fresh-context subagent using [SKILL.md](SKILL.md), inheriting the authorized model/provider. Pass task intent, relevant specifications, actual checks/results, HEAD and explicit path/hunk boundaries. Supply before-task snapshots when files contain unrelated work.
 
+Write and validate `assignment.json` using the [shared contract](../../../docs/AGENT_CONTRACTS.md) before dispatch (`node scripts/check-agent-contract.mjs <assignment.json> --check-source`). Give it criterion IDs, exact review scope, source fingerprints, evidence references, read-only actions, budget and stop/return conditions. The reviewer returns contract JSON in its message; the author saves it verbatim and runs the validator. Malformed responses need correction, not inferred findings or coverage. Review findings and limits can be structurally valid; use `--check-source --require-ready` only for final clean review after adjudication and re-review.
+
 Review only task-scoped uncommitted changes: staged, unstaged and untracked. Unchanged code is context only. The reviewer is read-only: no edits, staging, commits, application/game/model runs or further delegation. The author executes checks and fixes. Keep all actions within the user's existing authorization.
 
 ## Adjudicate and show findings

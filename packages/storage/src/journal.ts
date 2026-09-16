@@ -58,8 +58,17 @@ export class SqliteJournal implements Journal {
     return row ? JSON.parse(row.json) as T : undefined;
   }
   list<T>(run: string, entity: Entity): T[] { return (this.db.prepare('SELECT json FROM projections WHERE run=? AND entity=? ORDER BY id').all(run, entity) as { json: string }[]).map(r => JSON.parse(r.json) as T); }
+  rows(run: string, entity: Entity): Record<string, unknown>[] {
+    return (this.db.prepare('SELECT id,json FROM projections WHERE run=? AND entity=? ORDER BY id').all(run, entity) as { id: string; json: string }[]).map(r => ({ ...JSON.parse(r.json), id: r.id }));
+  }
   events(): Event[] { return (this.db.prepare('SELECT sequence,json FROM events ORDER BY sequence').all() as { sequence: number; json: string }[]).map(r => ({ ...JSON.parse(r.json), sequence: r.sequence } as Event)); }
   cursor(): number { return Number((this.db.prepare('SELECT COALESCE(MAX(sequence),0) AS n FROM events').get() as { n: number }).n); }
+  /** Bounded durable replay; sequence identities survive browser and runtime replacement. */
+  page(run: string, after: number, limit = 100): Event[] {
+    if (!Number.isSafeInteger(after) || after < 0 || !Number.isSafeInteger(limit) || limit < 1 || limit > 500) throw new Error('Invalid event page');
+    return (this.db.prepare("SELECT sequence,json FROM events WHERE sequence>? AND json_extract(json,'$.run')=? ORDER BY sequence LIMIT ?").all(after, run, limit) as { sequence: number; json: string }[])
+      .map(r => ({ ...JSON.parse(r.json), sequence: r.sequence } as Event));
+  }
   snapshot(): unknown { return { projections: this.db.prepare('SELECT * FROM projections ORDER BY run,entity,id').all(), outbox: this.db.prepare('SELECT * FROM outbox ORDER BY run,id').all() }; }
   rebuild(): void { this.db.transaction(() => { this.db.exec('DELETE FROM projections; DELETE FROM outbox;'); for (const e of this.events()) this.project(e); })(); }
   async backup(file: string, progress?: (info: { totalPages: number; remainingPages: number }) => number): Promise<void> {

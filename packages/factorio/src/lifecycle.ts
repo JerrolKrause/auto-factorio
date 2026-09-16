@@ -54,6 +54,15 @@ export class Lifecycle {
     } catch(error) {this.game.admission=false;this.sink({kind:'control/unconfirmedOrRejected',error:String(error)});throw error;}
   }
   inspect() {return this.rpc({op:'state'});}
+  async edits(after: number): Promise<{ events: { id: string; sequence: number; gameTick: number; detail: unknown; causality: 'human' | 'unknown' }[]; overflow: boolean; coverage: string }> {
+    const result = record(JSON.parse(await this.port.command(wrapper({ op: 'edits', after }, true))));
+    if (result.ok !== true || typeof result.overflow !== 'boolean' || typeof result.coverage !== 'string') throw new Error('Human edit coverage unavailable');
+    const raw = result.events;
+    const events = Array.isArray(raw) ? raw : Object.keys(record(raw)).length === 0 ? [] : null;
+    if (!events || events.length > 100) throw new Error('Invalid human edit page');
+    for (const e of events) { const v = record(e); if (typeof v.id !== 'string' || !Number.isSafeInteger(v.sequence) || !Number.isSafeInteger(v.gameTick) || !['human', 'unknown'].includes(String(v.causality))) throw new Error('Invalid human edit evidence'); }
+    return { events: events as { id: string; sequence: number; gameTick: number; detail: unknown; causality: 'human' | 'unknown' }[], overflow: result.overflow, coverage: result.coverage };
+  }
   async pause(s:ControlState) {
     this.game.admission=false;let paused=await this.rpc({op:'pause',...fence(s)});const revision=paused.revision;
     for(let i=0;i<50;i++){

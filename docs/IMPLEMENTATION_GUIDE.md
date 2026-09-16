@@ -1,6 +1,6 @@
 # AutoFactorio implementation guide
 
-Status: phase 01 implemented, verified and archived on 14 September 2026; phase 02 passed its software/live exit gate on 15 September 2026 and is archived; phase 03 passed its character-action and quiescent receipt-readback gate on 15 September 2026 and is archived; phase 04 passed its real-game pause/restore gate on 15 September 2026 and is archived; phase 05 passed its durable-runtime software/live gate on 15 September 2026 and completed independent review (8/8 tasks, archived with its capability synced to main specs); phase 06 passed its software/live ownership gate on 15 September 2026, with independent review complete (8/8 tasks, archived); phase 07 passed its software/live coordination gate on 16 September 2026 with independent source and documentation review complete (8/8 tasks, archived); phase 08 passed its bounded-context gate on 16 September 2026 with independent review complete (8/8 tasks, archived); phases 09-18 remain planned. See the current handoff for evidence. Use this guide to start one bounded change per fresh Codex conversation in the existing `C:\@Projects\AutoFactorio` workspace.
+Status: phase 01 implemented, verified and archived on 14 September 2026; phase 02 passed its software/live exit gate on 15 September 2026 and is archived; phase 03 passed its character-action and quiescent receipt-readback gate on 15 September 2026 and is archived; phase 04 passed its real-game pause/restore gate on 15 September 2026 and is archived; phase 05 passed its durable-runtime software/live gate on 15 September 2026 and completed independent review (8/8 tasks, archived with its capability synced to main specs); phase 06 passed its software/live ownership gate on 15 September 2026, with independent review complete (8/8 tasks, archived); phase 07 passed its software/live coordination gate on 16 September 2026 with independent source and documentation review complete (8/8 tasks, archived); phase 08 passed its bounded-context gate on 16 September 2026 with independent review complete (8/8 tasks, archived); phase 09 has passed its live dashboard/control gate (8/8 tasks, archived with its capability synced to main specs); phases 10–18 remain planned. See the current handoff for evidence. Use this guide to start one bounded change per fresh Codex conversation in the existing `C:\@Projects\AutoFactorio` workspace.
 
 ## Why 18 changes
 
@@ -183,7 +183,7 @@ Work in C:\@Projects\AutoFactorio. Follow phase 08 of docs/IMPLEMENTATION_GUIDE.
 
 ### 09 — Live dashboard and steering
 
-[Open the change](../openspec/changes/af-09-live-control-dashboard/proposal.md) · [Task checklist](../openspec/changes/af-09-live-control-dashboard/tasks.md)
+[Open the change](../openspec/changes/archive/2026-09-16-af-09-live-control-dashboard/proposal.md) · [Task checklist](../openspec/changes/archive/2026-09-16-af-09-live-control-dashboard/tasks.md)
 
 **Entry:** Phase 08 (`af-08-bounded-context`) has a passed implementation gate in the handoff.
 

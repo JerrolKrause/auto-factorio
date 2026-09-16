@@ -6,7 +6,7 @@ A local Factorio Space Age experimentation environment where specialized AI agen
 
 ## Current status
 
-Phase 01 compatibility foundation is implemented and verified on Windows: a strict TypeScript/pnpm workspace, local diagnostic and SQLite transaction/backup probe. Phase 02 now has a pinned subscription provider, authenticated synthetic MCP gateway and deterministic budget tests; its live two-role handoff, interruption and resume gate passed on 15 September 2026. Phase 03 now passes live legal character actions, cancellation, protected fixtures, lost-response reconciliation and saved receipt readback. Phase 04 passes its real hosted pause/checkpoint/restore/reconcile/re-arm and heartbeat-loss checks. Phase 05 now passes durable event/outbox, evidence integrity, budget recovery, backup and live crash/receipt/managed-restore checks, with all 8 tasks complete and independent review finding no remaining issues. Phase 06 is complete: 8/8 tasks, 157 software tests, 10 live ownership/restore checks and independent review with no remaining findings. Phase 07 has passed its software/live coordination gate: 174 software tests, 5 live checks and independent source review with no remaining findings. Phase 08 is complete: bounded authorized context, 205 software tests, 9 headless smoke checks and independent review with no remaining findings. Scenarios and the dashboard remain future phases. See the [compatibility report](docs/COMPATIBILITY_REPORT.md) and [handoff](docs/IMPLEMENTATION_HANDOFF.md) for exact evidence and limitations.
+Phase 01 compatibility foundation is implemented and verified on Windows: a strict TypeScript/pnpm workspace, local diagnostic and SQLite transaction/backup probe. Phase 02 now has a pinned subscription provider, authenticated synthetic MCP gateway and deterministic budget tests; its live two-role handoff, interruption and resume gate passed on 15 September 2026. Phase 03 now passes live legal character actions, cancellation, protected fixtures, lost-response reconciliation and saved receipt readback. Phase 04 passes its real hosted pause/checkpoint/restore/reconcile/re-arm and heartbeat-loss checks. Phase 05 now passes durable event/outbox, evidence integrity, budget recovery, backup and live crash/receipt/managed-restore checks, with all 8 tasks complete and independent review finding no remaining issues. Phase 06 is complete: 8/8 tasks, 157 software tests, 10 live ownership/restore checks and independent review with no remaining findings. Phase 07 has passed its software/live coordination gate: 174 software tests, 5 live checks and independent source review with no remaining findings. Phase 08 is complete: bounded authorized context, 205 software tests, 9 headless smoke checks and independent review with no remaining findings. Phase 09 adds the local operator dashboard, persisted steering and reconciled controls; its final gate is recorded in the handoff. Scenarios remain future phases. See the [compatibility report](docs/COMPATIBILITY_REPORT.md) and [handoff](docs/IMPLEMENTATION_HANDOFF.md) for exact evidence and limitations.
 
 All eight adversarial review fixes were approved and incorporated on 11 September 2026, covering scoring, fault controls, execution fencing, archive access, budgets and integration gates. The [accepted decision](docs/decisions/001-review-hardening.md) records the changes and required validation.
 
@@ -14,14 +14,14 @@ All eight adversarial review fixes were approved and incorporated on 11 Septembe
 
 The [implementation guide](docs/IMPLEMENTATION_GUIDE.md) provides **18 bounded OpenSpec phases**, each with a proposal, capability spec, design, task checklist and a copyable Codex launch prompt. Start one phase per fresh conversation and follow the recorded prerequisite gates. The [coverage map](docs/SPEC_TRACEABILITY.md) connects the plan to every approved requirement and review correction.
 
-Phase 04 is archived with its pause/restore capability synced to main specs. Phase 05 is complete with 8/8 tasks, passed software/live gates and independent review with no remaining findings. It is archived with its durable-event-runtime capability synced to main specs. Phase 06 is complete with 8/8 tasks, passed software/live gates and independent review with no remaining findings. Phases 06 and 07 are archived with their capabilities synced to main specs; phase 07 has passed its coordination gate. Phase 08 is complete with 8/8 tasks and independent review with no remaining findings; it is archived with its capability synced to main specs. The next bounded phase, only when requested, is:
+Phase 04 is archived with its pause/restore capability synced to main specs. Phase 05 is complete with 8/8 tasks, passed software/live gates and independent review with no remaining findings. It is archived with its durable-event-runtime capability synced to main specs. Phase 06 is complete with 8/8 tasks, passed software/live gates and independent review with no remaining findings. Phases 06 and 07 are archived with their capabilities synced to main specs; phase 07 has passed its coordination gate. Phase 08 is complete with 8/8 tasks and independent review with no remaining findings; it is archived with its capability synced to main specs. Phase 09 is complete with its software, browser and live control gate passed; it is archived with its live-control-dashboard capability synced to main specs. The next bounded phase, only when requested, is:
 
 ```text
-$openspec-apply-change af-09-live-control-dashboard
-Follow phase 09 of docs/IMPLEMENTATION_GUIDE.md, verify its entry gate in docs/IMPLEMENTATION_HANDOFF.md, implement only that change, and stop before phase 10.
+$openspec-apply-change af-10-verification-engine
+Follow phase 10 of docs/IMPLEMENTATION_GUIDE.md, verify its entry gate in docs/IMPLEMENTATION_HANDOFF.md, implement only that change, and stop before phase 11.
 ```
 
-Phase 01 is complete and archived; its compatibility capability is synced to main specs. Phase 02 passed all eight tasks and is archived with its subscription-provider capability synced to main specs. Phase 03 passed all eight tasks and is archived; phase 04 has passed its live pause/restore gate; phase 05 is complete and archived; phase 06 has passed its software/live gate; phase 07 has passed its software/live coordination gate; phase 08 has passed its bounded-context gate with independent review complete; phases 09-18 remain planned.
+Phase 01 is complete and archived; its compatibility capability is synced to main specs. Phase 02 passed all eight tasks and is archived with its subscription-provider capability synced to main specs. Phase 03 passed all eight tasks and is archived; phase 04 has passed its live pause/restore gate; phase 05 is complete and archived; phase 06 has passed its software/live gate; phase 07 has passed its software/live coordination gate; phase 08 has passed its bounded-context gate with independent review complete; phase 09 has passed its live control/dashboard gate; phases 10–18 remain planned.
 
 ## Planned first release
 
@@ -73,6 +73,22 @@ corepack pnpm game:processes  # sanitized project process inventory; build first
 Run the inexpensive chain before a visible game trial. Full per-command logs and exact exit/skipped-step results are retained under `.runtime/verification/check-*/`; `summary.json` includes cleanup and any visible trial. `corepack pnpm verify --pause` adds the visible phase 04 trial after a passing smoke, when its ports and observer slot are free. TypeScript emits no new code for a failed project; never run older `dist` files to bypass a failed build.
 
 The [development workflow](docs/DEVELOPMENT_WORKFLOW.md) covers contextual UTF-8 edits, bounded tool output, the reviewed Windows sandbox fallback, safe process cleanup and stage-based probe recovery. Profile management records the actual graphical process separately from Steam's launcher. Instructions in this workflow do not start another phase or model trial.
+
+## Local control dashboard (phase 09)
+
+```powershell
+corepack.cmd pnpm build
+corepack.cmd pnpm dashboard --fixture
+# Or attach the operator host to an existing dedicated project game:
+corepack.cmd pnpm dashboard --profile-file '.runtime/phase09-reviewed-profile.json'
+corepack.cmd pnpm test:ui
+```
+
+The launcher reports the path of its `dashboard.json`. Open that file's `url` in a browser: its fragment grants access to this local operator session. `--fixture` is a synthetic demonstration with two roles and example tasks. The game option registers the two roles and starts safely paused; it does not start model inference. The page shows role states, dependencies, evidence, production coverage, batch progress, assistance and budgets. Advice is a durable role inbox; interpretation is acknowledged separately through the coordination gateway. Ordinary advice preserves active batches; explicit reprioritization records a human intervention and fences the old revision.
+
+Pause/stop close new admission, interrupt bound sessions and establish acknowledged game cancellation. Resume reconciles and refreshes authority; old task revisions need new plans/grants. Unknown controls and missing telemetry remain explicit. Closing/reopening the tab does not stop the host or reset budgets. `--directory <project .runtime path>` reopens existing run data; the SQLite writer lock rejects concurrent owners. Press Ctrl+C in the host terminal to request a held game state and shut down.
+
+Browser tests use the installed Microsoft Edge. `game:dashboard-probe --profile-file <fresh-visible-profile.json>` tests the HTTP controls in Factorio using synthetic role callbacks, without model inference. Read [Decision 011](docs/decisions/011-live-control-dashboard.md) for security, event replay, edit-detection coverage and the later provider/scenario composition boundary.
 
 ## Provider diagnostic (phase 02)
 

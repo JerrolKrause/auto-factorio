@@ -30,6 +30,10 @@ Use the repository's scripts and lockfile; report only executed results. Before 
 
 Test important failure paths with fakes; verify legal movement, inventory accounting, placement, cancellation and save/load in Factorio itself. Keep model-backed tests deliberate and budgeted. Report exactly what ran, what passed, and what remains unverified.
 
+Work is complete only when task acceptance criteria and required checks pass on the final relevant source and independent findings are resolved. Compilation or unit tests alone do not establish working behavior; missing required verification means incomplete work. Delegate routine milestone verification using the [verification author workflow](.agents/skills/verify-change/author-workflow.md); narrow documentation-only checks may stay with the author.
+
+Use the versioned [agent handoff contracts](docs/AGENT_CONTRACTS.md) for verifier/reviewer assignments and results. Validate both; a structurally valid report alone does not establish acceptance or authorize completion.
+
 The user manages prerequisite upgrades. Recheck installed versions before treating old observations as blockers. Keep personal saves, global Codex settings, credentials, game binaries and generated run data out of source control.
 
 ## Independent review before completion

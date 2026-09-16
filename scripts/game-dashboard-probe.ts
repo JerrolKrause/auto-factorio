@@ -1,0 +1,102 @@
+import assert from 'node:assert/strict';
+import { appendFileSync } from 'node:fs';
+import { readFile, writeFile, mkdtemp } from 'node:fs/promises';
+import path from 'node:path';
+import { setTimeout as delay } from 'node:timers/promises';
+import { diagnosticAssignment, record } from '@autofactorio/contracts';
+import type { Batch } from '@autofactorio/contracts';
+import { DurableRuntime } from '../apps/runtime/durable-runtime.js';
+import { Operator } from '../apps/runtime/operator.js';
+import { dashboard } from '../apps/runtime/http.js';
+import { Coordinator } from '../packages/core/orchestration/coordinator.js';
+import { team } from '../packages/core/orchestration/roles.js';
+import { PROBE_CAPS } from '../packages/codex/src/budget.js';
+import { GameClient, observeRequest } from '../packages/factorio/src/client.js';
+import { Lifecycle, barrier, sha256 } from '../packages/factorio/src/lifecycle.js';
+import { readProfile, waitForServer, waitFor } from './dev/game-processes.js';
+
+const flag = process.argv.indexOf('--profile-file'); if (flag < 0) throw new Error('Explicit dedicated --profile-file required');
+const profile = await readProfile((JSON.parse(await readFile(process.argv[flag + 1]!, 'utf8')) as { dir: string }).dir);
+const evidence = await mkdtemp(path.join(profile.dir, 'dashboard-probe-'));
+const checks: string[] = []; const sink = (event: unknown) => appendFileSync(path.join(evidence, 'events.jsonl'), JSON.stringify(event) + '\n');
+const pass = (name: string) => { checks.push(name); console.log(name); };
+const sources = ['apps/runtime/operator.ts', 'apps/runtime/http.ts', 'apps/runtime/durable-runtime.ts', 'packages/core/orchestration/coordinator.ts', 'packages/core/orchestration/interventions.ts', 'packages/storage/src/journal.ts', 'packages/factorio/src/lifecycle.ts', 'scripts/game-dashboard-probe.ts', 'mods/autofactorio/control.lua', 'mods/autofactorio/edits.lua', 'mods/autofactorio/actions.lua', 'mods/autofactorio/lifecycle.lua', 'mods/autofactorio/ownership.lua', 'mods/autofactorio/common.lua'];
+const hashes = Object.fromEntries(await Promise.all(sources.map(async file => [file, sha256(await readFile(file))])));
+for (const file of sources.filter(f => f.startsWith('mods/'))) assert.equal(sha256(await readFile(path.join(profile.mods, 'autofactorio_0.1.0', path.basename(file)))), hashes[file], 'Live mod differs');
+await writeFile(path.join(evidence, 'sources.json'), JSON.stringify(hashes, null, 2));
+const port = await waitForServer(profile); const game = new GameClient(port, sink); const life = new Lifecycle(port, game, sink);
+let runtime: DurableRuntime | undefined; let server: ReturnType<typeof dashboard> | undefined; let failure: string | null = null;
+try {
+  await port.command('/silent-command rcon.print("AutoFactorio phase09")'); await port.command('/silent-command rcon.print("AutoFactorio phase09")');
+  await waitFor('Visible builder', async () => { const world = await game.request(observeRequest); return record(record(world.actors)['builder-1']).connected === true ? true : undefined; });
+  let control = await life.inspect(); assert.equal(Object.keys(control.ledger).length, 0, 'Fresh world required');
+  await life.rpc({ op: 'fixture' });
+  runtime = new DurableRuntime(path.join(evidence, 'runtime'), path.basename(evidence), control.epoch, game, life, [profile.password]);
+  const caps = { ...PROBE_CAPS, tools: 100, turnMs: 240000, runMs: 300000 };
+  let c = new Coordinator(runtime, caps); team().forEach(a => c.register(a));
+  let operator = new Operator(c); server = dashboard(operator); let origin = await server.listen();
+  let headers = { authorization: 'Bearer ' + server.capability, origin, 'content-type': 'application/json' };
+  async function command(route: string, body: unknown) { const response = await fetch(origin + '/api/' + route, { method: 'POST', headers, body: JSON.stringify(body) }); assert.equal(response.status, 200); return record(await response.json()); }
+  assert.equal((await fetch(origin + '/api/snapshot')).status, 401);
+  assert.equal((await fetch(origin + '/api/control', { method: 'POST', headers: { ...headers, origin: 'https://untrusted.example' }, body: JSON.stringify({ action: 'resume' }) })).status, 403);
+  pass('Live loopback service rejects missing capability and foreign command origin');
+  assert.equal((await command('control', { action: 'resume' })).status, 'running');
+  control = await life.inspect();
+  const input = { id: 'craft', goal: 'Craft a timed batch', parent: null, dependencies: [], scope: {}, resources: {}, successCriteria: ['completed craft'], deadline: null, committedPlan: 'Use finite kit iron for a timed cancellation trial.', actor: 'builder-1', reservations: diagnosticAssignment(1).resources.map(r => r.resource), criteria: [{ kind: 'command-completed' as const, id: 'craft-command' }] };
+  c.propose('foreman', input); c.send('foreman', { id: 'handoff', recipient: 'engineer', task: 'craft', revision: 1, intent: 'handoff', content: 'Craft with the finite kit.', evidence: [] }); await c.pump();
+  const turns = ['foreman', 'engineer'].map(role => { const turn = c.budget.admit(role); c.bind(role, 'synthetic-' + role, turn.id, async () => c.finish(turn.id, true)); return turn; });
+  c.activity('foreman', 'explanation', { text: 'A deterministic trial will verify steering during timed work.', synthetic: true });
+  const grant = runtime.ownership.list().find(r => r.task === 'craft' && r.state === 'active')!;
+  const batch: Batch = { commandId: 'craft-command', epoch: control.epoch, session: control.session, task: 'craft', revision: 1, actor: 'builder-1', surface: 'nauvis', grants: grant.resources.map(r => r.grant), deadline: control.tick + 36000, steps: [{ kind: 'place', item: 'wooden-chest', quality: 'normal', position: { x: 2.5, y: 2.5 }, direction: 0 }, { kind: 'craft', recipe: 'iron-gear-wheel', count: 40 }] };
+  c.submit('engineer', batch);
+  await waitFor('Active crafting', async () => { await operator.poll(); const receipt = await game.receipt(batch.commandId); return receipt?.status === 'running' && receipt.completed === 1 ? true : undefined; }, 10000, 40);
+  assert.equal(runtime.journal.list(runtime.run, 'interventions').length, 0, 'Executor placement must not count as human assistance');
+  const advice = { id: 'advice', recipient: 'engineer', text: 'Keep the current batch; inspect copper next.\nThis is diagnostic advice.' };
+  await command('advice', advice); await command('advice', advice);
+  assert.equal(runtime.journal.list(runtime.run, 'interventions').length, 1); assert.equal((await game.receipt(batch.commandId))?.status, 'running');
+  operator.interventions.interpret('engineer', 'advice', 'I will keep this batch and inspect copper afterward.', ['craft'], []);
+  const snapshot = record(await (await fetch(origin + '/api/snapshot', { headers })).json()); assert.equal((record(snapshot.projections).agents as unknown[]).length, 2);
+  pass('Two synthetic roles appear with live game work; persisted duplicate advice has one interpretation and does not cancel crafting');
+  assert.equal((await command('control', { action: 'pause' })).status, 'paused');
+  const held = await life.inspect(); barrier(held); const inventory = record(record((await game.request(observeRequest)).actors)['builder-1']).inventory;
+  for (let i = 0; i < 12; i++) { await delay(100); await operator.poll(); const current = await life.inspect(); assert.equal(current.tick, held.tick); assert.deepEqual(current.production, held.production); assert.deepEqual(record(record((await game.request(observeRequest)).actors)['builder-1']).inventory, inventory); }
+  assert(turns.every(t => t.finished)); assert.equal((await game.receipt(batch.commandId))?.status, 'cancelled');
+  pass('HTTP pause interrupts both synthetic roles, cancels live crafting, and freezes tick, production and inventory under continued polling');
+  assert.equal((await command('control', { action: 'resume' })).status, 'running');
+  await command('reprioritize', { task: 'craft', revision: 1, goal: 'Inspect copper next', committedPlan: 'Do not repeat the cancelled timed craft.' });
+  assert.equal(c.task('craft').revision, 2); assert(runtime.ownership.list().every(r => r.state === 'released'));
+  pass('Resume refreshes authority and explicit reprioritization retires the old task and grants');
+  runtime.record('verification/diagnostic', [{ entity: 'runs', id: 'verification', value: { active: true, valid: true, diagnostic: true } }]);
+  // Player API raises the same engine build event as a manual click; the injection is explicit evidence.
+  await port.command('/silent-command local p=game.players[1];p.cursor_stack.set_stack{name="wooden-chest",count=1};p.build_from_cursor{position={4.5,1.5},direction=defines.direction.north};rcon.print("diagnostic player build invoked")');
+  await operator.poll();
+  const edits = runtime.journal.list<{ kind: string }>(runtime.run, 'interventions').filter(i => i.kind === 'world-edit'); assert(edits.length > 0, 'Engine player edit event missing');
+  assert.equal(runtime.journal.get<{ valid: boolean }>(runtime.run, 'runs', 'verification')?.valid, false);
+  pass('Diagnostic player-build event reaches operator-only history and invalidates active verification with assistance recorded');
+  const inspect = life.inspect.bind(life); life.inspect = async () => { throw new Error('Injected game connection loss'); };
+  const uncertain = await command('control', { action: 'stop' }); assert.equal(uncertain.status, 'unconfirmed'); assert.equal(uncertain.checkpoint, 'unconfirmed');
+  life.inspect = inspect; assert.equal((await command('control', { action: 'stop' })).status, 'stopped');
+  pass('Injected disconnection leaves stop/checkpoint unconfirmed; restored transport confirms a preserved, stopped world');
+  assert.equal((await command('control', { action: 'resume' })).status, 'running');
+  c.revise('foreman', 'craft', 2, input);
+  c.send('foreman', { id: 'restart-handoff', recipient: 'engineer', task: 'craft', revision: 3, intent: 'handoff', content: 'Hold the reservation for restart validation.', evidence: [] }); await c.pump();
+  assert(runtime.ownership.list().some(r => r.state === 'active'));
+  await server.close(); runtime.close();
+  runtime = new DurableRuntime(path.join(evidence, 'runtime'), path.basename(evidence), control.epoch, game, life, [profile.password]);
+  c = new Coordinator(runtime, caps); operator = new Operator(c); server = dashboard(operator); origin = await server.listen();
+  headers = { authorization: 'Bearer ' + server.capability, origin, 'content-type': 'application/json' };
+  assert.equal((await command('control', { action: 'pause' })).status, 'paused');
+  assert(runtime.ownership.list().every(r => r.state === 'released'));
+  assert.equal((await command('control', { action: 'resume' })).status, 'running');
+  pass('Runtime replacement recovers the real game session before revoking an active reservation, then resumes with fresh authority');
+  c.stop('diagnostic_budget_limit'); await operator.poll(); assert.equal(operator.state().scoringClosed, true);
+  assert.equal((await command('control', { action: 'resume' })).admission, false); barrier(await life.inspect());
+  pass('Budget stop closes scoring permanently and HTTP resume cannot reset the original limit');
+  await writeFile(path.join(evidence, 'snapshot.json'), JSON.stringify(await (await fetch(origin + '/api/snapshot', { headers })).json(), null, 2));
+} catch (error) { failure = String(error); process.exitCode = 1; console.error(failure); }
+finally {
+  try { const state = await life.inspect(); if (state.armed || !state.paused) await life.pause(state); } catch { sink({ kind: 'cleanup/unconfirmed' }); }
+  await server?.close(); runtime?.close(); port.close();
+  await writeFile(path.join(evidence, 'result.json'), JSON.stringify({ passed: failure === null, failure, checks, modelInference: false, providerSessions: 'synthetic', playerEdit: 'diagnostic player API build event' }, null, 2));
+  console.log(JSON.stringify({ evidence, failure, checks: checks.length }));
+}

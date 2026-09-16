@@ -96,6 +96,10 @@ export class DurableRuntime {
     return a ? this.artifacts.read(a, audience) : { available: false as const, reason: 'missing' as const };
   }
   query(request: Extract<GameRequest, { op: 'observe' | 'recipe' }>) { return this.game.request(request); }
+  inspectControl() { return this.lifecycle.inspect(); }
+  hasControlSession(): boolean { return this.session.length > 0; }
+  heartbeat(control: ControlState) { return this.lifecycle.heartbeat(control); }
+  humanEdits(after: number) { return this.lifecycle.edits(after); }
   recovery() {
     const evidence = this.journal.list<Artifact>(this.run, 'artifacts').map(a => ({ id: a.id, ...this.artifacts.read(a, { kind: 'operator' }), bytes: undefined }));
     return { run: this.journal.get<RunManifest>(this.run, 'runs', this.run), agents: this.journal.list(this.run, 'agents'), tasks: this.journal.list<TaskRecord>(this.run, 'tasks'), messages: this.journal.list(this.run, 'messages'), budget: this.journal.get<SavedBudget>(this.run, 'budgets', this.run), commands: this.execution.pending(), checkpoints: this.journal.list(this.run, 'checkpoints'), evidence, complete: evidence.every(e => e.available) };

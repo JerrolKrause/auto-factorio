@@ -8,7 +8,10 @@
     "node": ">=24 <25"
   },
   "scripts": {
-    "build": "tsc -b --stopBuildOnErrors",
+    "build": "tsc -b --stopBuildOnErrors && vite build apps/dashboard",
+    "dashboard": "node dist/scripts/dashboard.js",
+    "test:ui": "playwright test",
+    "game:dashboard-probe": "node dist/scripts/game-dashboard-probe.js",
     "lint": "eslint scripts packages apps tests",
     "test": "vitest run",
     "diagnose": "node dist/scripts/diagnose.js",
@@ -27,14 +30,21 @@
   },
   "dependencies": {
     "@autofactorio/contracts": "workspace:*",
-    "better-sqlite3": "13.0.3"
+    "better-sqlite3": "13.0.3",
+    "fastify": "5.12.4",
+    "react": "19.3.0",
+    "react-dom": "19.3.0"
   },
   "devDependencies": {
+    "@playwright/test": "1.63.0",
     "@types/better-sqlite3": "9.6.0",
     "@types/node": "24.13.4",
+    "@types/react": "19.3.0",
+    "@types/react-dom": "19.3.0",
     "eslint": "9.39.2",
     "typescript": "5.9.3",
     "typescript-eslint": "8.70.0",
+    "vite": "8.3.0",
     "vitest": "4.0.18"
   }
 }

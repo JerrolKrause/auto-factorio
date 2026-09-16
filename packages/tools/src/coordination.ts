@@ -7,6 +7,7 @@ import { DEFAULT_LIMITS } from '../../core/context/archive.js';
 import type { Limits } from '../../core/context/archive.js';
 import type { Reference } from '../../core/execution/durable.js';
 import { entities } from '../../storage/src/journal.js';
+import { Interventions } from '../../core/orchestration/interventions.js';
 
 const operations: Record<string, { group: ToolGroup; keys: string[] }> = {
   observe: { group: 'observe', keys: [] }, propose: { group: 'plan', keys: ['task'] },
@@ -17,6 +18,7 @@ const operations: Record<string, { group: ToolGroup; keys: string[] }> = {
   detail: { group: 'observe', keys: ['ref'] }, payload: { group: 'observe', keys: ['ref', 'offset'] },
   summary: { group: 'observe', keys: ['refs'] }, world: { group: 'observe', keys: ['task', 'area', 'offset'] }, recipe: { group: 'observe', keys: ['name'] },
   replacement: { group: 'observe', keys: ['task', 'area', 'offset'] },
+  interpret: { group: 'message', keys: ['id', 'interpretation', 'resultingTasks', 'supersededTasks'] },
 };
 const taskKeys = ['id', 'goal', 'parent', 'dependencies', 'scope', 'resources', 'successCriteria', 'deadline', 'committedPlan', 'actor', 'reservations', 'criteria'];
 function exact(value: unknown, keys: string[]) {
@@ -59,6 +61,7 @@ export class CoordinationGateway {
       const input = exact(args, op.keys); let result: unknown;
       const context = new AgentContext(this.coordinator, b, this.limits, this.recipes);
       switch (name) {
+        case 'interpret': new Interventions(this.coordinator).interpret(a.id, string(input.id), string(input.interpretation), input.resultingTasks as string[], input.supersededTasks as string[]); result = { recorded: true }; break;
         case 'observe': result = context.briefing(); break;
         case 'briefing': result = context.briefing(Number(input.offset)); break;
         case 'history': result = context.search(string(input.query), Number(input.offset)); break;

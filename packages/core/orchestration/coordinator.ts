@@ -26,10 +26,27 @@ export class Coordinator {
     this.budget = runtime.createBudget(caps, now, t => { this.stopped.add(t.id); });
     runtime.admissionGuard = batch => {
       this.budget.tick(); const t = this.task(batch.task);
-      if (this.budget.state.closed || t.revision !== batch.revision || !['assigned', 'running'].includes(t.status) || !this.dependenciesReady(t) || this.budget.state.turns.some(b => b.role === t.owner && b.closed && b.cancellation !== 'confirmed')) throw new Error('Scheduler admission closed');
+      if (this.held() || this.budget.state.closed || t.revision !== batch.revision || !['assigned', 'running'].includes(t.status) || !this.dependenciesReady(t) || this.budget.state.turns.some(b => b.role === t.owner && b.closed && b.cancellation !== 'confirmed')) throw new Error('Scheduler admission closed');
     };
   }
   agents(): AgentInstance[] { return this.runtime.journal.list(this.runtime.run, 'agents'); }
+  /** Durable operator admission also protects late tools and a pump already awaiting the game. */
+  held(): boolean { return this.runtime.journal.get<{ admission: boolean }>(this.runtime.run, 'runs', 'operator-control')?.admission === false; }
+  interruptForControl(): void {
+    for (const turn of this.budget.state.turns) this.budget.closeTurn(turn, 'operator_control');
+    this.requestInterrupts();
+  }
+  /** Provider interruption must not wait behind a disconnected game or ownership reconciliation. */
+  private requestInterrupts(): void {
+    for (const turn of this.budget.state.turns.filter(t => t.closed && (t.cancellation !== 'confirmed' || !t.finished))) this.stopped.add(turn.id);
+    for (const turn of this.stopped) {
+      const interrupt = this.interrupts.get(turn);
+      if (interrupt && !this.interruptRequested.has(turn)) {
+        this.interruptRequested.add(turn);
+        void Promise.resolve().then(interrupt).catch(() => { this.interruptRequested.delete(turn); });
+      }
+    }
+  }
   tasks(): CoordinatedTask[] { return this.runtime.journal.list(this.runtime.run, 'tasks'); }
   messages(): ScopedMessage[] { return this.runtime.journal.list(this.runtime.run, 'messages'); }
   agent(who: string): AgentInstance { const a = this.agents().find(a => a.id === who); if (!a) throw new Error('Unknown agent'); return a; }
@@ -52,7 +69,7 @@ export class Coordinator {
   /** Provider admission uses the same budget. Bind only after its verified session and turn are known. */
   bind(agent: string, session: string, turn: string, interrupt: () => Promise<void>): SessionBinding {
     id(session); const a = this.agent(agent); const b = this.budget.get(turn);
-    if (b.role !== agent || b.closed || b.finished || this.budget.snapshot().closed) throw new Error('Session admission closed');
+    if (this.held() || b.role !== agent || b.closed || b.finished || this.budget.snapshot().closed) throw new Error('Session admission closed');
     if (this.agents().some(other => other.id !== agent && other.lineage.some(s => s.session === session))) throw new Error('Provider history belongs to another agent');
     if (this.interrupts.has(turn)) throw new Error('Turn already bound');
     const generation = (a.lineage.at(-1)?.generation ?? 0) + 1; const epoch = this.runtime.context().epoch;
@@ -62,7 +79,7 @@ export class Coordinator {
   }
   authenticate(binding: SessionBinding, group: ToolGroup): AgentInstance {
     this.budget.tick(); const a = this.agent(binding.agent); const s = a.lineage.at(-1); const b = this.budget.get(binding.turn);
-    if (this.budget.state.closed || b.closed || b.finished || b.role !== a.id || !this.interrupts.has(binding.turn) || !s || s.session !== binding.session || s.generation !== binding.generation || binding.epoch !== this.runtime.context().epoch || !a.definition.tools.includes(group)) throw new Error('Stale identity or tool admission closed');
+    if (this.held() || this.budget.state.closed || b.closed || b.finished || b.role !== a.id || !this.interrupts.has(binding.turn) || !s || s.session !== binding.session || s.generation !== binding.generation || binding.epoch !== this.runtime.context().epoch || !a.definition.tools.includes(group)) throw new Error('Stale identity or tool admission closed');
     return a;
   }
   private scoped(who: string, t: CoordinatedTask): void { if (t.manager !== who && t.owner !== who) throw new Error('Task scope forbidden'); }
@@ -171,17 +188,10 @@ export class Coordinator {
     if (this.busy) return; this.busy = true;
     try {
       this.budget.tick();
-      for (const turn of this.budget.state.turns.filter(t => t.closed && (t.cancellation !== 'confirmed' || !t.finished))) this.stopped.add(turn.id);
-      for (const turn of this.stopped) {
-        const interrupt = this.interrupts.get(turn);
-        if (interrupt && !this.interruptRequested.has(turn)) {
-          this.interruptRequested.add(turn);
-          void Promise.resolve().then(interrupt).catch(() => { this.interruptRequested.delete(turn); });
-        }
-      }
+      this.requestInterrupts();
       for (const m of this.messages().filter(m => m.delivery === 'pending')) this.deliver(m);
       for (const t of this.tasks()) {
-        const stopped = this.budget.state.closed || this.budget.state.turns.some(b => b.role === t.owner && b.closed && b.cancellation !== 'confirmed');
+        const stopped = this.held() || this.budget.state.closed || this.budget.state.turns.some(b => b.role === t.owner && b.closed && b.cancellation !== 'confirmed');
         const stale = t.epoch !== this.runtime.context().epoch;
         const invalidDependency = ['assigned', 'running', 'verifying', 'succeeded'].includes(t.status) && !this.dependenciesReady(t);
         if ((!terminal(t) && stopped) || (stale && (!terminal(t) || t.status === 'succeeded')) || invalidDependency) this.saveTask({ ...t, status: 'blocked', wait: stale ? 'epoch requires revision' : invalidDependency ? 'dependency requires revision' : 'budget cancellation' }, 'task/blocked');
@@ -199,6 +209,7 @@ export class Coordinator {
       }
       if (controlErrors.length) throw new AggregateError(controlErrors, 'Ownership cancellation unconfirmed');
       await this.runtime.execution.reconcile();
+      if (this.held()) return;
       // Reconciliation can discover a failure for the first time. Stop its queued remainder before dispatch.
       for (const t of this.tasks().filter(t => t.status === 'running')) {
         if (!this.runtime.execution.pending().some(c => c.batch.task === t.id && c.batch.revision === t.revision && c.state === 'acknowledged' && c.receipt && ['failed', 'partial', 'cancelled'].includes(c.receipt.status))) continue;
@@ -227,7 +238,7 @@ export class Coordinator {
           if (r.state !== 'active') await this.runtime.ownership.flush(r.id);
           // The await may overlap a cancellation, revision or budget notification.
           this.budget.tick(); const current = this.task(t.id);
-          if (this.budget.state.closed || current.revision !== t.revision || terminal(current) || current.status === 'blocked') continue;
+          if (this.held() || this.budget.state.closed || current.revision !== t.revision || terminal(current) || current.status === 'blocked') continue;
         }
         if (t.status === 'ready') this.saveTask({ ...t, status: 'assigned', wait: null }, 'task/assigned', [this.history(t.owner, 'assignment', { id: t.id }, t)]);
       }
