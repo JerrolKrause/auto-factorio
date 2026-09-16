@@ -2,12 +2,21 @@ import { randomBytes } from 'node:crypto';
 import type { Batch, ToolGroup } from '@autofactorio/contracts';
 import { object, string } from '../../codex/src/protocol.js';
 import type { Coordinator, MessageInput, SessionBinding, TaskInput } from '../../core/orchestration/coordinator.js';
+import { AgentContext, RecipeCache } from '../../core/context/service.js';
+import { DEFAULT_LIMITS } from '../../core/context/archive.js';
+import type { Limits } from '../../core/context/archive.js';
+import type { Reference } from '../../core/execution/durable.js';
+import { entities } from '../../storage/src/journal.js';
 
 const operations: Record<string, { group: ToolGroup; keys: string[] }> = {
   observe: { group: 'observe', keys: [] }, propose: { group: 'plan', keys: ['task'] },
   revise: { group: 'plan', keys: ['task', 'revision'] }, cancel: { group: 'plan', keys: ['task', 'revision'] },
   message: { group: 'message', keys: ['message'] }, report: { group: 'message', keys: ['task', 'revision', 'evidence'] },
   submit: { group: 'execute', keys: ['batch'] },
+  briefing: { group: 'observe', keys: ['offset'] }, history: { group: 'observe', keys: ['query', 'offset'] },
+  detail: { group: 'observe', keys: ['ref'] }, payload: { group: 'observe', keys: ['ref', 'offset'] },
+  summary: { group: 'observe', keys: ['refs'] }, world: { group: 'observe', keys: ['task', 'area', 'offset'] }, recipe: { group: 'observe', keys: ['name'] },
+  replacement: { group: 'observe', keys: ['task', 'area', 'offset'] },
 };
 const taskKeys = ['id', 'goal', 'parent', 'dependencies', 'scope', 'resources', 'successCriteria', 'deadline', 'committedPlan', 'actor', 'reservations', 'criteria'];
 function exact(value: unknown, keys: string[]) {
@@ -15,10 +24,16 @@ function exact(value: unknown, keys: string[]) {
   if (Object.keys(input).some(k => !keys.includes(k)) || keys.some(k => !(k in input))) throw new Error('Identity spoofing or unsupported arguments');
   return input;
 }
+function reference(value: unknown): Reference {
+  const r = exact(value, ['entity', 'id']);
+  if (![...entities, 'events'].includes(string(r.entity)) || !/^[\w.-]{1,100}$/.test(string(r.id))) throw new Error('Invalid reference');
+  return r as unknown as Reference;
+}
 /** Opaque credentials bind server-assigned identities; no sender/agent argument is accepted. */
 export class CoordinationGateway {
   private grants = new Map<string, SessionBinding>();
-  constructor(private coordinator: Coordinator) {}
+  private recipes = new RecipeCache();
+  constructor(private coordinator: Coordinator, private limits: Limits = DEFAULT_LIMITS) {}
   issue(binding: SessionBinding): string {
     this.coordinator.authenticate(binding, 'observe');
     const token = randomBytes(32).toString('hex'); this.grants.set(token, structuredClone(binding)); return token;
@@ -32,6 +47,7 @@ export class CoordinationGateway {
   call(token: string, name: string, args: unknown): unknown {
     const b = this.grants.get(token); const admitted = this.coordinator.budget.attempt(b?.turn ?? null);
     if (!b) throw new Error('Unauthenticated identity');
+    let asynchronous = false;
     try {
       this.coordinator.activity(b.agent, 'tool-attempt', { name, args, admitted });
       if (!admitted) throw new Error('Turn admission closed');
@@ -41,8 +57,20 @@ export class CoordinationGateway {
         this.coordinator.budget.closeTurn(this.coordinator.budget.get(b.turn), 'agent_tool_attempts'); throw new Error('Agent tool admission closed');
       }
       const input = exact(args, op.keys); let result: unknown;
+      const context = new AgentContext(this.coordinator, b, this.limits, this.recipes);
       switch (name) {
-        case 'observe': result = this.coordinator.view(a.id); break;
+        case 'observe': result = context.briefing(); break;
+        case 'briefing': result = context.briefing(Number(input.offset)); break;
+        case 'history': result = context.search(string(input.query), Number(input.offset)); break;
+        case 'detail': result = context.detail(reference(input.ref)); break;
+        case 'payload': result = context.download(reference(input.ref), Number(input.offset)); break;
+        case 'summary': {
+          if (!Array.isArray(input.refs)) throw new Error('Invalid references');
+          result = context.summary(input.refs.map(reference)); break;
+        }
+        case 'world': result = context.world(string(input.task), Number(input.area), Number(input.offset)); break;
+        case 'replacement': result = context.replacement(string(input.task), Number(input.area), Number(input.offset)); break;
+        case 'recipe': result = context.recipe(string(input.name)); break;
         case 'propose': result = this.coordinator.propose(a.id, exact(input.task, taskKeys) as unknown as TaskInput); break;
         case 'revise': {
           const task = exact(input.task, taskKeys) as unknown as TaskInput;
@@ -53,9 +81,12 @@ export class CoordinationGateway {
         case 'report': this.coordinator.report(a.id, string(input.task), Number(input.revision), input.evidence as string[]); result = { verifying: true }; break;
         case 'submit': this.coordinator.submit(a.id, object(input.batch) as unknown as Batch); result = { queued: true }; break;
       }
+      if (result instanceof Promise) { asynchronous = true; return result.then(value => {
+        this.coordinator.activity(a.id, 'tool-result', { name, result: value }); return value;
+      }, error => { this.coordinator.activity(a.id, 'tool-rejected', { name, error: String(error) }); throw error; }).finally(() => this.coordinator.budget.afterAttempt(b.turn)); }
       this.coordinator.activity(a.id, 'tool-result', { name, result }); return result;
     } catch (error) {
       this.coordinator.activity(b.agent, 'tool-rejected', { name, error: String(error) }); throw error;
-    } finally { this.coordinator.budget.afterAttempt(b.turn); }
+    } finally { if (!asynchronous) this.coordinator.budget.afterAttempt(b.turn); }
   }
 }

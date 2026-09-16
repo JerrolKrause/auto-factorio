@@ -17,6 +17,18 @@ Each invocation creates `.runtime/verification/check-*/`. `results.json` records
 
 For custom PowerShell sequences, test `$LASTEXITCODE` immediately after each native command and `exit $LASTEXITCODE` on failure. A semicolon or newline alone does not gate the next command. Prefer the runner above for the standard sequence.
 
+For a targeted test during implementation, use the direct runner and inspect its reported file/test counts:
+
+```powershell
+corepack.cmd pnpm exec vitest run tests/context.test.ts
+```
+
+In this checkout, `pnpm test -- <test paths>` forwarded an extra `--` and ran the full suite. Do not infer selection from the intended command alone. When asserting search counts, account for all queried record types; archive searches can include both events and projections.
+
+## Review and closeout
+
+When the completion review is required, load the [author workflow](../.agents/skills/change-audit/author-workflow.md) for delegation, adjudication, console reporting and closeout. The reviewer follows its separate read-only procedure.
+
 ## Edit narrowly with UTF-8
 
 Prefer contextual patches. For scripted replacements, require the expected match count and inspect the affected code afterward. Avoid global replacements of generic fragments shared by gameplay and operator dispatch. Read/write UTF-8 explicitly; preserve existing newlines and byte-order marks where practical.
@@ -66,7 +78,7 @@ A completed probe, changed source, incomplete capture, absent cancellation/rollb
 - Use `rg` to locate relevant files/sections, then read those sections. Start with the current handoff entry rather than the complete historical log.
 - Batch independent reads/checks with separate labeled results; keep dependent edits/checks sequential.
 - Report status, counts, exact exits and evidence paths. Keep full logs on disk and inspect targeted excerpts when something fails. Avoid broad discovery dumps or repeatedly requesting truncated output.
-- Preserve a before-task snapshot when sharing uncommitted files with other work. Pass that boundary to the independent reviewer.
+- Preserve a before-task snapshot when sharing uncommitted files with other work. Pass that boundary to the independent reviewer. Re-read before editing shared documents; a later snapshot mismatch may be another session's work, which must be preserved rather than restored from the old copy.
 
 ## Known Windows sandbox startup failure
 

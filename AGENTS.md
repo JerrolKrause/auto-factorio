@@ -6,7 +6,7 @@ Keep all future edits to this file as context-efficient as possible: concise rul
 
 ## Begin with the current task
 
-Read `docs/IMPLEMENTATION_HANDOFF.md` for actual progress and the next milestone. Read `docs/REQUIREMENTS.md` before changing product behavior, then only the relevant architecture/scenario sections. Do not require the planning conversation or reread every document on every turn.
+Read the current implementation entry in `docs/IMPLEMENTATION_HANDOFF.md` for progress and the next milestone; consult historical entries only when relevant. Read `docs/REQUIREMENTS.md` before changing product behavior, then only the relevant architecture/scenario sections. Do not require the planning conversation or reread every document on every turn.
 
 The user's current instructions govern the work. Approved product requirements are recorded in REQUIREMENTS; ARCHITECTURE is the proposed technical baseline and contains validation gates. A user request to implement a milestone authorizes that milestone: do not ask for a second approval merely because historical documents call the architecture proposed. Resolve routine reversible engineering choices, record them, and continue. Surface material conflicts with requirements or verified blockers.
 
@@ -34,13 +34,7 @@ The user manages prerequisite upgrades. Recheck installed versions before treati
 
 ## Independent review before completion
 
-Before committing or declaring repository edits complete, the main author must delegate a read-only review to a fresh-context subagent using [change-audit](.agents/skills/change-audit/SKILL.md) (read directly if undiscovered). The author must not invoke the skill or self-review.
-
-- Pass task intent, relevant specs, checks/results and path/hunk boundaries separating unrelated work. Inherit the authorized model/provider.
-- Review only task-scoped uncommitted changes: staged, unstaged and untracked. Unchanged code is context only. The reviewer returns findings without editing or delegating.
-- Evaluate findings; fix verified issues, reject others with evidence, rerun relevant checks and obtain review of fixes/later substantive edits. No findings is valid. Report the outcome and unresolved limits; never claim completion with outstanding actionable findings or unavailable review.
-
-The main author owns this gate; implementation subagents hand back their work. Read-only/no-change tasks and reviewers are exempt. Routine review/corrections need no renewed approval and grant no additional action authority.
+Before committing or declaring repository edits complete, the main author must load the [author workflow](.agents/skills/change-audit/author-workflow.md) and delegate task-scoped, read-only review to a fresh-context subagent. The author must not self-review. Read-only/no-change tasks and reviewers are exempt.
 
 ## Leave a usable handoff
 

@@ -3,6 +3,7 @@ import { mkdirSync, openSync, writeFileSync, fsyncSync, closeSync, renameSync, r
 import path from 'node:path';
 import type { EventContext, Visibility } from '../../core/execution/durable.js';
 import { visibility } from './journal.js';
+import { permits } from '../../core/context/authorization.js';
 export interface Artifact { id: string; run: string; sha256: string; size: number; visibility: Visibility; mediaType: string; purpose: 'agent-observation' | 'operator-telemetry' | 'public-transcript' | 'save' | 'checkpoint'; redacted: boolean }
 export type Evidence = { available: true; bytes: Buffer } | { available: false; reason: 'missing' | 'corrupt' | 'unauthorized' };
 export type Audience = { kind: 'operator' } | { kind: 'agent'; run: string; agent: string; role: string; task: string | null };
@@ -39,7 +40,7 @@ export class Artifacts {
   read(a: Artifact, audience: Audience): Evidence {
     if (!a || !/^[a-f0-9-]{36}$/.test(a.id)) return { available: false, reason: 'corrupt' };
     try { visibility(a.visibility); } catch { return { available: false, reason: 'unauthorized' }; }
-    if (audience.kind === 'agent' && (a.run !== audience.run || a.visibility.kind === 'operator' || (a.visibility.kind === 'restricted' && !a.visibility.agents.includes(audience.agent) && !a.visibility.roles.includes(audience.role) && !(audience.task && a.visibility.tasks.includes(audience.task))))) return { available: false, reason: 'unauthorized' };
+    if (audience.kind === 'agent' && (a.run !== audience.run || ['save', 'checkpoint', 'operator-telemetry'].includes(a.purpose) || !permits(a.visibility, { ...audience, tasks: audience.task ? [audience.task] : [] }))) return { available: false, reason: 'unauthorized' };
     let bytes: Buffer; try { bytes = readFileSync(path.join(this.directory, a.id)); } catch { return { available: false, reason: 'missing' }; }
     if (bytes.length !== a.size || digest(bytes) !== a.sha256) return { available: false, reason: 'corrupt' };
     return { available: true, bytes };

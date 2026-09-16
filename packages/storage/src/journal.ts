@@ -36,6 +36,7 @@ export class SqliteJournal implements Journal {
   }
   append(context: EventContext, type: string, changes: Change[]): Event {
     visibility(context.visibility);
+    for (const change of changes) if (change.visibility) visibility(change.visibility);
     if (!context.run || !context.epoch || !type || !Number.isFinite(Date.parse(context.wallTime)) || (context.gameTick !== null && (!Number.isSafeInteger(context.gameTick) || context.gameTick < 0))) throw new Error('Invalid event envelope');
     if (!changes.length || changes.some(c => !entities.includes(c.entity) || !c.id || !c.value || Array.isArray(c.value))) throw new Error('Invalid projection change');
     const safe = JSON.parse(JSON.stringify(this.sanitize({ ...context, version: 1, type, changes }))) as Omit<Event, 'sequence'>;

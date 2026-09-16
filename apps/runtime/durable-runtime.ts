@@ -2,12 +2,12 @@ import { readFileSync, mkdirSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { validateReceipt, validateRequest } from '@autofactorio/contracts';
-import type { Batch, RunManifest, TaskRecord } from '@autofactorio/contracts';
+import type { Batch, GameRequest, RunManifest, TaskRecord } from '@autofactorio/contracts';
 import { Budget } from '../../packages/codex/src/budget.js';
 import type { BudgetState, Caps, StopCallback } from '../../packages/codex/src/budget.js';
 import { DurableExecution } from '../../packages/core/execution/durable.js';
 import { Ownership } from '../../packages/core/execution/ownership.js';
-import type { Change, EventContext, Visibility } from '../../packages/core/execution/durable.js';
+import type { Change, EventContext, Reference, Visibility } from '../../packages/core/execution/durable.js';
 import { SqliteJournal } from '../../packages/storage/src/journal.js';
 import { Artifacts, redactor } from '../../packages/storage/src/artifacts.js';
 import type { Artifact, Audience } from '../../packages/storage/src/artifacts.js';
@@ -80,11 +80,11 @@ export class DurableRuntime {
     this.record('artifact/recorded', [{ entity: 'artifacts', id: artifact.id, value: { ...artifact } }], visibility); return artifact;
   }
   /** Return precisely the recorded sanitized response; richer telemetry is a separate operator artifact. */
-  observation(response: unknown, telemetry: unknown, visibility: Visibility): unknown {
+  observation(response: unknown, telemetry: unknown, visibility: Visibility, sources: Reference[] = []): unknown {
     const exact = this.artifacts.put(this.context(visibility), 'agent-observation', response);
     const full = this.artifacts.put(this.context(), 'operator-telemetry', telemetry);
     this.record('observation/returned', [
-      { entity: 'artifacts', id: exact.id, value: { ...exact } }, { entity: 'artifacts', id: full.id, value: { ...full } },
+      { entity: 'artifacts', id: exact.id, value: { ...exact }, visibility, sources }, { entity: 'artifacts', id: full.id, value: { ...full } },
       { entity: 'observations', id: exact.id, value: { response: exact.id, telemetry: full.id, visibility } },
     ], { kind: 'operator' }, response && typeof response === 'object' && 'tick' in response && Number.isSafeInteger(response.tick) ? Number(response.tick) : null); // Operator reference keeps this envelope operator-only.
     const read = this.artifacts.read(exact, { kind: 'operator' });
@@ -95,6 +95,7 @@ export class DurableRuntime {
     const a = this.journal.get<Artifact>(this.run, 'artifacts', id);
     return a ? this.artifacts.read(a, audience) : { available: false as const, reason: 'missing' as const };
   }
+  query(request: Extract<GameRequest, { op: 'observe' | 'recipe' }>) { return this.game.request(request); }
   recovery() {
     const evidence = this.journal.list<Artifact>(this.run, 'artifacts').map(a => ({ id: a.id, ...this.artifacts.read(a, { kind: 'operator' }), bytes: undefined }));
     return { run: this.journal.get<RunManifest>(this.run, 'runs', this.run), agents: this.journal.list(this.run, 'agents'), tasks: this.journal.list<TaskRecord>(this.run, 'tasks'), messages: this.journal.list(this.run, 'messages'), budget: this.journal.get<SavedBudget>(this.run, 'budgets', this.run), commands: this.execution.pending(), checkpoints: this.journal.list(this.run, 'checkpoints'), evidence, complete: evidence.every(e => e.available) };
@@ -149,7 +150,7 @@ export class DurableRuntime {
       await this.execution.reconcile(); this.ready = true; return armed;
     });
   }
-  intent(batch: Batch): void { validateRequest({ op: 'submit', batch }); if (!this.ready) throw new Error('Runtime admission closed'); this.authorize(batch); this.execution.intent(batch); }
+  intent(batch: Batch, visibility: Visibility = { kind: 'operator' }): void { validateRequest({ op: 'submit', batch }); if (!this.ready) throw new Error('Runtime admission closed'); this.authorize(batch); this.execution.intent(batch, visibility); }
   async dispatch(id: string) {
     return this.exclusive(async () => {
       this.checkBudget();

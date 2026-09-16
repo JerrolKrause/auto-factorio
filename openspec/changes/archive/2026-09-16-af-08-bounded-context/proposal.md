@@ -6,7 +6,7 @@ Fresh model sessions need relevant durable context without receiving hidden eval
 
 - Bounded observations and three-level memory with authorization across IDs, queries, references, summaries and replacement briefings.
 - Preserve the approved product safeguards and attach explicit acceptance evidence to this bounded phase.
-- Complete phase 08 only after `af-07-agent-coordination` has passed its implementation gate; see the [implementation guide](../../../docs/IMPLEMENTATION_GUIDE.md).
+- Complete phase 08 only after `af-07-agent-coordination` has passed its implementation gate; see the [implementation guide](../../../../docs/IMPLEMENTATION_GUIDE.md).
 
 ## Capabilities
 

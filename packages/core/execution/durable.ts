@@ -6,7 +6,8 @@ export interface EventContext {
   run: string; epoch: string; wallTime: string; gameTick: number | null; actor: string | null; task: string | null;
   causation: string | null; correlation: string | null; visibility: Visibility;
 }
-export interface Change { entity: Entity; id: string; value: Record<string, unknown> }
+export interface Reference { entity: Entity | 'events'; id: string }
+export interface Change { entity: Entity; id: string; value: Record<string, unknown>; visibility?: Visibility; sources?: Reference[] }
 export interface Event extends EventContext { version: 1; sequence: number; type: string; changes: Change[] }
 export interface Journal {
   append(context: EventContext, type: string, changes: Change[]): Event;
@@ -16,6 +17,7 @@ export interface Journal {
 export interface Command {
   batch: Batch; state: 'pending' | 'sending' | 'unknown' | 'acknowledged' | 'rolled_back';
   receipt: Receipt | null; receiptEpoch: string | null; reason: string | null;
+  visibility?: Visibility;
 }
 export interface WorldReceipts { epoch: string; session: string; ledger: Record<string, Receipt> }
 export interface ExecutionPort { inspect(): Promise<WorldReceipts>; authorize?(batch: Batch): void; submit(batch: Batch): Promise<Receipt> }
@@ -24,16 +26,16 @@ export class DurableExecution {
   private reconciled = false;
   private busy = false;
   constructor(private journal: Journal, private context: () => EventContext, private game: ExecutionPort) {}
-  intent(batch: Batch): void {
+  intent(batch: Batch, visibility: Visibility = { kind: 'operator' }): void {
     const c = this.context();
     if (batch.epoch !== c.epoch) throw new Error('Intent epoch mismatch');
     if (this.journal.get(c.run, 'commands', batch.commandId)) throw new Error('Command identity already committed');
     if (this.pending().some(c => c.state === 'unknown' || c.state === 'sending' || c.receipt?.status === 'accepted' || c.receipt?.status === 'running')) throw new Error('Unresolved effects block conflicting work');
-    this.save({ batch, state: 'pending', receipt: null, receiptEpoch: null, reason: null }, 'command/intent');
+    this.save({ batch, state: 'pending', receipt: null, receiptEpoch: null, reason: null, visibility }, 'command/intent');
   }
   pending(): Command[] { return this.journal.list<Command>(this.context().run, 'commands'); }
   private save(command: Command, type: string): void {
-    this.journal.append({ ...this.context(), actor: command.batch.actor, task: command.batch.task, correlation: command.batch.commandId, gameTick: command.receipt?.endedTick ?? command.receipt?.acceptedTick ?? null }, type, [{ entity: 'commands', id: command.batch.commandId, value: { ...command } }]);
+    this.journal.append({ ...this.context(), visibility: command.visibility ?? { kind: 'operator' }, actor: command.batch.actor, task: command.batch.task, correlation: command.batch.commandId, gameTick: command.receipt?.endedTick ?? command.receipt?.acceptedTick ?? null }, type, [{ entity: 'commands', id: command.batch.commandId, value: { ...command } }]);
   }
   async reconcile(): Promise<void> {
     if (this.busy) throw new Error('Execution operation in progress');

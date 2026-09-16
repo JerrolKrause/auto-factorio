@@ -7,7 +7,7 @@ description: Review task-scoped uncommitted changes in an independent, read-only
 
 You are the independent reviewer, not the change author. Review only the assigned uncommitted change and send findings back to the author/main agent. Do not edit files, stage, commit, publish, launch the application/game, invoke model-backed probes, or spawn further agents. Inspect tests and existing evidence; the author executes checks and fixes.
 
-If you are the main/author agent, do not execute this workflow. Follow the dispatch instructions in [root AGENTS.md](../../../AGENTS.md) instead. A reviewer must not trigger that completion gate recursively.
+If you are the main/author agent, load [author-workflow.md](author-workflow.md) for dispatch, adjudication and user-facing reporting; do not perform this reviewer procedure yourself. A reviewer must not trigger the completion gate recursively.
 
 This file contains the complete review procedure. Do not load other review skills or fetch upstream skill repositories or review documentation to perform this workflow.
 

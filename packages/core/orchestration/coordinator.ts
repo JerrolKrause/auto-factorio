@@ -6,6 +6,8 @@ import type { DurableRuntime } from '../../../apps/runtime/durable-runtime.js';
 import type { Budget, Caps, TurnBudget } from '../../codex/src/budget.js';
 import type { Change, Command } from '../execution/durable.js';
 import { ASTRA } from '../../codex/src/protocol.js';
+import { privateTo, taskVisibility } from '../context/authorization.js';
+import { ContextArchive } from '../context/archive.js';
 
 export interface SessionBinding { agent: string; session: string; generation: number; epoch: string; turn: string }
 export type TaskInput = Pick<CoordinatedTask, 'id' | 'goal' | 'parent' | 'dependencies' | 'scope' | 'resources' | 'successCriteria' | 'deadline' | 'committedPlan' | 'actor' | 'reservations' | 'criteria'>;
@@ -34,10 +36,10 @@ export class Coordinator {
   task(key: string): CoordinatedTask { const t = this.tasks().find(t => t.id === key); if (!t) throw new Error('Unknown task'); return t; }
   private history(agent: string, kind: string, detail: unknown, task: CoordinatedTask | null = null): Change {
     const h: AgentHistory = { id: randomUUID(), agent, kind, detail, task: task?.id ?? null, revision: task?.revision ?? null, wallTime: new Date().toISOString(), epoch: this.runtime.context().epoch };
-    return { entity: 'agentHistory', id: h.id, value: { ...h } };
+    return { entity: 'agentHistory', id: h.id, value: { ...h }, visibility: kind === 'tool-result' ? { kind: 'operator' } : privateTo(agent), sources: task ? [{ entity: 'tasks', id: task.id }] : [] };
   }
   private saveTask(t: CoordinatedTask, kind: string, extra: Change[] = []): void {
-    this.runtime.record(kind, [{ entity: 'tasks', id: t.id, value: { ...t } }, ...extra]);
+    this.runtime.record(kind, [{ entity: 'tasks', id: t.id, value: { ...t }, visibility: taskVisibility(t.id) }, ...extra]);
   }
   register(input: { id: string; definition: AgentDefinition; actors: string[] }): void {
     id(input.id); id(input.definition.id); input.actors.forEach(id);
@@ -45,7 +47,7 @@ export class Coordinator {
     const d = input.definition;
     if (d.model !== ASTRA || d.effort !== 'low' || !d.instructions || !d.output || !d.tools.length || d.tools.some(t => !['plan', 'message', 'execute', 'observe'].includes(t)) || !Array.isArray(d.observations) || d.observations.some(s => !['assigned-tasks', 'messages', 'history'].includes(s)) || !Number.isSafeInteger(d.limits.tools) || d.limits.tools < 1) throw new Error('Unsupported agent definition');
     const a: AgentInstance = { ...structuredClone(input), assignment: null, lineage: [], status: 'idle' };
-    this.runtime.record('agent/registered', [{ entity: 'agents', id: a.id, value: { ...a } }, this.history(a.id, 'registered', { definition: d.id })]);
+    this.runtime.record('agent/registered', [{ entity: 'agents', id: a.id, value: { ...a }, visibility: privateTo(a.id) }, this.history(a.id, 'registered', { definition: d.id })]);
   }
   /** Provider admission uses the same budget. Bind only after its verified session and turn are known. */
   bind(agent: string, session: string, turn: string, interrupt: () => Promise<void>): SessionBinding {
@@ -55,7 +57,7 @@ export class Coordinator {
     if (this.interrupts.has(turn)) throw new Error('Turn already bound');
     const generation = (a.lineage.at(-1)?.generation ?? 0) + 1; const epoch = this.runtime.context().epoch;
     a.lineage.push({ session, generation, epoch }); a.status = 'reasoning';
-    this.runtime.record('agent/session', [{ entity: 'agents', id: a.id, value: { ...a } }, this.history(a.id, 'session', { session, generation, turn })]);
+    this.runtime.record('agent/session', [{ entity: 'agents', id: a.id, value: { ...a }, visibility: privateTo(a.id) }, this.history(a.id, 'session', { session, generation, turn })]);
     this.interrupts.set(turn, interrupt); return { agent, session, generation, epoch, turn };
   }
   authenticate(binding: SessionBinding, group: ToolGroup): AgentInstance {
@@ -68,9 +70,13 @@ export class Coordinator {
     return t.dependencies.every(key => { const d = this.task(key); return d.status === 'succeeded' && d.epoch === this.runtime.context().epoch && this.dependenciesReady(d); });
   }
   view(who: string) {
-    const agent = this.agent(who); const tasks = this.tasks().filter(t => t.manager === who || t.owner === who);
+    const agent = this.agent(who); const archive = new ContextArchive(this.runtime, () => this.principal(who));
     // Exact responses remain durable evidence, but never recursively inject earlier observation responses.
-    return { agent, tasks: agent.definition.observations.includes('assigned-tasks') ? tasks : [], messages: agent.definition.observations.includes('messages') ? this.messages().filter(m => m.sender === who || m.recipient === who) : [], history: agent.definition.observations.includes('history') ? this.runtime.journal.list<AgentHistory>(this.runtime.run, 'agentHistory').filter(h => h.agent === who && h.kind !== 'tool-result') : [] };
+    return { agent, tasks: archive.entries('tasks').map(e => e.value as CoordinatedTask), messages: archive.entries('messages').map(e => e.value as ScopedMessage), history: archive.entries('agentHistory').map(e => e.value as AgentHistory).filter(h => h.kind !== 'tool-result') };
+  }
+  principal(who: string) {
+    const a = this.agent(who);
+    return { run: this.runtime.run, agent: who, role: a.definition.id, observations: a.definition.observations, tasks: this.tasks().filter(t => t.manager === who || t.owner === who).map(t => t.id) };
   }
   activity(who: string, kind: string, detail: unknown): void {
     this.runtime.record('agent/' + kind, [this.history(who, kind, detail)], { kind: 'restricted', agents: [who], roles: [], tasks: [] });
@@ -128,17 +134,17 @@ export class Coordinator {
       if (who !== t.manager || t.owner !== null) throw new Error('Assignment requires current manager and unassigned task');
       if (t.actor && (!this.agent(input.recipient).actors.includes(t.actor) || !this.agent(input.recipient).definition.tools.includes('execute'))) throw new Error('Recipient lacks actor authorization');
     } else if (input.recipient !== t.manager && input.recipient !== t.owner) throw new Error('Recipient outside task scope');
-    this.runtime.record('message/queued', [{ entity: 'messages', id: m.id, value: { ...m } }, this.history(who, 'sent', m, t)]); return m;
+    this.runtime.record('message/queued', [{ entity: 'messages', id: m.id, value: { ...m }, visibility: { kind: 'restricted', agents: [who, m.recipient], roles: [], tasks: [] } }, this.history(who, 'sent', m, t)]); return m;
   }
   private deliver(m: ScopedMessage): void {
     const t = this.task(m.task); let reason: string | null = null; const changes: Change[] = [];
     if (t.revision !== m.revision || t.epoch !== m.epoch || m.epoch !== this.runtime.context().epoch || terminal(t)) reason = 'stale_task';
     else if (m.intent === 'handoff') {
       if (t.owner !== null || t.manager !== m.sender) reason = 'assignment_changed';
-      else changes.push({ entity: 'tasks', id: t.id, value: { ...t, owner: m.recipient } });
+      else changes.push({ entity: 'tasks', id: t.id, value: { ...t, owner: m.recipient }, visibility: taskVisibility(t.id) });
     }
     const delivered = { ...m, delivery: reason ? 'rejected' : 'delivered', reason };
-    changes.push({ entity: 'messages', id: m.id, value: delivered }, this.history(m.recipient, 'received', delivered, t));
+    changes.push({ entity: 'messages', id: m.id, value: delivered, visibility: { kind: 'restricted', agents: [m.sender, m.recipient], roles: [], tasks: [] } }, this.history(m.recipient, 'received', delivered, t));
     this.runtime.record('message/' + delivered.delivery, changes); // Delivery and assignment are one transaction.
   }
   report(who: string, key: string, revision: number, evidence: string[]): void {
@@ -158,7 +164,7 @@ export class Coordinator {
   submit(who: string, batch: Batch): void {
     const t = this.task(batch.task);
     if (t.owner !== who || t.revision !== batch.revision || !['assigned', 'running'].includes(t.status) || this.budget.state.closed) throw new Error('Task execution admission closed');
-    this.runtime.intent(batch); this.saveTask({ ...t, status: 'running', wait: null }, 'task/running');
+    this.runtime.intent(batch, taskVisibility(t.id)); this.saveTask({ ...t, status: 'running', wait: null }, 'task/running');
   }
   /** Call on a bounded host timer; never starts an inference or polls through a model. */
   async pump(): Promise<void> {
