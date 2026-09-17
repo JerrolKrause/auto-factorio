@@ -6,18 +6,18 @@ A local Factorio Space Age experimentation environment where specialized AI agen
 
 ## Current status
 
-Phases 01–10 are complete and archived: subscription access, legal character execution, pause/restore, durable coordination, the local dashboard and verification engine. Phase 11 is implemented and verified: First Shift has a legal reference factory, calibrated flow checks and safe resets. Evidence is recorded in the [handoff](docs/IMPLEMENTATION_HANDOFF.md). See also the [compatibility report](docs/COMPATIBILITY_REPORT.md) and [accepted safeguards](docs/decisions/001-review-hardening.md).
+Phases 01–12 are complete and archived: subscription access, legal character execution, pause/restore, durable coordination, the local dashboard, verification engine, First Shift reference and bounded agent trials. Phase 12 team, assistance and fresh-session evidence is recorded in the [trial report](docs/FIRST_SHIFT_AGENT_TRIAL_REPORT.md) and [handoff](docs/IMPLEMENTATION_HANDOFF.md). See also the [compatibility report](docs/COMPATIBILITY_REPORT.md) and [accepted safeguards](docs/decisions/001-review-hardening.md).
 
 ## Phased implementation
 
 The [implementation guide](docs/IMPLEMENTATION_GUIDE.md) defines 18 bounded phases and their acceptance gates; the [coverage map](docs/SPEC_TRACEABILITY.md) connects them to requirements. The next implementation phase, only on instruction, is:
 
 ```text
-$openspec-apply-change af-12-first-shift-agent-trials
-Follow phase 12 of docs/IMPLEMENTATION_GUIDE.md, verify its entry gate in docs/IMPLEMENTATION_HANDOFF.md, implement only that change, and stop before phase 13.
+$openspec-apply-change af-13-plate-to-science
+Follow phase 13 of docs/IMPLEMENTATION_GUIDE.md, verify its entry gate in docs/IMPLEMENTATION_HANDOFF.md, implement only that change, and stop before phase 14.
 ```
 
-Phase 11 has 8/8 tasks complete and is archived with its capability synced to main specs. Phases 12–18 remain planned; model-backed S1 trials belong to phase 12.
+Phase 12 has 8/8 tasks complete, its [bounded agent-trial commands](scenarios/01-first-shift/README.md#bounded-agent-trials) are verified, and its [capability spec](openspec/specs/first-shift-agent-trials/spec.md) is synced. Phases 13–18 remain planned.
 
 ## Planned first release
 

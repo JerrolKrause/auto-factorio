@@ -12,7 +12,7 @@ import { SqliteJournal } from '../../packages/storage/src/journal.js';
 import { Artifacts, redactor } from '../../packages/storage/src/artifacts.js';
 import type { Artifact, Audience } from '../../packages/storage/src/artifacts.js';
 import type { GameClient } from '../../packages/factorio/src/client.js';
-import { barrier, captureCheckpoint, validateCheckpoint, verifyLoaded } from '../../packages/factorio/src/lifecycle.js';
+import { barrier, captureCheckpoint, validateCheckpoint, verifyLoaded, fence } from '../../packages/factorio/src/lifecycle.js';
 import type { Lifecycle, ControlState } from '../../packages/factorio/src/lifecycle.js';
 interface SavedBudget { caps: Caps; state: BudgetState; savedAt: number }
 interface CheckpointRecord { manifest: string; save: string; eventCursor: number; source: 'managed-disarmed' }
@@ -137,12 +137,19 @@ export class DurableRuntime {
       return control;
     });
   }
-  async resume(control: ControlState): Promise<ControlState> {
+  async resume(control: ControlState, verification = false): Promise<ControlState> {
     return this.exclusive(async () => {
       this.ready = false; this.checkBudget();
       if (!this.recovery().complete) throw new Error('Incomplete evidence blocks resume');
       await this.execution.reconcile();
       if (this.execution.pending().some(c => c.state === 'unknown' || c.state === 'sending')) throw new Error('Unknown effects block resume');
+      if (verification) {
+        barrier(control);
+        const resumed = await this.lifecycle.rpc({ op: 'resume-verification', ...fence(control) });
+        if (!resumed.armed || resumed.paused || resumed.epoch !== control.epoch || resumed.session !== control.session) throw new Error('Verification resume unconfirmed');
+        // The game retains its mutation guard; no construction authority is restored here.
+        this.ready = false; this.game.admission = false; return resumed;
+      }
       const reconciled = await this.lifecycle.reconcile(control, []);
       this.epoch = reconciled.epoch;
       this.session = reconciled.session;

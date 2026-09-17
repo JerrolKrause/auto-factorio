@@ -1,6 +1,6 @@
 # AutoFactorio implementation guide
 
-Status: phases 01–10 are implemented, verified and archived. Phase 11 has passed its software/live S1 and twice-reset gate, with 8/8 tasks and independent review complete; it is archived with its capability synced to main specs. See the current handoff for evidence. Phases 12–18 remain planned. Start one bounded change per fresh conversation in the existing workspace.
+Status: phases 01–12 are implemented, verified and archived. Phase 12 passed its bounded team/assistance/fresh-session gate with 8/8 tasks complete. See the current handoff and [trial report](FIRST_SHIFT_AGENT_TRIAL_REPORT.md) for evidence. Phases 13–18 remain planned. Start one bounded change per fresh conversation in the existing workspace.
 
 ## Why 18 changes
 
@@ -230,7 +230,9 @@ Work in C:\@Projects\AutoFactorio. Follow phase 11 of docs/IMPLEMENTATION_GUIDE.
 
 ### 12 — First Shift agent trials
 
-[Open the change](../openspec/changes/af-12-first-shift-agent-trials/proposal.md) · [Task checklist](../openspec/changes/af-12-first-shift-agent-trials/tasks.md)
+Completed, verified and archived on 17 September 2026; 8/8 tasks and the bounded integration exit gate passed.
+
+[Open the change](../openspec/changes/archive/2026-09-17-af-12-first-shift-agent-trials/proposal.md) · [Task checklist](../openspec/changes/archive/2026-09-17-af-12-first-shift-agent-trials/tasks.md)
 
 **Entry:** Phase 11 (`af-11-first-shift-reference`) has a passed implementation gate in the handoff.
 

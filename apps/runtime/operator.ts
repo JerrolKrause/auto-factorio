@@ -18,6 +18,7 @@ export class Operator {
   private busy = false;
   private polling = false;
   private pollWork: Promise<void> = Promise.resolve();
+  private lastControl: ControlState | null = null;
   constructor(readonly coordinator: Coordinator) {
     this.interventions = new Interventions(coordinator);
     if (!coordinator.runtime.hasControlSession()) this.save({ ...this.state(), admission: false, requested: 'pause', status: 'unconfirmed', cancellation: 'unconfirmed', inference: 'unconfirmed', connected: false, error: 'Controller replacement requires reconciliation' });
@@ -35,6 +36,7 @@ export class Operator {
     return this.coordinator.budget.state.turns.every(t => t.finished);
   }
   private observed(s: ControlState): void {
+    this.lastControl = s;
     const prior = this.state();
     this.save({ ...prior, connected: true, gameTick: s.tick, error: null });
     const available = Object.keys(s.production).length > 0;
@@ -50,6 +52,7 @@ export class Operator {
       c.interruptForControl();
       // Let an earlier poll finish under the already-closed admission gate before changing epochs.
       await this.pollWork;
+      if (c.runtime.hasControlSession()) await c.pump();
       // Recovery establishes the current session before ownership creates durable revoke requests.
       // Pump can change the held receipt ledger, so refresh that barrier again before resume.
       await c.runtime.recover();
@@ -59,7 +62,9 @@ export class Operator {
       if (action === 'resume') {
         if (inference !== 'confirmed') throw new Error('Inference interruption unconfirmed');
         if (c.budget.snapshot().closed || this.state().scoringClosed) throw new Error('Original run budget closed; continuation cannot score');
-        const armed = await c.runtime.resume(held);
+        const verification = c.runtime.journal.get<{ active?: boolean }>(c.runtime.run, 'runs', 'verification')?.active === true;
+        const armed = await c.runtime.resume(held, verification);
+        this.lastControl = armed;
         this.save({ ...this.state(), admission: true, status: 'running', connected: true, gameTick: armed.tick, cancellation: 'confirmed', inference, error: null });
       } else {
         this.save({ ...this.state(), status: inference === 'confirmed' ? (action === 'pause' ? 'paused' : 'stopped') : 'unconfirmed', connected: true, gameTick: held.tick, cancellation: 'confirmed', inference, error: inference === 'confirmed' ? null : 'Inference interruption unconfirmed' });
@@ -100,6 +105,9 @@ export class Operator {
     try {
       const c = this.coordinator;
       c.budget.tick(); this.interventions.deliver();
+      // Refresh the acknowledged fence before potentially expensive ledger work.
+      // A stale fence still fails closed; this never revives lost authority.
+      if (this.state().admission && this.lastControl) await c.runtime.heartbeat(this.lastControl);
       if (!c.runtime.hasControlSession()) await c.runtime.recover();
       if (c.budget.state.closed && !this.state().scoringClosed) {
         this.save({ ...this.state(), admission: false, scoringClosed: true, requested: 'stop', status: 'unconfirmed' });
@@ -119,6 +127,7 @@ export class Operator {
         // A watchdog or external hold can revoke execution while the transport remains healthy.
         this.save({ ...this.state(), admission: false, requested: 'pause', status: 'unconfirmed', cancellation: 'unconfirmed', error: 'Game execution authority lost' });
         c.interruptForControl();
+        await c.pump();
       }
       if (!this.state().admission && !this.busy) {
         if (control.armed || !control.paused || !control.neutral || control.ticksToRun !== 0) control = await c.runtime.recover();

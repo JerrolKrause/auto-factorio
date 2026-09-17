@@ -22,7 +22,8 @@ export class Coordinator {
   private readonly stopped = new Set<string>();
   private readonly interruptRequested = new Set<string>();
   private busy = false;
-  constructor(readonly runtime: DurableRuntime, caps: Caps, now = () => performance.now()) {
+  private pumpWork: Promise<void> | null = null;
+  constructor(readonly runtime: DurableRuntime, caps: Caps, now = () => performance.now(), private readonly dispatchAllowed = () => true) {
     this.budget = runtime.createBudget(caps, now, t => { this.stopped.add(t.id); });
     runtime.admissionGuard = batch => {
       this.budget.tick(); const t = this.task(batch.task);
@@ -184,8 +185,14 @@ export class Coordinator {
     this.runtime.intent(batch, taskVisibility(t.id)); this.saveTask({ ...t, status: 'running', wait: null }, 'task/running');
   }
   /** Call on a bounded host timer; never starts an inference or polls through a model. */
-  async pump(): Promise<void> {
-    if (this.busy) return; this.busy = true;
+  pump(): Promise<void> {
+    // Control and provider cancellation must join an in-flight reconciliation,
+    // not mistake a skipped concurrent call for its completion.
+    if (!this.pumpWork) this.pumpWork = this.performPump().finally(() => { this.pumpWork = null; });
+    return this.pumpWork;
+  }
+  private async performPump(): Promise<void> {
+    this.busy = true;
     try {
       this.budget.tick();
       this.requestInterrupts();
@@ -244,6 +251,7 @@ export class Coordinator {
       }
       const order = new Map(this.runtime.journal.events().filter(e => e.type === 'command/intent').map(e => [e.correlation, e.sequence]));
       for (const c of this.runtime.execution.pending().filter(c => c.state === 'pending').sort((a, b) => order.get(a.batch.commandId)! - order.get(b.batch.commandId)!)) {
+        if (!this.dispatchAllowed()) break;
         if (this.runtime.execution.pending().some(c => c.state === 'unknown' || c.state === 'sending' || c.receipt?.status === 'accepted' || c.receipt?.status === 'running')) break;
         const t = this.task(c.batch.task);
         if (!this.budget.state.closed && t.revision === c.batch.revision && ['assigned', 'running'].includes(t.status)) await this.runtime.dispatch(c.batch.commandId);

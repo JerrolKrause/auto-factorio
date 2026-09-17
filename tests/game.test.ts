@@ -18,6 +18,13 @@ describe('structured game boundary',()=>{
   const encoded=code.match(/,"((?:\\\d{3})+)"\)\)$/)![1]!;const decoded=Buffer.from([...encoded.matchAll(/\\(\d{3})/g)].map(m=>Number(m[1]))).toString('utf8');
   expect(JSON.parse(decoded)).toEqual(payload);expect(code).not.toContain('game.player');expect(()=>wrapper('x'.repeat(65537))).toThrow('large');
  });
+ it('allows a bounded large held-ledger echo only for operator reconciliation',()=>{
+  const ledger={receipt:'x'.repeat(100000)};
+  expect(()=>wrapper({op:'reconcile',ledger},true)).not.toThrow();
+  expect(()=>wrapper({op:'reconcile',ledger})).toThrow('large');
+  expect(()=>wrapper({op:'state',ledger},true)).toThrow('large');
+  expect(()=>wrapper({op:'reconcile',ledger:'x'.repeat(4*1024*1024)},true)).toThrow('large');
+ });
  it.each([{commandId:'c1',status:'completed'},{commandId:'c1',status:'completed',acceptedTick:0,completed:1,unexecuted:0,steps:[]},{commandId:'c1',status:'completed',acceptedTick:0,completed:0,unexecuted:1,steps:[]}])('rejects incomplete or inconsistent receipt %j',r=>{expect(()=>validateReceipt(r)).toThrow();});
  it('uses recipe facts and rejects advanced forms without flattening',()=>{
   expect(requirements(recipe,'iron-gear-wheel',3)).toEqual({supported:true,crafts:3,seconds:1.5,ingredients:[{name:'iron-plate',quality:'normal',count:6}]});

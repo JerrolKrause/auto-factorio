@@ -5,6 +5,7 @@ import { cleanEnvironment } from '../packages/codex/src/rpc.js';
 import { Provider } from '../packages/codex/src/provider.js';
 import { Gateway } from '../packages/tools/src/gateway.js';
 import type { Activity, RpcPort } from '../packages/codex/src/protocol.js';
+import { trialFailure } from '../apps/runtime/trial-state.js';
 class FakeRpc implements RpcPort {
   calls: { method: string; params: unknown }[] = [];
   listeners = new Set<(method: string, params: unknown) => void>();
@@ -32,6 +33,28 @@ function budgetHarness(caps = PROBE_CAPS) {
   return { budget, stopped, advance: (ms: number) => { now += ms; budget.tick(); } };
 }
 describe('managed provider admission', () => {
+  it('retains spent budget and reports a mid-run allowance refusal without a retry or integration-failure claim', async () => {
+    const rpc = new FakeRpc(); const { budget } = budgetHarness(); const prior = budget.admit('foreman'); budget.finish(prior.id); budget.usage('foreman-session', 100);
+    const p = new Provider('engineer', rpc, budget, () => {}, () => {}, async () => true);
+    await p.initialize(); await p.sessionStart('isolated'); await p.catalog(['autofactorio:observe']);
+    rpc.replies['account/rateLimits/read'] = { ordinaryUsageAllowed: false, rateLimits: {} };
+    let caught: unknown; try { await p.start('continue', () => {}); } catch (e) { caught = e; }
+    const outcome = trialFailure(caught); expect(outcome).toMatchObject({ reason: 'provider_allowance_stop', failure: null });
+    expect(outcome.providerStop).toContain('exhausted'); budget.closeRun(outcome.reason);
+    expect(budget.state.spentTurns).toBe(1); expect(budget.state.reportedTokens).toBe(100);
+    expect(rpc.calls.some(c => c.method === 'turn/start')).toBe(false);
+    expect(trialFailure(caught, false)).toMatchObject({ reason: 'provider_preflight_failure', providerStop: expect.stringContaining('exhausted'), failure: expect.stringContaining('exhausted') });
+    expect(trialFailure(new Error('catalog mismatch')).reason).toBe('integration_failure'); p.close();
+  });
+  it('passes explicit gameplay instructions while withholding inference on a wrong catalog', async () => {
+    const rpc = new FakeRpc(); const { budget } = budgetHarness();
+    const p = new Provider('engineer', rpc, budget, () => {}, () => {}, async () => true);
+    await p.initialize(); await p.sessionStart('isolated', undefined, 'Real game; scoped tools only.');
+    expect(rpc.calls.find(c => c.method === 'thread/start')?.params).toMatchObject({ baseInstructions: 'Real game; scoped tools only.' });
+    await expect(p.catalog(['autofactorio:build'])).rejects.toThrow('catalog mismatch');
+    await expect(p.start('build', () => {})).rejects.toThrow('isolation');
+    expect(budget.state.spentTurns).toBe(0); expect(rpc.calls.some(c => c.method === 'turn/start')).toBe(false); p.close();
+  });
   it('retains exact model/effort and unknown usage without inventing allowance', async () => {
     const result = await discover(new FakeRpc()); expect(result.model).toBe('gpt-6-astra'); expect(result.effort).toBe('low'); expect(result.usage).toMatchObject({ primary: null });
     expect(checkAllowance({ rateLimits: {} })).toBeNull();

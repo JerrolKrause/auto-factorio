@@ -14,6 +14,7 @@
     "game:dashboard-probe": "node dist/scripts/game-dashboard-probe.js",
     "game:verification-probe": "node dist/scripts/game-verification-probe.js",
     "scenario:launch": "node dist/scripts/scenario.js",
+    "scenario:trial": "node dist/scripts/scenario-trial.js",
     "game:first-shift-probe": "node dist/scripts/game-first-shift-probe.js",
     "lint": "eslint scripts packages apps tests",
     "test": "vitest run",

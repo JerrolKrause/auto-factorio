@@ -22,3 +22,15 @@ corepack.cmd pnpm game:first-shift-probe --run-file '<held-run-directory>/run.js
 ```
 
 The diagnostic accelerates simulation to 4× while retaining normal character speeds, recipe timing, and exact game-tick windows. It uses no model turns. Scoring evidence includes seven exact samples (admission, settling and five window ends), actor inventory/cursor monitoring, direct inserter deliveries, machine completions, collector drains, and input/output inventory balances. Event files and reports are operator-only. See [Decision 013](../../docs/decisions/013-first-shift-reference.md) for measurement assumptions and calibration.
+
+## Bounded agent trials
+
+Phase 12's bounded integration gate passed; see the [trial report](../../docs/FIRST_SHIFT_AGENT_TRIAL_REPORT.md). Build first, then run a no-inference preflight:
+
+```powershell
+corepack.cmd pnpm scenario:trial --trial unassisted-team-replacement --codex '<absolute installed codex.exe>' --reference '<passed phase 11 probe directory>' --preflight
+```
+
+The launcher creates a visible S1 world, dashboard and isolated provider sessions. It verifies auth and catalogs without submitting a turn. It prints the run directory; open the URL in `dashboard.json`. For the declared unassisted trial, remove `--preflight` and add `--reset '<preflight-run-directory>/run.json'`. Reset preserves the old history and creates a new run. For the separately assisted trial, select `--trial assisted-team --hint-file '<UTF-8 operator hint file>'` and reset from the held previous run. The hint is delivered to the foreman after its first turn; its exact contents and interpretation are retained.
+
+Each invocation without `--preflight` is a new, budgeted inference run, not an automatic retry. Declared caps, instruction hashes and reference checksums are in `trial-manifest.json`; public provider activity streams to the dashboard and `provider-events.jsonl`. `trial-report.json` retains outcome, usage, commands, replacement and intervention evidence. Ctrl+C closes admission and requests acknowledged shutdown; an unconfirmed outcome remains a failure. Completed hosts leave the dedicated game held. See [Decision 014](../../docs/decisions/014-first-shift-agent-trials.md).

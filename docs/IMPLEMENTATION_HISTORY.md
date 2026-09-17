@@ -671,3 +671,53 @@ Archive changes affect only planning and documentation. The final **284-test / 9
 ### History on demand
 
 The [phase 09 closeout and earlier evidence](IMPLEMENTATION_HISTORY.md#phase-09-closeout-retained-at-phase-10) preserve its dashboard, agent workflow and archive records.
+
+
+## Phase 11 closeout retained at phase 12
+
+# Implementation handoff
+
+## Current implementation — 16 September 2026
+
+Phases **01–10 are complete and archived**. Phase **11**, [First Shift reference](../openspec/changes/archive/2026-09-16-af-11-first-shift-reference/proposal.md), has **8/8 tasks complete**, passed its software/live S1/twice-reset implementation gate and completed independent review with **zero findings**. Implementation tested against parent **`130c281196e87cc0517d1692e5609b1fa60148b2` plus the phase 11 source included here**. Commit: **`47ca8cd` — `Implement and archive phase 11 First Shift reference`**. Phase 11 is archived and its [capability is synced to main specs](../openspec/specs/first-shift-reference/spec.md). No phase 12 work or model inference was performed.
+
+**Next bounded action, only on instruction:** phase 12 [agent trials](../openspec/changes/archive/2026-09-17-af-12-first-shift-agent-trials/proposal.md), with its own provider preflight and deliberate model budget. Phase 11 archive and commit were explicitly requested by the user.
+
+S1 now supplies a versioned finite kit, protected terminals/power, draining collector and public briefing. Its hidden reference constructs through ordinary character batches. Exact Lua admission/settling/window samples feed connected ingredient and science balances; missing coverage and detected character edits invalidate scoring. Durable run clocks and safe cached resets preserve prior history. See [scenario commands](../scenarios/01-first-shift/README.md), [module contract](../packages/core/evaluation/README.md) and [Decision 013](decisions/013-first-shift-reference.md).
+
+## Executed acceptance evidence
+
+- `corepack.cmd pnpm game:first-shift-probe --run-file .runtime/scenarios/runs/run-ICGE89/run.json` passed **9/9** in **Factorio 2.0.77 + Space Age**. Evidence: `.runtime/phase04/game-YDbQUP/first-shift-probe-Nvkz4H/`, including source hashes, manifest, initial world, receipts and private reports. The legal reference produced and delivered **36 packs in each of five exact 3,600-tick windows**. Both ingredients had **180 fresh deliveries and 180 consumed**; all three stage balance residuals and drawdowns were **zero**, inside the frozen zero-residual/12-item drawdown limits.
+- Old ingredient stocks, old output stocks and unrelated upstream supply sustained the output windows but failed the required fresh connected-flow criteria. Character transfer was rejected during verification; an explicit native inventory injection invalidated coverage. Positive construction used only legal gateway actions. Diagnostic negative setup and 4× simulation speed are labeled; character speeds and game-tick timing remained normal.
+- Two `scenario:launch --reset ... --roster solo|team --hold` runs passed, followed by `node .runtime/phase11/reset-check.mjs`: original `run-ICGE89`, then `run-hKcyxm`, then `run-bilQic`. Fixture/cache fingerprints matched; run/epoch/session identities were unique; both outgoing worlds met the neutral paused barrier; all three journals remained readable with their own roster and clock origins. Final restored state retained the exact kit, six fixture entities, no old commands and frozen ticks. Evidence: `.runtime/phase11/reset-1.json`, `reset-2.json`, `reset-evidence.json`, each run's `reset-out.json` and retained journals.
+- Targeted First Shift/dashboard tests passed **30/30**. First delegated full software run passed both builds, lint, **293/293 tests in 14 files** and docs (**127 files / 410 links**); ordinary sandbox process inspection blocked headless startup. Evidence: `.runtime/verification/check-ee7piK/`, validated contract `.runtime/phase11-verification-1/`.
+- The reviewed-escalation rerun passed builds/lint but hit the existing WAL backup test's five-second timeout (**292 passed / 1 failed**) while a cold visible reset was loading. Evidence: `.runtime/verification/check-vqaINR/`, contract `.runtime/phase11-verification-2/`. After closing the dedicated game, `corepack.cmd pnpm exec vitest run tests/storage.test.ts` passed **26/26** (WAL case **1,128 ms**); no timeout or storage code changed.
+- Final delegated `corepack.cmd pnpm verify --game` passed both builds, lint, **293/293 tests**, documentation checks, **9/9 fresh headless checks** and exact-profile cleanup. Evidence: `.runtime/verification/check-qiOl3u/`; contract `.runtime/phase11-verification-3/` validated ready with **101 matching source hashes**. Verifier requested Luna/medium; observed model and usage metadata were unavailable. Subsequent edits affect documentation only; final links/OpenSpec checks are recorded separately.
+
+## Retained failures and cleanup
+
+Independent review covered all **26 changed paths**, including the 12 new files, against the clean starting HEAD. **0 findings, 0 fixed, 0 rejected, 0 remaining**; validated result `.runtime/phase11-review-1/result.json`. Final closeout documentation has a separate review packet under `.runtime/phase11-review-2/`. Live source verification confirmed all **14 probe fingerprints** match the final code. Final documentation checks passed **127 files / 419 links**, strict OpenSpec validation passed **18/18**, and whitespace checks passed; outputs are retained under `.runtime/phase11/`.
+
+Earlier positive diagnostics exposed incorrect underground endpoint placement, the repeated-pause latch and an incorrect rotation correction. They failed explicitly and remain under `.runtime/phase04/game-Ni8JlD/first-shift-probe-hXFV2K/`, `game-97SBzp/first-shift-probe-riPQYM/` and `game-ihqHUu/first-shift-probe-Q0TAfe/`. Corrected underground pairing is read back before production. Repeated paused requests now re-arm correctly; the final live probe includes that regression.
+
+All phase 11 visible profiles were stopped by exact config/process identity after acknowledging a held world; reset retired its two predecessors. Final cleanup evidence: `.runtime/phase11/cleanup.json`. The pre-existing phase 03 `game-KL4Zrd` server was preserved. Reviewed project-scoped process operations were needed because ordinary sandbox inspection failed. Personal saves, game binaries, credentials and global settings were unchanged.
+
+## Limits and next integration
+
+S1 calibration covers ordinary-quality deterministic red science, its measured inventories and supported belt/underground/inserter routes. Arbitrary script tampering, productive recipes, fluids and quantitative burner energy are outside this adapter; unsupported coverage fails closed. Scenarios S2–S5 remain planned. No model performance or subscription-availability claim comes from this phase. Phase 12 must perform its own provider preflight and bounded visible agent trials using this fixture and retained reference evidence.
+
+The launcher creates a paused visible world and roster journal with the existing dashboard controls; it starts no inference. The private reference/probe are operator tools and are absent from shared gameplay briefings. Diagnostic event files can be large and remain ignored under `.runtime/`.
+
+## Archive and commit closeout — 16 September 2026
+
+Archived the completed spec-driven change to `openspec/changes/archive/2026-09-16-af-11-first-shift-reference/`, retaining `.openspec.yaml`. The main spec preserves the delta Purpose and all five requirement/scenario blocks. Updated guide, traceability, historical and decision links, including relative links inside the archive.
+
+This closeout changes only planning and documentation relative to the reviewed implementation. The **293 software tests / 9 headless checks / 9 live S1 checks / two resets** remain applicable; no new game or provider run was needed. Archive checks passed **128 Markdown files / 420 local links**, strict OpenSpec **18/18**, and staged whitespace checks. Before-archive snapshots, exact spec comparison, validation and independent archive review are retained in `.runtime/phase11-archive-20260916/`. No push or phase 12 work is included.
+
+## History on demand
+
+Workflow update approved on 16 September 2026: combine implementation and substantive documentation in one independent review. Routine documentation closeout and faithful archive/spec sync use author-run deterministic checks; requirements, permission and behavior changes retain independent review. See the [author workflow](../.agents/skills/change-audit/author-workflow.md). This instruction change is recorded separately from phase 11; phase 12 remains unstarted.
+
+Workflow commit: **`Avoid repeated review for routine documentation closeout`**, parent `47ca8cd`. One focused permission-change review returned **0 findings**; its validated contract is in `.runtime/review-policy-20260916/`. Author checks passed: `check-docs.mjs` (**128 files / 421 links**), skill `quick_validate.py`, and whitespace checks. The skill validator used project-local PyYAML after the initial missing-dependency failure; no global prerequisites changed. This final evidence summary uses the routine-closeout exemption, with no second reviewer. No application/game tests were needed for these instruction-only edits.
+
+The [phase 10 closeout and earlier evidence](IMPLEMENTATION_HISTORY.md#phase-10-closeout-retained-at-phase-11) preserve prior verification, archive and review records.

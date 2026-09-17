@@ -53,6 +53,18 @@ end
 function M.rpc(r)
  local c=storage.af.control
  if r.op=="state" then C.keys(r,{"op"});return M.state() end
+ if r.op=="resume-verification" then
+  C.keys(r,{"op","epoch","session","revision"});M.check(r)
+  local v=storage.af.verification
+  -- Only a neutral ordinary pause of an admitted observation-only interval may
+  -- retain its baseline. Restores, watchdog loss and construction use reconciliation.
+  C.check(v and v.state=='admitted' and c.reason=='operator_pause' and not c.checkpoint,'verification_resume_requires_ordinary_pause')
+  C.check(not c.armed and game.tick_paused and game.ticks_to_run==0 and M.state().neutral and next(storage.af.active)==nil,'verification_resume_requires_barrier')
+  for _,o in pairs(storage.af.orders) do C.check(o.status~='suspended','verification_resume_has_pending_order') end
+  c.armed=true;c.ready=false;c.revision=c.revision+1;c.lastHeartbeat=game.ticks_played;c.pausePending=false
+  game.ticks_to_run=0;game.tick_paused=false
+  return M.state()
+ end
  if r.op=="fixture" then
   C.keys(r,{"op"});C.check(not c.armed and not c.fixture and next(storage.af.orders)==nil,"fixture_requires_fresh_disarmed_world")
   local e=game.surfaces.nauvis.create_entity{name="stone-furnace",position={-6.5,-5.5},force="player"};C.check(e,"fixture_collision")

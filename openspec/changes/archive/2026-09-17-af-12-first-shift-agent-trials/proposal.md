@@ -6,7 +6,7 @@ A passing deterministic reference does not establish that separate scoped model 
 
 - A budgeted S1 foreman/engineer experiment, an assisted run and a fresh-provider-session continuation with a complete report.
 - Preserve the approved product safeguards and attach explicit acceptance evidence to this bounded phase.
-- Complete phase 12 only after `af-11-first-shift-reference` has passed its implementation gate; see the [implementation guide](../../../docs/IMPLEMENTATION_GUIDE.md).
+- Complete phase 12 only after `af-11-first-shift-reference` has passed its implementation gate; see the [implementation guide](../../../../docs/IMPLEMENTATION_GUIDE.md).
 
 ## Capabilities
 

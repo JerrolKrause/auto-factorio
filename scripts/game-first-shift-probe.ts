@@ -6,7 +6,7 @@ import { setTimeout as delay } from 'node:timers/promises';
 import { randomUUID } from 'node:crypto';
 import { record, diagnosticGrants } from '@autofactorio/contracts';
 import { GameClient, observeRequest } from '../packages/factorio/src/client.js';
-import { Lifecycle, sha256, captureCheckpoint } from '../packages/factorio/src/lifecycle.js';
+import { Lifecycle, sha256, captureCheckpoint, barrier } from '../packages/factorio/src/lifecycle.js';
 import type { ControlState } from '../packages/factorio/src/lifecycle.js';
 import { VerificationControl } from '../packages/factorio/src/verification.js';
 import { FirstShiftControl, FirstShiftAttempt, evaluatorManifest, fingerprint, briefing, commonKit } from '../packages/factorio/src/first-shift.js';
@@ -66,6 +66,16 @@ try {
   await waitFor('Reference warm-up', async () => { control = await life.heartbeat(control); return control.tick >= readyTick ? true : undefined; }, 90000, 100);
   const attempt = new FirstShiftAttempt(randomUUID(), evaluatorManifest(manifest, fixtureHash, origin.originTick, origin.originWallMs), scenario, guard, sink);
   await attempt.admit(control);
+  // A real ordinary pause must preserve the admitted baseline across continued polling.
+  control = await life.pause(await life.inspect()); const pausedTick = control.tick;
+  await attempt.poll(); await delay(250); await attempt.poll();
+  assert.equal((await life.inspect()).tick, pausedTick);
+  const priorEpoch = control.epoch;
+  control = await life.rpc({ op: 'resume-verification', epoch: control.epoch, session: control.session, revision: control.revision });
+  assert.equal(control.epoch, priorEpoch); assert.equal(control.armed, true);
+  // This operator-only probe must reach Lua for later negative admission checks.
+  // The application runtime deliberately keeps its character client closed here.
+  game.admission = true;
   for (;;) {
     control = await life.heartbeat(control); await attempt.poll();
     const report = attempt.engine.report();
@@ -124,9 +134,21 @@ try {
   });
   assert.equal(native.report.state, 'invalid');
   pass('Native character inventory edit invalidates verification instead of silently preserving coverage');
+  // A realistic accumulated construction ledger must survive ordinary recovery,
+  // not only the short observation-only verification pause exercised above.
+  await port.command('/silent-command game.speed=1;rcon.print("control recovery at normal speed")');
+  control = await life.pause(await life.inspect());
+  const ledgerBytes = Buffer.byteLength(JSON.stringify(control.ledger));
+  assert(ledgerBytes > 65536, 'Recovery regression must exceed the old RPC limit');
+  control = await life.reconcile(control); control = await life.arm(control);
+  const resumedAt = control.tick;
+  for (let i = 0; i < 20; i++) { control = await life.heartbeat(control); assert(control.armed && !control.paused); await delay(100); }
+  assert(control.tick > resumedAt); control = await life.pause(control); barrier(control);
+  await writeFile(path.join(evidence, 'large-ledger-recovery.json'), JSON.stringify({ passed: true, ledgerBytes, resumedAt, heldAt: control.tick }));
 } catch (error) { failure = String(error); process.exitCode = 1; await writeFile(path.join(evidence, 'failure.txt'), failure); console.error(failure.slice(0, 1200)); }
 finally {
-  try { control = await life.inspect(); if (control.armed || !control.paused) await life.pause(control); } catch { failure ??= 'Cleanup hold unconfirmed'; process.exitCode = 1; }
-  port.close(); await writeFile(path.join(evidence, 'result.json'), JSON.stringify({ passed: failure === null, checks, failure, modelInference: false }, null, 2));
+  let held = false;
+  try { control = await life.inspect(); if (control.armed || !control.paused) control = await life.pause(control); barrier(control); held = true; } catch { failure ??= 'Cleanup hold unconfirmed'; process.exitCode = 1; }
+  port.close(); await writeFile(path.join(evidence, 'result.json'), JSON.stringify({ passed: failure === null, checks, failure, modelInference: false, cleanup: { held, tick: control?.tick ?? null } }, null, 2));
   console.log(JSON.stringify({ evidence, checks: checks.length, failure: failure?.slice(0, 300) }));
 }

@@ -5,6 +5,7 @@ import path from 'node:path';
 import { diagnosticAssignment } from '@autofactorio/contracts';
 import type { Batch, OwnershipControl, Receipt } from '@autofactorio/contracts';
 import { DurableRuntime } from '../apps/runtime/durable-runtime.js';
+import { Operator } from '../apps/runtime/operator.js';
 import { GameClient } from '../packages/factorio/src/client.js';
 import { Lifecycle } from '../packages/factorio/src/lifecycle.js';
 import type { ControlState } from '../packages/factorio/src/lifecycle.js';
@@ -13,13 +14,15 @@ import { Coordinator } from '../packages/core/orchestration/coordinator.js';
 import type { TaskInput } from '../packages/core/orchestration/coordinator.js';
 import { team, soloTeam, engineer } from '../packages/core/orchestration/roles.js';
 import { CoordinationGateway } from '../packages/tools/src/coordination.js';
+import { CoordinationMcp, toolCatalog } from '../packages/tools/src/coordination-mcp.js';
+import type { Command } from '../packages/core/execution/durable.js';
 
 const caps = { ...PROBE_CAPS, turns: 20, tools: 100, runMs: 10000, turnMs: 9000 };
 const resources = diagnosticAssignment(1).resources.map(r => r.resource);
 function task(id = 'task', actor: string | null = 'builder-1'): TaskInput {
   return { id, goal: 'perform ' + id, parent: null, dependencies: [], scope: {}, resources: {}, successCriteria: ['completed receipt'], deadline: null, committedPlan: 'place chest', actor, reservations: actor ? resources : [], criteria: [{ kind: 'command-completed', id: id + '-command' }] };
 }
-async function fixture(directory = mkdtempSync(path.join(os.tmpdir(), 'af-coordination-')), prior?: ControlState) {
+async function fixture(directory = mkdtempSync(path.join(os.tmpdir(), 'af-coordination-')), prior?: ControlState, dispatchAllowed = () => true) {
   const control: ControlState = prior ?? { ok: true, epoch: 'epoch', session: 'session', revision: 1, generation: 1, armed: false, ready: false, paused: true, neutral: true, ticksToRun: 0, tick: 100, ticksPlayed: 100, experimentTick: 100, scenarioElapsed: 100, injections: 1, checkpoint: false, ledger: {}, intents: {}, production: {}, mods: {} };
   const port = { command: async () => JSON.stringify(control), close: () => {} };
   const game = new GameClient(port, () => {}); const life = new Lifecycle(port, game, () => {});
@@ -45,7 +48,7 @@ async function fixture(directory = mkdtempSync(path.join(os.tmpdir(), 'af-coordi
     control.ledger[b.commandId] = receipt; return { ok: true, receipt };
   };
   let runtime = new DurableRuntime(directory, 'run', 'epoch', game, life); let now = 0;
-  let c = new Coordinator(runtime, caps, () => now); let gateway = new CoordinationGateway(c);
+  let c = new Coordinator(runtime, caps, () => now, dispatchAllowed); let gateway = new CoordinationGateway(c);
   await runtime.recover(); await runtime.resume(control);
   return {
     get runtime() { return runtime; }, get c() { return c; }, get gateway() { return gateway; }, control, life, controls,
@@ -63,6 +66,72 @@ async function assigned(f: Awaited<ReturnType<typeof fixture>>, key = 'task', wh
   f.c.propose(manager, task(key, body)); f.c.send(manager, { id: key + '-assign', recipient: who, task: key, revision: 1, intent: 'handoff', content: 'Build', evidence: [] }); await f.c.pump();
 }
 describe('phase 07 durable coordination', () => {
+  it('retains queued construction across a host dispatch hold and sends it exactly once after release', async () => {
+    let allowed = false; const f = await fixture(undefined, undefined, () => allowed);
+    team().forEach(a => f.c.register(a)); await assigned(f); f.c.submit('engineer', batch(f));
+    await f.c.pump(); await f.c.pump(); expect(f.sends()).toBe(0);
+    expect(f.runtime.execution.pending()[0]?.state).toBe('pending');
+    allowed = true; await f.c.pump(); await f.c.pump(); expect(f.sends()).toBe(1);
+    expect(f.runtime.execution.pending()[0]?.receipt?.status).toBe('running'); f.close();
+  });
+  it('joins concurrent reconciliation callers before either can recover execution', async () => {
+    const f = await fixture(); team().forEach(a => f.c.register(a));
+    let release!: () => void; let inspections = 0; let joined = false;
+    const gate = new Promise<void>(resolve => { release = resolve; });
+    f.life.inspect = async () => { inspections++; await gate; return structuredClone(f.control); };
+    const first = f.c.pump(); const second = f.c.pump().then(() => { joined = true; });
+    await Promise.resolve(); expect(joined).toBe(false); expect(inspections).toBe(1);
+    release(); await Promise.all([first, second]); expect(joined).toBe(true);
+    await f.runtime.recover(); f.close();
+  });
+  it('retains changed receipts without rewriting unchanged large ledger evidence each poll', async () => {
+    const f = await fixture(); team().forEach(a => f.c.register(a)); await assigned(f);
+    f.c.submit('engineer', batch(f)); await f.c.pump();
+    const count = () => f.runtime.journal.events().filter(e => e.type === 'command/reconciled').length;
+    const initial = count(); await f.c.pump(); await f.c.pump(); expect(count()).toBe(initial);
+    Object.assign(f.control.ledger['task-command']!, { status: 'completed', completed: 1, unexecuted: 0 });
+    await f.c.pump(); expect(count()).toBe(initial + 1);
+    await f.c.pump(); expect(count()).toBe(initial + 1); f.close();
+  });
+  it('renews current authority before slow reconciliation and still fails closed on a stale heartbeat', async () => {
+    const f = await fixture(); team().forEach(a => f.c.register(a)); const operator = new Operator(f.c);
+    await operator.control('resume'); let heartbeat = false;
+    f.life.edits = async () => ({ events: [], overflow: false, coverage: 'test' });
+    f.life.heartbeat = async () => { heartbeat = true; return structuredClone(f.control); };
+    f.life.inspect = async () => { if (!heartbeat) throw new Error('Heartbeat expired during ledger work'); return structuredClone(f.control); };
+    await operator.poll(); expect(operator.state().status).toBe('running');
+    f.life.heartbeat = async () => { throw new Error('stale_control_revision'); };
+    await operator.poll(); expect(operator.state()).toMatchObject({ status: 'disconnected', admission: false }); f.close();
+  });
+  it('verification resume retains the baseline epoch without restoring character admission', async () => {
+    const f = await fixture();
+    const held = await f.runtime.recover(); let requested: unknown;
+    f.life.rpc = async request => { requested = request; return { ...held, armed: true, paused: false, revision: held.revision + 1 }; };
+    const resumed = await f.runtime.resume(held, true);
+    expect(resumed.epoch).toBe(held.epoch); expect(requested).toMatchObject({ op: 'resume-verification', epoch: held.epoch, session: held.session });
+    expect(() => f.runtime.intent({} as Batch)).toThrow(); f.close();
+  });
+  it('exposes role catalogs before binding without granting execution and permanently revokes old MCP credentials', async () => {
+    const f = await fixture(); team().forEach(a => f.c.register(a));
+    const mcp = new CoordinationMcp(f.c, f.gateway); const token = mcp.issue('engineer');
+    expect(toolCatalog(f.c, 'engineer').map(t => t.name)).not.toContain('verify');
+    expect(toolCatalog(f.c, 'foreman').map(t => t.name)).not.toContain('build');
+    await expect(mcp.call(token, 'observe', {})).rejects.toThrow('not bound');
+    const turn = f.c.budget.admit('engineer'); mcp.bind(token, f.c.bind('engineer', 'new-session', turn.id, async () => {}));
+    await expect(mcp.call(token, 'propose', { task: task() })).rejects.toThrow();
+    mcp.revoke(token); await expect(mcp.call(token, 'observe', {})).rejects.toThrow('revoked');
+    expect(f.c.budget.state.attempts).toBe(3); f.close();
+  });
+  it('build supplies acknowledged identity and fences while rejecting spoofed or stale input', async () => {
+    const f = await fixture(); team().forEach(a => f.c.register(a)); await assigned(f);
+    const { token } = f.bind('engineer'); const b = batch(f);
+    const input = { task: b.task, revision: b.revision, commandId: b.commandId, deadline: b.deadline, steps: b.steps };
+    expect(() => f.gateway.call(token, 'build', { ...input, actor: 'someone-else' })).toThrow('spoofing');
+    expect(() => f.gateway.call(token, 'build', { ...input, revision: 9 })).toThrow('reservation');
+    f.gateway.call(token, 'build', input); await f.c.pump();
+    expect(f.sends()).toBe(1); expect(f.runtime.journal.get<Command>(f.runtime.run, 'commands', b.commandId)?.batch).toEqual(b);
+    f.close();
+  });
   it('registers independent histories, a bodyless foreman and an ordinary third specialist', async () => {
     const f = await fixture(); team().forEach(a => f.c.register(a));
     f.c.register({ id: 'inspector', definition: { ...engineer, id: 'inspector' }, actors: [] });

@@ -1,4 +1,5 @@
 import type { Batch, Receipt } from '@autofactorio/contracts';
+import { isDeepStrictEqual } from 'node:util';
 
 export type Visibility = { kind: 'operator' } | { kind: 'shared' } | { kind: 'restricted'; agents: string[]; roles: string[]; tasks: string[] };
 export type Entity = 'runs' | 'agents' | 'tasks' | 'messages' | 'observations' | 'commands' | 'measurements' | 'interventions' | 'checkpoints' | 'budgets' | 'artifacts' | 'reservations' | 'agentHistory';
@@ -46,7 +47,13 @@ export class DurableExecution {
         if (command.state === 'rolled_back') continue;
         const same = (command.batch.epoch === world.epoch && command.batch.session === world.session) || (command.state === 'acknowledged' && command.receiptEpoch === world.epoch);
         const receipt = same ? world.ledger[command.batch.commandId] : undefined;
-        if (receipt) this.save({ ...command, state: 'acknowledged', receipt, receiptEpoch: world.epoch, reason: null }, 'command/reconciled');
+        if (receipt) {
+          // Keep changed evidence, but do not rewrite large completed ledgers on
+          // every heartbeat poll. Those synchronous commits can starve control.
+          if (command.state !== 'acknowledged' || command.receiptEpoch !== world.epoch || command.reason !== null || !isDeepStrictEqual(command.receipt, receipt)) {
+            this.save({ ...command, state: 'acknowledged', receipt, receiptEpoch: world.epoch, reason: null }, 'command/reconciled');
+          }
+        }
         else if (same && command.state === 'pending') { /* Never sent: still safe, after explicit admission. */ }
         else this.save({ ...command, state: 'unknown', receipt: null, receiptEpoch: null, reason: same ? 'receipt_unavailable' : 'epoch_requires_checkpoint_reconciliation' }, 'command/unknown');
       }

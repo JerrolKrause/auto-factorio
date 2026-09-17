@@ -12,13 +12,14 @@ export function profileOverrides(mcpNames: string[], logDir: string): Record<str
     ...Object.fromEntries(mcpNames.map(key => [`mcp_servers.${key}.enabled`, false])) };
 }
 export interface Preflight { model: string; effort: string; plan: unknown; ordinaryUsageAllowed: boolean | null; usage: unknown }
+export class IncludedAllowanceUnavailable extends Error {}
 export function checkAllowance(value: unknown): boolean | null {
   const data = object(value);
   const limits = object(data.rateLimits ?? {});
   const exhaustedWindow = ['primary', 'secondary'].some(key => {
     const window = limits[key]; return window && typeof object(window).usedPercent === 'number' && (object(window).usedPercent as number) >= 100;
   });
-  if (data.ordinaryUsageAllowed === false || exhaustedWindow || limits.spendControlReached === true || limits.rateLimitReachedType) throw new Error('Included account allowance exhausted; paid usage/reset/fallback forbidden');
+  if (data.ordinaryUsageAllowed === false || exhaustedWindow || limits.spendControlReached === true || limits.rateLimitReachedType) throw new IncludedAllowanceUnavailable('Included account allowance exhausted; paid usage/reset/fallback forbidden');
   return data.ordinaryUsageAllowed === true ? true : null;
 }
 export async function discover(rpc: RpcPort): Promise<Preflight> {
@@ -41,7 +42,7 @@ export async function discover(rpc: RpcPort): Promise<Preflight> {
   const usage = await rpc.call('account/rateLimits/read');
   const ordinaryUsageAllowed = checkAllowance(usage);
   // Unknown allowance is reported, but cannot safely authorize an included-only live probe.
-  if (ordinaryUsageAllowed !== true) throw new Error('Included account allowance unknown; inference withheld');
+  if (ordinaryUsageAllowed !== true) throw new IncludedAllowanceUnavailable('Included account allowance unknown; inference withheld');
   const limits = object(object(usage).rateLimits);
   return { model: ASTRA, effort: 'low', plan: object(account.account).planType, ordinaryUsageAllowed,
     usage: { primary: limits.primary ?? null, secondary: limits.secondary ?? null, spendControlReached: limits.spendControlReached ?? null } };

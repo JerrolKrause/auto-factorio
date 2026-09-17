@@ -25,10 +25,10 @@ export class Provider {
     await this.rpc.call('initialize', { clientInfo: { name: 'autofactorio', version: '0.1.0' }, capabilities: { experimentalApi: true } });
     this.emit('provider/ready', await discover(this.rpc));
   }
-  async sessionStart(cwd: string, resumeId?: string): Promise<void> {
+  async sessionStart(cwd: string, resumeId?: string, instructions?: string): Promise<void> {
     if (this.session) throw new Error('Session already selected');
     const common = { cwd, model: ASTRA, modelProvider: 'openai', approvalPolicy: 'never', sandbox: 'read-only',
-      baseInstructions: `You are AutoFactorio's synthetic ${this.role}. Use only the supplied gameplay MCP tools. Explain decisions briefly. No real game is connected.`,
+      baseInstructions: instructions ?? `You are AutoFactorio's synthetic ${this.role}. Use only the supplied gameplay MCP tools. Explain decisions briefly. No real game is connected.`,
       developerInstructions: `Identity is assigned by the runtime. Never submit identity arguments. Role: ${this.role}.` };
     const response = object(await this.rpc.call(resumeId ? 'thread/resume' : 'thread/start', resumeId ? { ...common, threadId: resumeId } : { ...common, environments: [] }));
     this.session = string(object(response.thread).id);

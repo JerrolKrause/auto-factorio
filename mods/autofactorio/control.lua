@@ -138,8 +138,14 @@ local function gameplay(r)
  end
  error("unsupported_gameplay_operation",0)
 end
-local function encoded(fn,payload)
- local ok,result=pcall(function()C.check(type(payload)=="string" and #payload<=65536,"invalid_payload");local r=helpers.json_to_table(payload);return fn(r)end)
+local function encoded(fn,payload,operator)
+ local ok,result=pcall(function()
+  C.check(type(payload)=="string" and #payload<=(operator and 4194304 or 65536),"invalid_payload")
+  local r=helpers.json_to_table(payload)
+  -- A verified held receipt ledger can exceed the ordinary action-batch limit.
+  C.check(#payload<=65536 or (operator and r.op=="reconcile"),"invalid_payload")
+  return fn(r)
+ end)
  return helpers.table_to_json(ok and result or {ok=false,error=tostring(result),tick=game.tick})
 end
 remote.add_interface("autofactorio_v1",{rpc=function(payload)return encoded(gameplay,payload)end})
@@ -156,4 +162,4 @@ remote.add_interface("autofactorio_operator_v1",{rpc=function(payload)return enc
  elseif r.op=="save" then C.check(next(storage.af.active)==nil,"active_orders_cannot_save");for _,index in pairs(storage.af.actors) do local p=game.get_player(index);A.neutral(p,true) end;game.server_save(r.name);return {ok=true,requestedTick=game.tick}
  end
  error("unsupported_operator_operation",0)
-end,payload)end})
+end,payload,true)end})
