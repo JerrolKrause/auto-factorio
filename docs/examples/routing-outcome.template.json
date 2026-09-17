@@ -1,0 +1,15 @@
+{
+  "version": 1,
+  "task": { "id": null, "revision": null },
+  "recommendation": { "model": null, "effort": null, "rationale": null },
+  "actual": { "requestedModel": null, "requestedEffort": null, "observedModel": null, "observedEffort": null },
+  "override": { "used": false, "reason": null },
+  "escalations": [],
+  "usage": { "sessions": [], "aggregate": null, "coverage": "unknown" },
+  "rework": [],
+  "acceptanceEvidence": [],
+  "unknowns": [],
+  "measuredSavingsClaimed": false,
+  "comparativeRunStarted": false,
+  "futureTaskStarted": false
+}

@@ -1,6 +1,6 @@
 ﻿# Development workflow
 
-Use the selected phase's entry/exit criteria and current handoff. These helpers improve development execution; they do not authorize a new phase, provider inference, publishing or personal-data changes.
+Use the selected phase's entry/exit criteria and current handoff. These helpers improve development execution; they do not authorize a new phase, provider inference, publishing or personal-data changes. Follow the [development-efficiency workflow](DEVELOPMENT_EFFICIENCY.md) for model routing, implementation/test packets, advisory checkpoints, preflight, resource serialization and two-failure diagnosis.
 
 ## Verify in order
 

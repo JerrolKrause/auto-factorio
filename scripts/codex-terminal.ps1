@@ -3,6 +3,11 @@
 param(
     [ValidatePattern('^[0-9a-fA-F]{8}(-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}$')]
     [string]$SessionId,
+    [ValidatePattern('^gpt-[a-z0-9.-]+$')]
+    [string]$Model,
+    [ValidateSet('low', 'medium', 'high', 'xhigh', 'max')]
+    [string]$Effort,
+    [string]$PromptFile,
     [switch]$Preview
 )
 
@@ -18,7 +23,14 @@ if (-not (Test-Path -LiteralPath $shellPath)) { throw 'PowerShell executable not
 # Encode the child command so spaces/apostrophes in paths never become shell syntax.
 $quotedRoot = "'" + $projectRoot.Replace("'", "''") + "'"
 $quotedCodex = "'" + $codexCommand.Source.Replace("'", "''") + "'"
-$resumeArguments = if ($SessionId) { "resume '$SessionId' --no-alt-screen" } else { '--no-alt-screen' }
+$quotedPrompt = if ($PromptFile) {
+    $resolvedPrompt = (Resolve-Path -LiteralPath $PromptFile).Path
+    "'" + (Get-Content -Raw -Encoding UTF8 -LiteralPath $resolvedPrompt).Replace("'", "''") + "'"
+} else { $null }
+$modelArguments = if ($Model) { "--model '$Model'" } else { '' }
+$effortArguments = if ($Effort) { "--config 'model_reasoning_effort=`"$Effort`"'" } else { '' }
+$promptArgument = if ($quotedPrompt) { $quotedPrompt } else { '' }
+$resumeArguments = if ($SessionId) { "resume '$SessionId' --no-alt-screen" } else { "--no-alt-screen $modelArguments $effortArguments $promptArgument" }
 $childCommand = @"
 Set-Location -LiteralPath $quotedRoot
 & $quotedCodex $resumeArguments
@@ -31,6 +43,9 @@ if ($Preview) {
         Shell = $shellPath
         WorkingDirectory = $projectRoot
         SessionId = $SessionId
+        Model = $Model
+        Effort = $Effort
+        PromptFile = $PromptFile
         Command = $childCommand
         Arguments = $launchArguments
     } | ConvertTo-Json -Depth 3

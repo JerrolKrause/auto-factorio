@@ -30,7 +30,12 @@
     "game:processes": "node dist/scripts/game-processes.js",
     "game:durable-probe": "node dist/scripts/game-durable-probe.js",
     "game:ownership-probe": "node dist/scripts/game-ownership-probe.js",
-    "game:coordination-probe": "node dist/scripts/game-coordination-probe.js"
+    "game:coordination-probe": "node dist/scripts/game-coordination-probe.js",
+    "dev:usage": "node scripts/dev/usage.mjs",
+    "dev:watch": "node scripts/dev/watch.mjs",
+    "dev:contract": "node scripts/dev/contract.mjs",
+    "dev:preflight": "node scripts/dev/preflight.mjs",
+    "dev:task": "node scripts/dev/task.mjs"
   },
   "dependencies": {
     "@autofactorio/contracts": "workspace:*",

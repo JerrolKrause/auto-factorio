@@ -2,7 +2,7 @@
 
 See [proposal.md](proposal.md) for motivation and scope. The locally retained retrospective (`docs/PHASE12_SESSION_RETROSPECTIVE.md`, part of the separate uncommitted Phase 12 work) records the expensive author/review loop. `scripts/verify.mjs` already keeps logs on disk and sequences checks; `scripts/check-agent-contract.mjs` validates version 1 contracts. The ignored `.runtime/phase12/inspect-trial.mjs` demonstrates snapshot projection but has unbounded collections. Current `tests/trial-state.test.ts`, `tests/gameplay-provider.test.ts`, `tests/trial-plan.test.ts` and `tests/provider.test.ts` cover several previously missing integration cases. These working-tree files are Phase 12 inputs to preserve, not changes to recreate.
 
-Developer role selection is distinct from the exact gameplay provider contract. Independent reviewers currently inherit the author's authorized model; routine verifiers use Luna/medium. The [model guide](../../../docs/MODEL_SELECTION.md) records the user-approved recommendations without changing those dispatch rules during planning.
+Developer role selection is distinct from the exact gameplay provider contract. Independent reviewers currently inherit the author's authorized model; routine verifiers use Luna/medium. The [model guide](../../../../docs/MODEL_SELECTION.md) records the user-approved recommendations without changing those dispatch rules during planning.
 
 ## Goals / Non-Goals
 

@@ -1,0 +1,13 @@
+{
+  "version": 1,
+  "outputRoot": ".runtime/preflight",
+  "criteria": [
+    {
+      "id": "composition-regressions",
+      "description": "Fake-only transport overlap, pause/resume, cancellation, provider refusal, replacement and ledger regressions pass sequentially",
+      "kind": "software",
+      "checks": ["composition-regressions", "development-tools"],
+      "coverage": "Vitest fixtures only; no physical game, live provider or Phase 12 trial acceptance"
+    }
+  ]
+}

@@ -6,7 +6,12 @@ const files = execFileSync('git', ['ls-files', '--cached', '--others', '--exclud
 const errors = [];
 let links = 0;
 for (const file of files) {
-  const text = await readFile(file, 'utf8');
+  let text;
+  try { text = await readFile(file, 'utf8'); }
+  catch (error) {
+    if (error.code === 'ENOENT') continue;
+    throw error;
+  }
   if (/\uFFFD|^(?:<{7}|={7}|>{7})/m.test(text)) errors.push(`${file}: encoding or conflict marker`);
   if ((text.match(/^\s*```/gm) ?? []).length % 2) errors.push(`${file}: unbalanced code fences`);
   for (const match of text.matchAll(/\[[^\]]*\]\(([^)]+)\)/g)) {

@@ -4,7 +4,7 @@ Status: product scope approved by the user on 10 September 2026, with all eight 
 
 ## Purpose and user
 
-AutoFactorio: The Factory Needs Nobody is a passion project for an experienced software engineer investigating LLM planning, factory design, task decomposition, coordination, and recovery through Factorio. The user has ChatGPT Plus, uses Astra, owns Factorio 2.0 and Space Age, and accepts consuming existing subscription usage. API charges are outside scope.
+AutoFactorio: The Factory Needs Nobody is a passion project for an experienced software engineer investigating LLM planning, factory design, task decomposition, coordination, and recovery through Factorio. The user has ChatGPT Pro, uses Astra, owns Factorio 2.0 and Space Age, and accepts consuming existing subscription usage. API charges are outside scope.
 
 Improvement means better tools, instructions, coordination, and explicit memory, measured in repeated experiments. The project does not promise to fine-tune ChatGPT's model weights.
 

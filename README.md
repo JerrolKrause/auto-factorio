@@ -6,7 +6,7 @@ A local Factorio Space Age experimentation environment where specialized AI agen
 
 ## Current status
 
-Phases 01–12 are complete and archived: subscription access, legal character execution, pause/restore, durable coordination, the local dashboard, verification engine, First Shift reference and bounded agent trials. Phase 12 team, assistance and fresh-session evidence is recorded in the [trial report](docs/FIRST_SHIFT_AGENT_TRIAL_REPORT.md) and [handoff](docs/IMPLEMENTATION_HANDOFF.md). See also the [compatibility report](docs/COMPATIBILITY_REPORT.md) and [accepted safeguards](docs/decisions/001-review-hardening.md).
+Phases 01–12 are complete and archived: subscription access, legal character execution, pause/restore, durable coordination, the local dashboard, verification engine, First Shift reference and bounded agent trials. The separate development-efficiency change adds deterministic usage/checkpoint reporting, bounded watching, contract preparation, no-inference preflight and preview-first task routing; it does not start gameplay or model work. Phase 12 evidence remains in the [trial report](docs/FIRST_SHIFT_AGENT_TRIAL_REPORT.md) and [handoff](docs/IMPLEMENTATION_HANDOFF.md). See also the [compatibility report](docs/COMPATIBILITY_REPORT.md) and [accepted safeguards](docs/decisions/001-review-hardening.md).
 
 ## Phased implementation
 
@@ -34,6 +34,7 @@ Phase 12 has 8/8 tasks complete, its [bounded agent-trial commands](scenarios/01
 | --- | --- |
 | [AGENTS.md](AGENTS.md) | Concise instructions for coding agents |
 | [Model selection](docs/MODEL_SELECTION.md) | When to use Astra, Sol, Terra, Luna or deterministic scripts |
+| [Development efficiency](docs/DEVELOPMENT_EFFICIENCY.md) | Usage, watching, preflight, contracts, task routing and bounded handoffs |
 | [Implementation handoff](docs/IMPLEMENTATION_HANDOFF.md) | Project context, current state, first action and milestone gates |
 | [Requirements](docs/REQUIREMENTS.md) | Approved scope and acceptance evidence |
 | [Architecture](docs/ARCHITECTURE.md) | Proposed stack, boundaries, contracts and repository structure |
@@ -52,6 +53,8 @@ corepack pnpm build
 corepack pnpm lint
 corepack pnpm test
 corepack pnpm check:docs
+corepack pnpm dev:preflight --input docs/examples/development-preflight.example.json
+corepack pnpm dev:task --change <change-name> --task <task-id> # preview only unless --start is explicit
 corepack pnpm diagnose --data-dir 'C:/@Projects/AutoFactorio/.runtime/local' --factorio-dir 'C:/Program Files (x86)/Steam/steamapps/common/Factorio'
 ```
 

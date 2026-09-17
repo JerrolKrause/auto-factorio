@@ -2,11 +2,21 @@
 
 ## Current implementation — 17 September 2026
 
+The maintenance change [`af-development-efficiency`](../openspec/changes/archive/2026-09-17-af-development-efficiency/tasks.md) is implementation-complete, synced and archived. It adds five project-local commands: `dev:usage`, `dev:watch`, `dev:contract`, `dev:preflight` and preview-first `dev:task`; the supporting [workflow](DEVELOPMENT_EFFICIENCY.md) covers model roles, bounded delegation, checkpoints, resource serialization, repeated-failure diagnosis and compact handoffs. These helpers are advisory: they cannot hard-stop an interactive author, infer an exact subscription balance, authorize inference, or replace gameplay admission/verification.
+
+Final post-fix evidence is `.runtime/verification/check-7or99l/`: both builds, lint, **337/337 tests in 18 files** and documentation passed. The no-inference composition manifest at `.runtime/preflight/check-1789659326550-8a41c264/` is ready for its declared fake-only scope and explicitly does not establish live-trial acceptance or authorize a game/provider run. Delegated verification at `.runtime/af-development-efficiency-verification/verification-assignment-1789658483312-e1e2bdaf/` covered all nine requirements. Independent review found **5 P2** defects; all five were fixed, none rejected or remain, and the source-matched follow-up at `.runtime/af-development-efficiency-review-followup/review-assignment-1789659360172-8bc8e5db/` is ready with no findings.
+
+No live game, gameplay/provider inference, comparative model run or future routing pilot was started. Phase 12 remains archived with its unsuccessful S1 outcomes and incomplete scenario claims preserved. The next bounded product action remains Phase 13 only on explicit instruction; the separate real routing pilot belongs to that next authorized ordinary task, not this closeout.
+
 Phases **01–12 are complete and archived**. Phase **12**, [First Shift agent trials](../openspec/changes/archive/2026-09-17-af-12-first-shift-agent-trials/tasks.md), has **8/8 tasks complete** and passed its bounded integration exit gate. Tested source is **`f4a41a251519a8254641d662405fdb69aa94e3d5` plus the Phase 12 source included in this closeout commit**. Its [capability spec](../openspec/specs/first-shift-agent-trials/spec.md) is synced to the main OpenSpec tree.
 
 The [sanitized trial report](FIRST_SHIFT_AGENT_TRIAL_REPORT.md) is the primary result. It separates deterministic reference success, software/integration defects, operator interruption and bounded model outcomes. Neither gameplay trial reached S1 verification; Phase 12 permits complete evidence or explicit bounded model failure and does not require stochastic success.
 
-**Next bounded action, only on instruction:** begin Phase 13 in a fresh conversation. Do not start it automatically. The separate [development-efficiency change](../openspec/changes/af-development-efficiency/proposal.md) remains planning-complete and unapplied.
+**Next bounded action, only on instruction:** begin Phase 13 in a fresh conversation. Do not start it automatically. The first ordinary Phase 13 task may record the separately authorized routing pilot; it must not run a comparative benchmark.
+
+## Development-efficiency archive and commit — 17 September 2026
+
+Synced all nine requirements into [the main development-efficiency spec](../openspec/specs/development-efficiency/spec.md) and archived the complete change at `openspec/changes/archive/2026-09-17-af-development-efficiency/`, preserving its planning artifacts. Commit: **`Archive development efficiency tooling`** (this closeout commit). Archive checks cover strict main/change OpenSpec validation, exact delta-to-main comparison, documentation links and whitespace; no implementation behavior changed after final verification/review.
 
 ## Implemented behavior
 
