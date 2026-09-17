@@ -145,6 +145,8 @@ After completing all artifacts, summarize:
 
 **Artifact Creation Guidelines**
 
+- For this repository's implementation task plans, follow [model-selection guidance](../../../docs/MODEL_SELECTION.md): append the per-task routing table without changing checkbox syntax, recommend model/effort with a brief rationale and evidence-based escalation conditions, and reuse each task's acceptance checks. Preserve dedicated verifier/reviewer and gameplay rules; recommendations do not authorize execution or automatic switching.
+
 - Follow the `instruction` field from `openspec instructions` for each artifact type - it is the authoritative guidance, even for familiar artifact names
 - If the `instruction` field directs you to use a specific skill or command to create the artifact, invoke it instead of writing the artifact directly
 - The schema defines what each artifact should contain - follow it

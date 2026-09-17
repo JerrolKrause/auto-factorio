@@ -33,6 +33,7 @@ Phase 11 has 8/8 tasks complete and is archived with its capability synced to ma
 | Document | Purpose |
 | --- | --- |
 | [AGENTS.md](AGENTS.md) | Concise instructions for coding agents |
+| [Model selection](docs/MODEL_SELECTION.md) | When to use Astra, Sol, Terra, Luna or deterministic scripts |
 | [Implementation handoff](docs/IMPLEMENTATION_HANDOFF.md) | Project context, current state, first action and milestone gates |
 | [Requirements](docs/REQUIREMENTS.md) | Approved scope and acceptance evidence |
 | [Architecture](docs/ARCHITECTURE.md) | Proposed stack, boundaries, contracts and repository structure |

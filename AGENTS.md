@@ -24,6 +24,8 @@ For an authorized milestone, work autonomously through implementation, project d
 
 ## Build and verify
 
+Follow the [model-selection guide](docs/MODEL_SELECTION.md) for developer work. Plan bounded tasks with a recommended model/effort, rationale and escalation conditions; keep selections explicit and preserve verification, independent-review and gameplay model rules.
+
 Use the architecture's TypeScript/Lua boundaries and a small modular application. Validate the subscription and game connection before expanding infrastructure. Inspect applicable upstream code and notices before rewriting or copying game mechanics.
 
 Use the repository's scripts and lockfile; report only executed results. Before editing code, read and follow the [development workflow](docs/DEVELOPMENT_WORKFLOW.md), including its maintainability guidance. Preserve non-obvious invariants in local comments and broader rationale in linked decision records.
