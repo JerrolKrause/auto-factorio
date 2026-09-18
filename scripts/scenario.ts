@@ -12,9 +12,10 @@ import { Operator } from '../apps/runtime/operator.js';
 import { dashboard } from '../apps/runtime/http.js';
 
 const value = (name: string) => { const i = process.argv.indexOf(name); return i < 0 ? undefined : process.argv[i + 1]; };
-if (value('--scenario') && value('--scenario') !== '01-first-shift') throw new Error('Only 01-first-shift is implemented');
+const scenario = value('--scenario') ?? '01-first-shift';
+if (!['01-first-shift', '02-some-assembly-required'].includes(scenario)) throw new Error('Unknown scenario selector');
 const roster = value('--roster') ?? 'team'; if (roster !== 'team' && roster !== 'solo') throw new Error('Select --roster team or solo');
-const { run, profile, port, game, life } = await prepareFirstShift(roster, value('--reset'));
+const { run, profile, port, game, life } = await prepareFirstShift(roster, value('--reset'), scenario as '01-first-shift' | '02-some-assembly-required');
 const runtime = new DurableRuntime(run.directory, run.run, run.epoch, game, life, [profile.password]);
 const agents = roster === 'team' ? team() : soloTeam();
 const revision = spawnSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf8', windowsHide: true });

@@ -22,7 +22,7 @@ export async function currentModHash(directory = 'mods/autofactorio') {
   return fingerprint(Object.fromEntries(await Promise.all(entries.map(async f => [f, fingerprint((await readFile(path.join(directory, f))).toString('base64'))]))));
 }
 /** A reset validates the original disarmed cache before touching the previous run. */
-export async function prepareFirstShift(roster: 'solo' | 'team', previousFile?: string) {
+export async function prepareFirstShift(roster: 'solo' | 'team', previousFile?: string, scenarioId: FirstShiftManifest['id'] = '01-first-shift') {
   const modHash = await currentModHash(); let previous: ScenarioRun | undefined;
   let profile: GameProfile;
   await mkdir('.runtime/scenarios/runs', { recursive: true });
@@ -30,6 +30,7 @@ export async function prepareFirstShift(roster: 'solo' | 'team', previousFile?: 
   if (previousFile) {
     previousFile = await ownedPath(previousFile);
     previous = JSON.parse(await readFile(previousFile, 'utf8')) as ScenarioRun;
+    if (previous.manifest.id !== scenarioId) throw new Error('Reset scenario does not match the selected scenario');
     await ownedPath(previous.checkpoint); await ownedPath(previous.directory);
     if (previous.modHash !== modHash) throw new Error('Scenario mod fingerprint changed; generate a new fixture before reset');
     const checkpoint = await validateCheckpoint(previous.checkpoint, modHash);
@@ -66,7 +67,7 @@ export async function prepareFirstShift(roster: 'solo' | 'team', previousFile?: 
       await startObserver(profile); await identifyObserver(profile);
       await waitFor('Visible scenario builder', async () => { const world = await game.request(observeRequest); return record(world.actors)['builder-1'] && record(record(world.actors)['builder-1']).connected === true ? true : undefined; });
       let held = previous ? await life.inspect() : await life.pause(await life.inspect()); barrier(held);
-      const manifest = previous ? await scenario.inspect() : await scenario.setup();
+      const manifest = previous ? await scenario.inspect() : await scenario.setup(scenarioId);
       if (fingerprint(manifest.mods) !== fingerprint(held.mods)) throw new Error('Cached game/mod versions differ from the running engine');
       const fixtureHash = fingerprint({ manifest, modHash });
       if (previous && previous.fixtureHash !== fixtureHash) throw new Error('Restored fixture fingerprint mismatch');

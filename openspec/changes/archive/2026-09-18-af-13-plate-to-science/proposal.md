@@ -6,7 +6,7 @@ S1 supplies gears, so it does not yet test automated gear manufacture or upstrea
 
 - The S2 plate-feed fixture, gear-chain measurements, legal reference and stage-bypass controls.
 - Preserve the approved product safeguards and attach explicit acceptance evidence to this bounded phase.
-- Complete phase 13 only after `af-12-first-shift-agent-trials` has passed its implementation gate; see the [implementation guide](../../../docs/IMPLEMENTATION_GUIDE.md).
+- Complete phase 13 only after `af-12-first-shift-agent-trials` has passed its implementation gate; see the [implementation guide](../../../../docs/IMPLEMENTATION_GUIDE.md).
 
 ## Capabilities
 

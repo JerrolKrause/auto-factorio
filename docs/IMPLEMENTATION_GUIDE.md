@@ -247,7 +247,7 @@ Work in C:\@Projects\AutoFactorio. Follow phase 12 of docs/IMPLEMENTATION_GUIDE.
 
 ### 13 — Plate-to-science scenario
 
-[Open the change](../openspec/changes/af-13-plate-to-science/proposal.md) · [Task checklist](../openspec/changes/af-13-plate-to-science/tasks.md)
+[Open the change](../openspec/changes/archive/2026-09-18-af-13-plate-to-science/proposal.md) · [Task checklist](../openspec/changes/archive/2026-09-18-af-13-plate-to-science/tasks.md)
 
 **Entry:** Phase 12 (`af-12-first-shift-agent-trials`) has a passed implementation gate in the handoff.
 

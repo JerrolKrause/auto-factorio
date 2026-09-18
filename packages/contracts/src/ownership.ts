@@ -36,17 +36,18 @@ export function validateAssignment(a: Assignment): void {
     if (!Number.isSafeInteger(grant.generation) || grant.generation < 1) throw new Error('Invalid generation');
     if (r.kind === 'area') {
       id(r.surface);
-      if (!Array.isArray(r.bounds) || r.bounds.length !== 2 || r.bounds.some(p => !Number.isFinite(p.x) || !Number.isFinite(p.y) || Math.abs(p.x) > 32 || Math.abs(p.y) > 32) || r.bounds[0].x > r.bounds[1].x || r.bounds[0].y > r.bounds[1].y) throw new Error('Invalid reservation area');
+      if (!Array.isArray(r.bounds) || r.bounds.length !== 2 || r.bounds.some(p => !Number.isFinite(p.x) || !Number.isFinite(p.y) || Math.abs(p.x) > 4096 || Math.abs(p.y) > 4096) || r.bounds[0].x > r.bounds[1].x || r.bounds[0].y > r.bounds[1].y) throw new Error('Invalid reservation area');
     } else if (r.kind === 'actor' || r.kind === 'items') { id(r.actor); if (r.actor !== a.actor) throw new Error('Reservation actor mismatch'); }
     else throw new Error('Invalid resource');
   }
   if (!['area', 'actor', 'items'].every(k => a.resources.some(r => r.resource.kind === k))) throw new Error('Incomplete reservation set');
 }
-export function diagnosticAssignment(generation: number): Assignment {
+export function diagnosticAssignment(generation: number, extent = 32): Assignment {
+  if (!Number.isFinite(extent) || extent <= 0 || extent > 4096) throw new Error('Invalid diagnostic extent');
   return { id: 'diagnostic', owner: 'diagnostic-operator', task: 'phase03-actions', revision: 1, actor: 'builder-1', resources: [
-    { grant: { id: 'test-area', generation }, resource: { kind: 'area', surface: 'nauvis', bounds: [{ x: -32, y: -32 }, { x: 32, y: 32 }] } },
+    { grant: { id: 'test-area', generation }, resource: { kind: 'area', surface: 'nauvis', bounds: [{ x: -extent, y: -extent }, { x: extent, y: extent }] } },
     { grant: { id: 'test-items', generation }, resource: { kind: 'items', actor: 'builder-1' } },
     { grant: { id: 'test-actor', generation }, resource: { kind: 'actor', actor: 'builder-1' } },
   ] };
 }
-export const diagnosticGrants = (generation: number): Grant[] => diagnosticAssignment(generation).resources.map(r => r.grant);
+export const diagnosticGrants = (generation: number, extent = 32): Grant[] => diagnosticAssignment(generation, extent).resources.map(r => r.grant);

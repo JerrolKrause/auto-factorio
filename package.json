@@ -16,6 +16,7 @@
     "scenario:launch": "node dist/scripts/scenario.js",
     "scenario:trial": "node dist/scripts/scenario-trial.js",
     "game:first-shift-probe": "node dist/scripts/game-first-shift-probe.js",
+    "game:plate-to-science-probe": "node dist/scripts/game-plate-to-science-probe.js",
     "lint": "eslint scripts packages apps tests",
     "test": "vitest run",
     "diagnose": "node dist/scripts/diagnose.js",

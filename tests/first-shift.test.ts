@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { FirstShiftAttempt, FirstShiftControl, briefing, commonKit, evaluatorManifest, fingerprint, validateFirstShift } from '../packages/factorio/src/first-shift.js';
+import { FirstShiftAttempt, FirstShiftControl, briefing, commonKit, plateToScienceKit, evaluatorManifest, fingerprint, validateFirstShift } from '../packages/factorio/src/first-shift.js';
 import { VerificationControl } from '../packages/factorio/src/verification.js';
 import type { ControlState } from '../packages/factorio/src/lifecycle.js';
 import type { Measurement } from '../packages/core/evaluation/contracts.js';
@@ -9,9 +9,11 @@ import { mkdtempSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { Operator } from '../apps/runtime/operator.js';
+import { referencePlan } from '../scripts/dev/first-shift-reference.js';
 
 const fixture = () => validateFirstShift({ id: '01-first-shift', version: 's1-v1', seed: 42, mods: { base: '2.0.77', 'space-age': '2.0.77' }, surface: 'nauvis', quality: 'normal', area: [[-32, -32], [32, 32]], grants: ['automation'], kit: commonKit, allowedActions: ['walk', 'place'], allowedRecipes: ['automation-science-pack'], rates: { 'iron-gear-wheel': 60, 'copper-plate': 60 }, terminals: {}, collector: {}, settlingTicks: 600, windowTicks: 3600, windows: 5, target: 30, gameLimitTicks: 108000, wallLimitMs: 5400000, evaluator: 's1-measurement-v1', recipe: { name: 'automation-science-pack', energy: 5, ingredients: [{ type: 'item', name: 'iron-gear-wheel', amount: 1 }, { type: 'item', name: 'copper-plate', amount: 1 }], products: [{ type: 'item', name: 'automation-science-pack', amount: 1 }] }, assemblerSpeed: 0.5 });
-const measurement = (sequence: number, tick: number): Measurement => ({ tick, sequence, scope: 'fixture', continuous: true, coverage: 'complete', machineScience: 0, automaticCollector: 0, collectorReverse: 0, manualSupply: 0, artificialOutput: 0, humanEdits: 0, stages: Object.fromEntries(evaluatorManifest(fixture(), 'fixture', 0, 0).stages.map(s => [s.id, { source: s.source, boundary: s.boundary, consumer: s.consumer, produced: 0, forward: 0, reverse: 0, consumed: 0, upstream: { containers: 0, belts: 0, hands: 0, inProcess: 0 }, downstream: { containers: 0, belts: 0, hands: 0, inProcess: 0 }, coverage: 'complete' }])) });
+const s2Fixture = () => validateFirstShift({ ...fixture(), id: '02-some-assembly-required', version: 's2-v6', area: [[-40, -40], [40, 40]], kit: plateToScienceKit, allowedRecipes: ['automation-science-pack', 'iron-gear-wheel'], rates: { 'iron-plate': 120, 'copper-plate': 60 }, evaluator: 's2-measurement-v5', gearRecipe: { name: 'iron-gear-wheel', energy: 0.5, ingredients: [{ type: 'item', name: 'iron-plate', amount: 2 }], products: [{ type: 'item', name: 'iron-gear-wheel', amount: 1 }] } });
+const measurement = (sequence: number, tick: number): Measurement => ({ tick, sequence, scope: 'fixture', continuous: true, coverage: 'complete', machineScience: 0, automaticCollector: 0, collectorReverse: 0, manualSupply: 0, artificialOutput: 0, humanEdits: 0, stages: Object.fromEntries(evaluatorManifest(fixture(), 'fixture', 0, 0).stages.map(s => [s.id, { source: s.source, boundary: s.boundary, consumer: s.consumer, produced: 0, causalProduced: 0, forward: 0, reverse: 0, consumed: 0, upstream: { containers: 0, belts: 0, hands: 0, inProcess: 0, segments: {} }, downstream: { containers: 0, belts: 0, hands: 0, inProcess: 0, segments: {} }, coverage: 'complete' }])) });
 describe('First Shift manifest', () => {
   it('keeps building deadlines across paused polling and controller replacement', () => {
     const clock = { originTick: 100, originWallMs: 1000, gameLimitTicks: 18000, wallLimitMs: 90000 };
@@ -31,6 +33,22 @@ describe('First Shift manifest', () => {
     const m = fixture(); m.kit['assembling-machine-1'] = 120;
     expect(() => validateFirstShift(m)).toThrow('finite kit');
     expect(() => validateFirstShift({ ...fixture(), settlingTicks: -1 })).toThrow('clock');
+  });
+  it('derives the S2 plate, gear and science stages from installed recipes', () => {
+    const m = s2Fixture(); const evaluation = evaluatorManifest(m, 'fixture', 0, 0);
+    expect(evaluation).toMatchObject({ version: 's2-measurement-v5', toleranceVersion: 's2-calibration-v5' });
+    expect(evaluation.stages.map(s => [s.id, s.minimum])).toEqual([['iron-plate', 300], ['iron-gear-wheel', 150], ['copper-plate', 150], ['automation-science-pack', 150]]);
+    expect(evaluation.stages.find(s => s.id === 'iron-gear-wheel')?.balanceTolerance).toBe(4);
+    expect(referencePlan(m).filter(s => s.kind === 'place' && s.item === 'assembling-machine-1')).toHaveLength(9);
+    expect({ ...briefing(m, 'solo'), roster: 'team' }).toEqual(briefing(m, 'team'));
+    expect(briefing(m, 'team').rules.join()).toContain('iron-gear-wheel');
+    m.recipe.ingredients.reverse();
+    expect(evaluatorManifest(m, 'fixture', 0, 0).stages.map(s => s.id)).toEqual(['iron-plate', 'iron-gear-wheel', 'copper-plate', 'automation-science-pack']);
+  });
+  it('rejects changed S2 recipe costs and fixture identity', () => {
+    const m = s2Fixture(); m.gearRecipe!.ingredients[0]!.amount = 3;
+    expect(() => validateFirstShift(m)).toThrow('gear recipe');
+    expect(() => validateFirstShift({ ...s2Fixture(), area: [[-32, -32], [32, 32]] })).toThrow('site');
   });
   it('fingerprints canonical content, including source changes, and gives both rosters the same briefing', () => {
     expect(fingerprint({ b: 1, a: { d: 3, c: 2 } })).toBe(fingerprint({ a: { c: 2, d: 3 }, b: 1 }));

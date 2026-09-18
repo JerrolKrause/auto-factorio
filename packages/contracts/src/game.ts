@@ -28,7 +28,9 @@ export function record(v: unknown): Record<string, unknown> { if (!v || typeof v
 function keys(v: Record<string, unknown>, allowed: string[]): void { if (Object.keys(v).some(k => !allowed.includes(k)) || allowed.some(k => !(k in v))) throw new Error('Unexpected or missing fields'); }
 function integer(v: unknown, min: number, max: number): void { if (!Number.isSafeInteger(v) || (v as number) < min || (v as number) > max) throw new Error('Integer outside bounds'); }
 function name(v: unknown): void { if (typeof v !== 'string' || !/^[a-zA-Z0-9_.-]{1,100}$/.test(v)) throw new Error('Invalid identifier'); }
-function position(v: unknown): void { const p = record(v); keys(p,['x','y']); for (const n of [p.x,p.y]) if (typeof n !== 'number' || !Number.isFinite(n) || Math.abs(n)>32) throw new Error('Position outside assignment'); }
+// Payload validation prevents pathological coordinates; scenario ownership grants
+// enforce the tighter playable boundary for each command.
+function position(v: unknown): void { const p = record(v); keys(p,['x','y']); for (const n of [p.x,p.y]) if (typeof n !== 'number' || !Number.isFinite(n) || Math.abs(n)>4096) throw new Error('Position outside assignment'); }
 function target(v: unknown): void { const t=record(v); keys(t,['name','quality','position','unit']); name(t.name); name(t.quality); position(t.position); if(t.unit!==null)integer(t.unit,1,2147483647); }
 function item(v: unknown): void {const i=record(v); keys(i,['name','quality','count']); name(i.name); name(i.quality); integer(i.count,1,1000);}
 export function validateRequest(v: unknown): GameRequest {

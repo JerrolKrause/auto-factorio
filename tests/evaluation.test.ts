@@ -3,9 +3,9 @@ import { VerificationEngine } from '../packages/core/evaluation/engine.js';
 import type { AdmissionAck, EvaluationManifest, Measurement } from '../packages/core/evaluation/contracts.js';
 
 const manifest = (): EvaluationManifest => ({ version: 'fake-v1', scope: 'science-chain', settlingTicks: 600, windowTicks: 3600, windows: 5, target: 30, originTick: 0, originWallMs: 0, gameLimitTicks: 108000, wallLimitMs: 5400000, toleranceVersion: 'fake-calibration-1', stages: [{ id: 'gears', source: 'terminal', boundary: 'science-input', consumer: 'science-assemblers', item: { name: 'iron-gear-wheel', quality: 'normal', surface: 'nauvis' }, minimum: 150, balanceTolerance: 1, maxDrawdown: 2 }] });
-const inventory = (n = 10) => ({ containers: n, belts: 2, hands: 1, inProcess: 1 });
+const inventory = (n = 10) => ({ containers: n, belts: 2, hands: 1, inProcess: 1, segments: { stock: n + 4 } });
 function sample(tick: number, sequence: number, count = 0): Measurement {
-  return { tick, sequence, scope: 'science-chain', continuous: true, coverage: 'complete', machineScience: 500 + count, automaticCollector: 700 + count, collectorReverse: 20, manualSupply: 0, artificialOutput: 0, humanEdits: 0, stages: { gears: { source: 'terminal', boundary: 'science-input', consumer: 'science-assemblers', produced: 1000 + count, forward: 900 + count, reverse: 40, consumed: 800 + count, upstream: inventory(), downstream: inventory(), coverage: 'complete' } } };
+  return { tick, sequence, scope: 'science-chain', continuous: true, coverage: 'complete', machineScience: 500 + count, automaticCollector: 700 + count, collectorReverse: 20, manualSupply: 0, artificialOutput: 0, humanEdits: 0, stages: { gears: { source: 'terminal', boundary: 'science-input', consumer: 'science-assemblers', produced: 1000 + count, causalProduced: 1000 + count, forward: 900 + count, reverse: 40, consumed: 800 + count, upstream: inventory(), downstream: inventory(), coverage: 'complete' } } };
 }
 const ack = (): AdmissionAck => ({ attempt: 'a1', scope: 'science-chain', tick: 100, mutationsClosed: true, pendingMutations: 0, neutral: true, raw: { cancelled: ['queued-transfer'], inventories: inventory() } });
 function begin(m = manifest(), a = ack()) {
@@ -103,22 +103,47 @@ describe('independent verification engine', () => {
   it('does not count disconnected upstream totals', () => {
     const { e } = begin(); expect(trace(e, s => { s.stages.gears!.consumer = 'unused-cell'; }).state).toBe('invalid');
   });
+  it('requires production on the observed causal route even when every aggregate check passes', () => {
+    const { e } = begin(); const r = trace(e, s => { s.stages.gears!.causalProduced = 1000; });
+    expect(r.state).toBe('failed'); expect(r.stages[0]).toMatchObject({ produced: 150, causalProduced: 0, delivered: 150, consumed: 150, drawdown: 0, passed: false });
+  });
   it('rejects recirculation despite apparently adequate gross delivery', () => {
     const { e } = begin(); const r = trace(e, (s, i) => {
       const v = s.stages.gears!; v.produced = 1000; v.reverse += i * 30; v.consumed = 800;
     }); expect(r.state).toBe('failed'); expect(r.stages[0]!.delivered).toBe(0);
   });
   it('rejects reserves masking inadequate fresh supply without loosening minimums by tolerance', () => {
-    const { e } = begin(); const r = trace(e, (s, i) => { const v = s.stages.gears!; v.produced--; v.upstream.containers--; if (i === 5) expect(v.produced).toBe(1149); });
+    const { e } = begin(); const r = trace(e, (s, i) => { const v = s.stages.gears!; v.produced--; v.upstream.containers--; v.upstream.segments.stock = v.upstream.segments.stock! - 1; if (i === 5) expect(v.produced).toBe(1149); });
     expect(r.state).toBe('failed'); expect(r.stages[0]!.produced).toBe(149);
   });
+  it('does not let unused accumulation cancel depletion of a different storage segment', () => {
+    expect(trace(begin().e).state).toBe('passed');
+    const { e } = begin();
+    e.sample(sample(700, 1), 3);
+    for (let i = 1; i <= 5; i++) {
+      const s = sample(700 + i * 3600, i + 1, i * 30);
+      if (i === 5) s.stages.gears!.upstream.segments = { stock: 0, unused: 14 };
+      e.sample(s, 3 + i);
+    }
+    const r = e.report(); expect(r.state).toBe('failed');
+    expect(r.stages[0]).toMatchObject({ produced: 150, delivered: 150, upstreamResidual: 0, downstreamResidual: 0, drawdown: 14, passed: false });
+  });
+  it('does not count redistribution within one connected stock component as drawdown', () => {
+    const { e } = begin();
+    const r = trace(e, s => {
+      const v = s.stages.gears!.upstream;
+      v.containers -= 8; v.belts += 8;
+    });
+    expect(r.state).toBe('passed'); expect(r.stages[0]!.drawdown).toBe(0);
+  });
   it('accepts normal buffering but rejects large balanced drawdown', () => {
-    const { e } = begin(); expect(trace(e, s => { s.stages.gears!.upstream.containers--; }).state).toBe('passed');
-    const other = begin().e; const r = trace(other, s => { const v = s.stages.gears!; v.consumed += 5; v.downstream.containers -= 5; });
+    const { e } = begin(); expect(trace(e, s => { const v = s.stages.gears!.upstream; v.containers--; v.segments.stock = v.segments.stock! - 1; }).state).toBe('passed');
+    const other = begin().e; const r = trace(other, s => { const v = s.stages.gears!; v.consumed += 5; v.downstream.containers -= 5; v.downstream.segments.stock = v.downstream.segments.stock! - 5; });
     expect(r.state).toBe('failed'); expect(r.stages[0]!.drawdown).toBe(5);
   });
   it('invalidates incomplete balances and nonfinite/incomplete inventory coverage', () => {
     expect(trace(begin().e, s => { s.stages.gears!.upstream.containers += 2; }).state).toBe('invalid');
     expect(trace(begin().e, s => { s.stages.gears!.downstream.hands = NaN; }).state).toBe('invalid');
+    expect(trace(begin().e, s => { s.stages.gears!.downstream.segments.stock = NaN; }).state).toBe('invalid');
   });
 });

@@ -6,18 +6,18 @@ A local Factorio Space Age experimentation environment where specialized AI agen
 
 ## Current status
 
-Phases 01–12 are complete and archived: subscription access, legal character execution, pause/restore, durable coordination, the local dashboard, verification engine, First Shift reference and bounded agent trials. The separate development-efficiency change adds deterministic usage/checkpoint reporting, bounded watching, contract preparation, no-inference preflight and preview-first task routing; it does not start gameplay or model work. Phase 12 evidence remains in the [trial report](docs/FIRST_SHIFT_AGENT_TRIAL_REPORT.md) and [handoff](docs/IMPLEMENTATION_HANDOFF.md). See also the [compatibility report](docs/COMPATIBILITY_REPORT.md) and [accepted safeguards](docs/decisions/001-review-hardening.md).
+Phases 01–12 are complete and archived; Phase 13's plate-to-science implementation and live gate are complete pending archive. The project now includes subscription access, legal character execution, pause/restore, durable coordination, the local dashboard, verification engine, bounded First Shift trials, and game-verified S1/S2 references and bypass controls. See the [handoff](docs/IMPLEMENTATION_HANDOFF.md), [S2 guide](scenarios/02-some-assembly-required/README.md), [trial report](docs/FIRST_SHIFT_AGENT_TRIAL_REPORT.md), [compatibility report](docs/COMPATIBILITY_REPORT.md) and [accepted safeguards](docs/decisions/001-review-hardening.md).
 
 ## Phased implementation
 
-The [implementation guide](docs/IMPLEMENTATION_GUIDE.md) defines 18 bounded phases and their acceptance gates; the [coverage map](docs/SPEC_TRACEABILITY.md) connects them to requirements. The next implementation phase, only on instruction, is:
+The [implementation guide](docs/IMPLEMENTATION_GUIDE.md) defines 18 bounded phases and their acceptance gates; the [coverage map](docs/SPEC_TRACEABILITY.md) connects them to requirements. After Phase 13 is archived, the next implementation phase, only on instruction, is:
 
 ```text
-$openspec-apply-change af-13-plate-to-science
-Follow phase 13 of docs/IMPLEMENTATION_GUIDE.md, verify its entry gate in docs/IMPLEMENTATION_HANDOFF.md, implement only that change, and stop before phase 14.
+$openspec-apply-change af-14-ore-smelting-fuel
+Follow phase 14 of docs/IMPLEMENTATION_GUIDE.md, verify its entry gate in docs/IMPLEMENTATION_HANDOFF.md, implement only that change, and stop before phase 15.
 ```
 
-Phase 12 has 8/8 tasks complete, its [bounded agent-trial commands](scenarios/01-first-shift/README.md#bounded-agent-trials) are verified, and its [capability spec](openspec/specs/first-shift-agent-trials/spec.md) is synced. Phases 13–18 remain planned.
+Phase 13's legal S2 reference and all required negative controls passed in Factorio without model inference. Phases 14–18 remain planned.
 
 ## Planned first release
 
@@ -103,6 +103,17 @@ corepack.cmd pnpm scenario:launch --reset '<previous-run-directory>/run.json' --
 The launcher opens a dedicated visible world, records its finite kit, grants and installed recipes, and prints the new run directory. Open that directory's `dashboard.json` URL for pause/resume/stop controls. It starts safely paused with the selected roster and a shared briefing; it does not start model inference. Reset validates the cached disarmed fixture, preserves previous histories, and creates a new run/epoch. Close the previous controller before resetting. Source/game changes require a fresh fixture.
 
 For deterministic operator validation, add `--hold --result-file <file>` to leave the initial world paused and release the controller, then run `corepack.cmd pnpm game:first-shift-probe --run-file '<run-directory>/run.json'`. This consumes no model usage. It records a legal reference, exact five-window input/output balances and explicit bypass controls in private evidence under that profile. See the [scenario guide](scenarios/01-first-shift/README.md) and [measurement decision](docs/decisions/013-first-shift-reference.md).
+
+## Some Assembly Required (phase 13)
+
+```powershell
+corepack.cmd pnpm scenario:launch --scenario 02-some-assembly-required --roster team
+# A held deterministic run consumes no model usage:
+corepack.cmd pnpm scenario:launch --scenario 02-some-assembly-required --roster solo --hold --result-file '.runtime/s2-launch.json'
+corepack.cmd pnpm game:plate-to-science-probe --run-file '<run-directory>/run.json'
+```
+
+S2 uses the same loader, reset barrier and evaluator with an 80×80 plate-fed fixture and explicit gear stage. Its `s2-v6` manifest, installed-recipe component-inventory calibration, legal reference and bypass matrix are frozen in the [scenario guide](scenarios/02-some-assembly-required/README.md) and [decision 015](docs/decisions/015-plate-to-science.md).
 
 ## Provider diagnostic (phase 02)
 

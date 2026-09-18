@@ -1,0 +1,17 @@
+# 015 — Plate-to-science fixture and gear-chain evidence
+
+Status: phase 13 implementation. Requirements: R07–R09 and R18. Scope: [phase 13](../../openspec/changes/archive/2026-09-18-af-13-plate-to-science/proposal.md).
+
+## Decision
+
+Extend the S1 loader and evaluator rather than introduce a second scenario engine. `02-some-assembly-required` selects an 80×80 `s2-v6` fixture with iron/copper terminals, the common construction kit plus two underground belts, protected power and the existing draining collector. Coordinate payload validation supports larger bounded sites, while scenario ownership remains the exact authority: S1 defaults to ±32 and S2 explicitly grants ±40.
+
+Installed science and gear recipes produce four measured stages. Terminal injection and inserter delivery prove 300 iron plates into connected gear machines and 150 copper plates into science; connected gear-machine completions and science-input delivery prove 150 gears; machine completions and collector drains prove 150 science. Graph ancestry excludes disconnected cells. Inventory reconciliation covers containers, belts, inserter hands, machine inputs/outputs and active downstream crafts.
+
+The frozen `s2-measurement-v5` inventory record includes complete category totals and admission-stable stock components. Active belts and inserters join their endpoints into weak components, so movement within an operating route does not count as depletion; inactive links remain component boundaries even though installed topology still keeps their branches in measurement scope. `s2-calibration-v5` preserves aggregate conservation residuals but computes drawdown as the sum of component decreases. Production accumulated in an inactive branch therefore cannot cancel stock depleted from the active route, while unchanged side stock contributes zero drawdown. Component totals must equal the complete inventory total, and both total and observed-causal production must meet the stage minimum. The gear stage allows a four-item upstream residual and 16 items of drawdown; every other residual tolerance is zero and other stages allow 12 items of drawdown. The legal reference uses two powered gear assemblers and seven science assemblers. Final live calibration produced five 42-pack windows, including 273 causal gears produced, 210 delivered and 210 consumed with a -4 upstream residual and zero component drawdown.
+
+## Controls and evidence boundary
+
+The positive reference is hidden from gameplay and uses 506 ordinary character-gateway steps with finite inventory, movement, reach, recipes, ownership and receipts enforced. An evaluator-only pass control retains 100 gears in an unchanged topology-connected side buffer. Failure controls cover preloaded/hand-supplied gears, guarded transfer, native character inventory mutation and a partially routed fresh branch alongside a separate preload. In the aggregate-cancellation control, gear cells produce 258 gears while measured delivery and consumption both reach 210, output chests retain 518 gears, and all five science windows pass; 210 items of active-component gear drawdown still reject the attempt.
+
+Bulk diagnostic mutation was reduced to small acknowledged operations with heartbeats below the 180-tick watchdog. Timed-out or stale-control attempts are retained and never retried in place. Final evidence and exact commands are recorded in the [handoff](../IMPLEMENTATION_HANDOFF.md); no model inference was used.

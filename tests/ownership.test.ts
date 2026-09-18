@@ -21,6 +21,9 @@ function fixture() {
 }
 function batch(r: ReturnType<Ownership['acquire']>): Batch { return { commandId: 'command', epoch: 'epoch', session: 'session', task: r.task, revision: r.revision, actor: r.actor, surface: 'nauvis', grants: r.resources.map(g => g.grant), deadline: 1000, steps: [{ kind: 'walk', position: { x: 1, y: 1 } }] }; }
 describe('phase 06 acknowledged reservations', () => {
+  it('supports an explicit larger diagnostic ownership extent', () => {
+    expect(diagnosticAssignment(2, 40).resources[0]?.resource).toMatchObject({ kind: 'area', bounds: [{ x: -40, y: -40 }, { x: 40, y: 40 }] });
+  });
   it('atomically orders opposite inputs and rejects overlapping geometry with different IDs without partial grants', () => {
     const { owner, journal } = fixture(); const r = owner.acquire({ ...input(), resources: [...resources].reverse() });
     expect(r.resources.map(g => g.resource.kind)).toEqual(['actor', 'area', 'items']);

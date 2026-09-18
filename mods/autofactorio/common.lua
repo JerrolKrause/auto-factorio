@@ -7,7 +7,9 @@ function M.keys(t, names)
 end
 function M.id(s) M.check(type(s)=="string" and #s>0 and #s<=100 and s:match("^[%w_.-]+$"), "invalid_identifier") end
 function M.integer(n, lo, hi) M.check(type(n)=="number" and n==math.floor(n) and n>=lo and n<=hi, "invalid_integer") end
-function M.pos(p) M.keys(p,{"x","y"}); for _,n in pairs(p) do M.check(type(n)=="number" and n==n and math.abs(n)<=32,"outside_assignment") end end
+-- Coordinates are bounded for payload safety; the active ownership grant remains
+-- the authority for the much smaller scenario-specific playable area.
+function M.pos(p) M.keys(p,{"x","y"}); for _,n in pairs(p) do M.check(type(n)=="number" and n==n and math.abs(n)<=4096,"outside_assignment") end end
 function M.distance(a,b) return math.sqrt((a.x-b.x)^2+(a.y-b.y)^2) end
 function M.inventory(inv)
   local items={}; if not inv then return items end

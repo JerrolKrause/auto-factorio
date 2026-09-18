@@ -10,6 +10,10 @@ const batch: Batch={commandId:'c1',epoch:'phase03',session:'local-test',task:'ph
 const recipe: RecipeFacts={name:'iron-gear-wheel',energy:0.5,category:'crafting',ingredients:[{type:'item',name:'iron-plate',amount:2}],products:[{type:'item',name:'iron-gear-wheel',amount:1}]};
 describe('structured game boundary',()=>{
  it('validates a bounded grant-bearing batch',()=>{expect(validateRequest({op:'submit',batch})).toEqual({op:'submit',batch});});
+ it('accepts S2 coordinates at the payload layer while ownership retains the exact area gate',()=>{
+  expect(validateRequest({op:'submit',batch:{...batch,grants:diagnosticGrants(1,40),steps:[{kind:'walk',position:{x:-37.5,y:-8.5}}]}})).toBeTruthy();
+  expect(()=>validateRequest({op:'submit',batch:{...batch,steps:[{kind:'walk',position:{x:4097,y:0}}]}})).toThrow('Position outside assignment');
+ });
  it.each([{op:'raw',lua:'game.player.insert{name="iron-plate",count=100}'},{op:'save',name:'personal'},{op:'recipe',name:'iron-gear-wheel',lua:'return 1'},{op:'observe',surface:'nauvis',area:[{x:0,y:0},{x:2,y:2}],offset:0,limit:500}])('rejects arbitrary or oversized requests %j',r=>{expect(()=>validateRequest(r)).toThrow();});
  it.each([[],Array(101).fill({kind:'walk',position:{x:0,y:0}}),[{kind:'teleport',position:{x:0,y:0}}],[{kind:'walk',position:{x:Infinity,y:0}}]])('rejects malformed steps',steps=>{expect(()=>validateRequest({op:'submit',batch:{...batch,steps}})).toThrow();});
  it('enforces runtime role and actor authority before dispatch',async()=>{let calls=0;const dispatch=async()=>{calls++;};const foreman=new GameTools('foreman','builder-1',dispatch);await expect(foreman.call({op:'submit',batch})).rejects.toThrow('Role');const engineer=new GameTools('engineer','builder-2',dispatch);await expect(engineer.call({op:'submit',batch})).rejects.toThrow('Actor');expect(calls).toBe(0);});

@@ -4,6 +4,7 @@ import type { AdmissionAck, EvaluationManifest, EvaluationState, InventoryBalanc
 const natural = (n: number) => Number.isSafeInteger(n) && n >= 0;
 const active = (s: EvaluationState) => ['admitting', 'settling', 'scoring'].includes(s);
 const total = (i: InventoryBalance) => i.containers + i.belts + i.hands + i.inProcess;
+const drawdown = (a: InventoryBalance, b: InventoryBalance) => Object.entries(a.segments).reduce((sum, [id, stock]) => sum + Math.max(0, stock - (b.segments[id] ?? 0)), 0);
 
 /** One immutable attempt. Restart requires a new instance and a newly acknowledged game barrier. */
 export class VerificationEngine {
@@ -115,24 +116,30 @@ export class VerificationEngine {
     for (const r of this.manifest.stages) {
       const v = s.stages[r.id];
       if (!v || v.coverage !== 'complete' || v.source !== r.source || v.boundary !== r.boundary || v.consumer !== r.consumer) throw new Error('stage_coverage:' + r.id);
-      for (const n of [v.produced, v.forward, v.reverse, v.consumed, ...[v.upstream, v.downstream].flatMap(i => [i.containers, i.belts, i.hands, i.inProcess])]) if (!natural(n)) throw new Error('stage_quantity:' + r.id);
+      for (const n of [v.produced, v.causalProduced, v.forward, v.reverse, v.consumed, ...[v.upstream, v.downstream].flatMap(i => [i.containers, i.belts, i.hands, i.inProcess])]) if (!natural(n)) throw new Error('stage_quantity:' + r.id);
+      for (const inventory of [v.upstream, v.downstream]) {
+        if (!inventory.segments || Array.isArray(inventory.segments) || typeof inventory.segments !== 'object') throw new Error('stage_segments:' + r.id);
+        for (const [id, n] of Object.entries(inventory.segments)) if (!id || !natural(n)) throw new Error('stage_segments:' + r.id);
+        if (Object.values(inventory.segments).reduce((sum, n) => sum + n, 0) !== total(inventory)) throw new Error('stage_segments:' + r.id);
+      }
     }
   }
   private monotonic(a: Measurement, b: Measurement) {
     if (b.machineScience < a.machineScience || b.automaticCollector < a.automaticCollector || b.collectorReverse < a.collectorReverse) return false;
-    return this.manifest.stages.every(r => (['produced', 'forward', 'reverse', 'consumed'] as const).every(k => b.stages[r.id]![k] >= a.stages[r.id]![k]));
+    return this.manifest.stages.every(r => (['produced', 'causalProduced', 'forward', 'reverse', 'consumed'] as const).every(k => b.stages[r.id]![k] >= a.stages[r.id]![k]));
   }
   private finish(end: Measurement) {
     const start = this.baseline!;
     this.stages = this.manifest.stages.map(r => {
       const a = start.stages[r.id]!; const b = end.stages[r.id]!;
       const produced = b.produced - a.produced;
+      const causalProduced = b.causalProduced - a.causalProduced;
       const delivered = b.forward - a.forward - (b.reverse - a.reverse);
       const consumed = b.consumed - a.consumed;
       const upstreamResidual = total(b.upstream) - total(a.upstream) - produced + delivered;
       const downstreamResidual = total(b.downstream) - total(a.downstream) - delivered + consumed;
-      const drawdown = Math.max(0, total(a.upstream) - total(b.upstream)) + Math.max(0, total(a.downstream) - total(b.downstream));
-      return { id: r.id, produced, delivered, consumed, drawdown, upstreamResidual, downstreamResidual, passed: produced >= r.minimum && delivered >= r.minimum && consumed >= r.minimum && drawdown <= r.maxDrawdown && Math.abs(upstreamResidual) <= r.balanceTolerance && Math.abs(downstreamResidual) <= r.balanceTolerance };
+      const stageDrawdown = drawdown(a.upstream, b.upstream) + drawdown(a.downstream, b.downstream);
+      return { id: r.id, produced, causalProduced, delivered, consumed, drawdown: stageDrawdown, upstreamResidual, downstreamResidual, passed: produced >= r.minimum && causalProduced >= r.minimum && delivered >= r.minimum && consumed >= r.minimum && stageDrawdown <= r.maxDrawdown && Math.abs(upstreamResidual) <= r.balanceTolerance && Math.abs(downstreamResidual) <= r.balanceTolerance };
     });
     if (this.stages.some((s, i) => Math.abs(s.upstreamResidual) > this.manifest.stages[i]!.balanceTolerance || Math.abs(s.downstreamResidual) > this.manifest.stages[i]!.balanceTolerance)) { this.invalidate('unreconciled_balances'); return; }
     this.state = this.windows.every(w => w.passed) && this.stages.every(s => s.passed) ? 'passed' : 'failed';

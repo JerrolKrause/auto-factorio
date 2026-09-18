@@ -25,12 +25,20 @@ export interface StageRequirement {
   maxDrawdown: number;
 }
 /** Coverage must include ALL relevant storage, not just chest inventories. */
-export interface InventoryBalance { containers: number; belts: number; hands: number; inProcess: number }
+export interface InventoryBalance {
+  containers: number;
+  belts: number;
+  hands: number;
+  inProcess: number;
+  /** Item stock by admission-stable connected component; prevents distinct branch growth masking depletion without treating movement inside one active route as drawdown. */
+  segments: Record<string, number>;
+}
 export interface StageReading {
   source: string;
   boundary: string;
   consumer: string;
   produced: number;
+  causalProduced: number;
   forward: number;
   reverse: number;
   consumed: number;
@@ -66,4 +74,4 @@ export interface AdmissionAck {
 }
 export type EvaluationState = 'building' | 'admitting' | 'settling' | 'scoring' | 'aborted' | 'invalid' | 'failed' | 'passed';
 export interface WindowResult { start: number; end: number; produced: number; delivered: number; passed: boolean }
-export interface StageResult { id: string; produced: number; delivered: number; consumed: number; drawdown: number; upstreamResidual: number; downstreamResidual: number; passed: boolean }
+export interface StageResult { id: string; produced: number; causalProduced: number; delivered: number; consumed: number; drawdown: number; upstreamResidual: number; downstreamResidual: number; passed: boolean }
