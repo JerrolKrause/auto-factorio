@@ -4,7 +4,7 @@ These helpers reduce developer-session bookkeeping without reducing acceptance c
 
 ## Bounded implementation packet
 
-Before crossing a new integration boundary, record the task/spec links, exact owned files, invariants, failure cases, acceptance commands, resource owner/cleanup and escalation condition. Sol/medium owns milestones; Terra/medium handles clear bounded modules; Luna/medium handles routine verification and focused tests; Astra is reserved for consequential design or unfamiliar diagnosis. Missing requested models are blockers, never substitution or API-billing triggers.
+Before crossing a new integration boundary, record the task/spec links, exact owned files, invariants, failure cases, acceptance commands, resource owner/cleanup and escalation condition. Sol/high owns milestones; Terra/medium handles clear bounded modules; Luna/medium handles routine verification and focused tests; Astra is reserved for consequential design or unfamiliar diagnosis. Missing requested models are blockers, never substitution or API-billing triggers.
 
 A test-author packet adds stable interfaces, named test-file ownership, behavioral cases, forbidden side effects, a time/provider budget and the expected evidence. The parent integrates results rather than duplicating routine polling. Verification and review keep their dedicated contracts; reviewers inherit the authorized author model.
 

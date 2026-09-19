@@ -16,6 +16,14 @@ The bounded-context delta is merged into [`openspec/specs/bounded-context/spec.m
 
 **Next bounded action, only on instruction:** implement the blueprint workshop, begin Phase 14, or run a separately authorized model comparison. Do not start another milestone automatically.
 
+## Planning handoff - Blueprint workshop, 18 September 2026
+
+Created [`af-blueprint-workshop`](../openspec/changes/af-blueprint-workshop/proposal.md): proposal, design, three capability deltas (`blueprint-workshop`, `blueprint-library`, `agent-learning`), **22 requirements / 31 scenarios**, and **27 unchecked implementation tasks** with model routing. Covers UI-configured unattended or human-assisted loops, technology variants, unlimited scoped sandbox supplies, direct/character construction, accelerated independent scoring, native exports, ordinary character reuse, inspectable histories and bounded autonomous learning. Planning only; no product code, main specs, game runs or gameplay inference changed. No commit; baseline HEAD is `faa798c55964e27aac5d35f2ed9a06b136f3a19f`.
+
+Strict OpenSpec validation passed **21/21 items**; task/routing and new-file whitespace checks passed **27/27**. Fresh read-only independent review found **0 findings**, with final contract `valid`, `ready` and `sourceMatches` true at `.runtime/blueprint-workshop-review/review-assignment-1789772048357-19ad6509/`. Documentation/link and tracked whitespace checks passed; the routine status-only handoff uses author-run checks. No implementation/runtime acceptance is claimed.
+
+**Next bounded action, only on instruction:** apply the workshop change beginning with contracts/profiles, then follow its staged tasks and required live acceptance. Existing scenario milestones and concurrent decision-context work are unchanged. Initial coverage limits, inactive outcomes for unvalidated learning and later REQUIREMENTS/Phase 17 reconciliation are explicit in the reviewed design.
+
 ## Planning handoff - Decision-focused context, 18 September 2026
 
 Created [`af-decision-focused-context`](../openspec/changes/archive/2026-09-18-af-decision-focused-context/proposal.md): proposal, design, operational-observations and bounded-context deltas, and **15 unchecked implementation tasks** with model routing. The packet specifies deterministic operational answers, role briefings, targeted diagnostics, preserved actor/command facts, bounded notifications and safe session reconstruction. This paragraph records the original planning state; the implementation and archive status are in the current handoff above.
@@ -47,7 +55,7 @@ Earlier failed calibration and probe runs are retained. They exposed and correct
 - Focused post-review checks passed build plus **45/45 tests** across `evaluation` and `first-shift`. `corepack.cmd pnpm verify` passed both builds, lint, **344/344 tests in 18 files** and documentation at `.runtime/verification/check-ezdt4S/`. Strict change/main-spec OpenSpec validation, documentation links and whitespace checks passed.
 - Delegated verification at `.runtime/phase13-verification-causal-final/` passed all four criteria and prescribed checks with `valid`, `ready` and `sourceMatches` true. It requested `gpt-5.6-luna / medium`; observed model/usage metadata was unavailable. No provider/game inference was started.
 - Final closeout review first found `[P1, high confidence]` causal production was measured but not enforced. The predicate and exact bypass regression were added; the finding is fixed. The source-matched follow-up at `.runtime/phase13-review-causal-final/` is ready with no findings. The immediately preceding review also found the per-entity false-drawdown P2; admission-stable active components fixed it. No actionable finding remains.
-- The implementation used the recommended Sol/medium route. Exact host model/usage metadata was not exposed to this session; `dev:usage` requires an explicit rollout directory/root and therefore no aggregate subscription balance or savings claim is inferred. No provider/model gameplay call ran.
+- The implementation used the recommended Sol/high route. Exact host model/usage metadata was not exposed to this session; `dev:usage` requires an explicit rollout directory/root and therefore no aggregate subscription balance or savings claim is inferred. No provider/model gameplay call ran.
 - The reviewed delta was synced exactly to [`openspec/specs/plate-to-science/spec.md`](../openspec/specs/plate-to-science/spec.md). Archive/spec sync changed only reviewed planning placement and routine closeout status after the final source checks.
 - **Next bounded action, only on instruction:** begin Phase 14, `af-14-ore-smelting-fuel`. Do not start it automatically.
 

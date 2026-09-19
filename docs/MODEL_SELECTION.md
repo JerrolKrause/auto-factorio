@@ -1,11 +1,11 @@
 # Choosing a model for AutoFactorio
 
-**Default to Sol/medium for day-to-day milestone work.** This repo's provider, recovery, durable-state and game boundaries make integration harder than isolated code edits. Use Terra when the task and its correctness checks are clear; use Astra for consequential design or diagnosis. These are starting recommendations, not a measured quality ranking on this repo.
+**Default to Sol/high for day-to-day milestone work.** This repo's provider, recovery, durable-state and game boundaries make integration harder than isolated code edits. Use Terra when the task and its correctness checks are clear; use Astra for consequential design or diagnosis. These are starting recommendations, not a measured quality ranking on this repo.
 
 | Work | Starting choice |
 | --- | --- |
 | Architecture, major spec decisions, unfamiliar cross-component failures | Astra; choose effort for the difficulty |
-| Implement and own a milestone across runtime/provider/game boundaries | Sol/medium |
+| Implement and own a milestone across runtime/provider/game boundaries | Sol/high |
 | Bounded module changes, dashboard features, helper scripts, straightforward fixes | Terra/medium |
 | Focused regression tests with known expected behavior | Luna/medium; stronger model for ambiguous invariants |
 | Routine acceptance-check execution and evidence reporting | Existing Luna/medium verifier |
@@ -15,7 +15,7 @@
 
 Use Astra to produce a compact design packet: interfaces, invariants, failure cases, acceptance checks and unresolved decisions. Start the implementation task from that packet and relevant files, rather than carrying the entire design conversation forward. Define test cases early; delegate test writing once interfaces stabilize, with named file ownership and a bounded result. Delegation is useful only when it removes distinct work from the parent.
 
-Choose by uncertainty, coupling and verifiability: Terra suits a known approach within a clear boundary and a reliable correctness check; Sol suits implementation spanning several boundaries; Astra suits unresolved designs, conflicting invariants or unfamiliar causal diagnosis. Line count and labels such as "write tests" are weak signals. When unsure, start with Sol/medium.
+Choose by uncertainty, coupling and verifiability: Terra suits a known approach within a clear boundary and a reliable correctness check; Sol suits implementation spanning several boundaries; Astra suits unresolved designs, conflicting invariants or unfamiliar causal diagnosis. Line count and labels such as "write tests" are weak signals. When unsure, start with Sol/high.
 
 Escalate deliberately when investigation exposes an unplanned architectural decision, conflicting invariants, or repeated failed fixes without a better explanation. Return a compact packet of evidence, attempted hypotheses and the next discriminating check. A failed test alone is not a reason to upgrade: missing dependencies or unavailable services need operational fixes. Once diagnosis resolves the uncertainty, return bounded implementation to the cheaper model. Do not silently substitute models/providers or use API billing. Keep Fast mode off for this user's efficiency preference.
 
