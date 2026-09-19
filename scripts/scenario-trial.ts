@@ -25,6 +25,7 @@ import { Lifecycle } from '../packages/factorio/src/lifecycle.js';
 import { cleanupSetupFailure, replacementMatchesPending, trialControl, replacementStatus, trialFailure, TrialResources } from '../apps/runtime/trial-state.js';
 import type { ReplacementEvidence } from '../apps/runtime/trial-state.js';
 import { object } from '../packages/codex/src/protocol.js';
+import { DEFAULT_OPERATIONAL_LIMITS } from '@autofactorio/contracts';
 
 const value = (name: string) => { const i = process.argv.indexOf(name); return i < 0 ? undefined : process.argv[i + 1]; };
 const kind = value('--trial'); const executable = value('--codex'); const reference = value('--reference');
@@ -52,7 +53,7 @@ const agents = team().map(a => ({ ...a, definition: { ...a.definition, limits: {
 const revision = spawnSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf8', windowsHide: true });
 const instructions = Object.fromEntries(agents.map(a => [a.id, fingerprint(gameplayInstructions + '\n' + a.definition.instructions)]));
 runtime.initialize({ objective: 'Sustain 30 automatic red science/minute for five scored minutes', scenario: run.manifest.id, scenarioVersion: run.manifest.version, seed: run.manifest.seed,
-  codeCommit: revision.stdout.trim() + '+phase12-working-tree', gameVersion: run.manifest.mods.base!, mods: run.manifest.mods, roster: agents.map(a => a.id), model: ASTRA, effort: 'low', instructionHashes: instructions, assisted: hint !== null, status: 'ready' });
+  codeCommit: revision.stdout.trim() + '+phase12-working-tree', gameVersion: run.manifest.mods.base!, mods: run.manifest.mods, roster: agents.map(a => a.id), model: ASTRA, effort: 'low', instructionHashes: instructions, assisted: hint !== null, status: 'ready', operationalLimits: DEFAULT_OPERATIONAL_LIMITS, contextLifecycle: { schema: 1, maxTurns: DEFAULT_OPERATIONAL_LIMITS.rotationTurns, maxDeliveredBytes: DEFAULT_OPERATIONAL_LIMITS.rotationBytes } });
 // Hold the first unsent batch across the controlled context replacement. Provider
 // startup latency must not race a short construction batch out of the exercise.
 let holdForReplacement = kind === 'unassisted-team-replacement';
@@ -108,9 +109,16 @@ const pending = () => runtime.execution.pending().filter(x => x.state !== 'rolle
 const versions = new Map<string, string>();
 function wakeKey(role: string) {
   const view = c.view(role);
+  const scopes = new Map(runtime.journal.list<{ id: string; revision: number }>(run.run, 'operationalScopes').map(s => [s.id, s.revision]));
+  const tasks = new Map(c.tasks().map(t => [t.id, t]));
+  const watches = runtime.journal.list<{ id: string; role: string; task: string; scopeId: string; scopeRevision: number; state: string; sequence: number }>(run.run, 'operationalWatches').filter(w => {
+    const task = tasks.get(w.task); return (task?.owner ?? task?.manager) === role && scopes.get(w.scopeId) === w.scopeRevision && task?.revision === w.scopeRevision && !['succeeded', 'failed', 'cancelled', 'superseded'].includes(task.status);
+  });
+  const watchIds = new Set(watches.map(w => w.id));
   return fingerprint({ tasks: view.tasks, messages: view.messages,
     commands: runtime.journal.list<Command>(run.run, 'commands').filter(x => view.tasks.some(t => t.id === x.batch.task)).map(x => ({ id: x.batch.commandId, state: x.state, receipt: x.receipt })),
-    hints: runtime.journal.list(run.run, 'interventions') });
+    hints: runtime.journal.list(run.run, 'interventions'), watches,
+    watchTransitions: runtime.journal.list<{ watch: string; sequence: number; state: string; tick: number }>(run.run, 'watchTransitions').filter(t => watchIds.has(t.watch)) });
 }
 try {
   // Both exact role catalogs, auth and environment isolation pass before the first turn.

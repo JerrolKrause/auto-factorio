@@ -3,11 +3,14 @@ export interface RunManifest {
   objective: string; scenario: string; scenarioVersion: string; seed: number; codeCommit: string;
   gameVersion: string; mods: Record<string, string>; roster: string[]; model: string; effort: string;
   instructionHashes: Record<string, string>; assisted: boolean; status: string;
+  operationalLimits?: import('./operational.js').OperationalLimits;
+  contextLifecycle?: import('./operational.js').ContextLifecyclePolicy;
 }
 export interface TaskRecord {
   id: string; goal: string; parent: string | null; owner: string | null; dependencies: string[];
   scope: Record<string, unknown>; resources: Record<string, number>; successCriteria: string[];
   deadline: number | null; revision: number; committedPlan: string; status: string; evidence: string[];
+  productionTarget?: import('./operational.js').ProductionTarget;
 }
 export interface AgentRecord { id: string; role: string; assignment: string | null; session: string | null; status: string }
 export interface MessageRecord { id: string; sender: string; recipient: string; task: string | null; intent: string; content: string; evidence: string[] }

@@ -20,6 +20,8 @@ export interface Receipt {
 }
 export type GameRequest =
   | { op: 'observe'; surface: string; area: [Position, Position]; offset: number; limit: number }
+  | { op: 'operational-register'; scope: import('./operational.js').ObservationScope; sampleTicks: number; historySamples: number }
+  | { op: 'operational-read'; scopeId: string; scopeRevision: number; afterTick: number }
   | { op: 'recipe'; name: string }
   | { op: 'submit'; batch: Batch }
   | { op: 'receipt'; commandId: string }
@@ -37,6 +39,13 @@ export function validateRequest(v: unknown): GameRequest {
   const r=record(v);
   switch(r.op) {
     case 'observe': keys(r,['op','surface','area','offset','limit']); name(r.surface); if(!Array.isArray(r.area)||r.area.length!==2)throw new Error('Invalid area'); r.area.forEach(position); if(r.area[0].x>r.area[1].x||r.area[0].y>r.area[1].y)throw new Error('Reversed area'); integer(r.offset,0,10000); integer(r.limit,1,50); break;
+    case 'operational-register': {
+      keys(r,['op','scope','sampleTicks','historySamples']); const s=record(r.scope); keys(s,['schema','id','revision','task','surface','area','entityLimit']);
+      integer(s.schema,1,1); name(s.id); name(s.task); name(s.surface); integer(s.revision,1,2147483647); integer(s.entityLimit,1,100000);
+      if(!Array.isArray(s.area)||s.area.length!==2)throw new Error('Invalid area');s.area.forEach(position);if(s.area[0].x>s.area[1].x||s.area[0].y>s.area[1].y)throw new Error('Reversed area');
+      integer(r.sampleTicks,1,3600);integer(r.historySamples,2,10000);break;
+    }
+    case 'operational-read': keys(r,['op','scopeId','scopeRevision','afterTick']);name(r.scopeId);integer(r.scopeRevision,1,2147483647);integer(r.afterTick,-1,2147483647);break;
     case 'recipe': keys(r,['op','name']); name(r.name); break;
     case 'receipt': keys(r,['op','commandId']); name(r.commandId); break;
     case 'cancel': keys(r,['op','commandId','epoch','session']); name(r.commandId); name(r.epoch); name(r.session); break;

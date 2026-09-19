@@ -2,7 +2,7 @@ import type { Batch, Receipt } from '@autofactorio/contracts';
 import { isDeepStrictEqual } from 'node:util';
 
 export type Visibility = { kind: 'operator' } | { kind: 'shared' } | { kind: 'restricted'; agents: string[]; roles: string[]; tasks: string[] };
-export type Entity = 'runs' | 'agents' | 'tasks' | 'messages' | 'observations' | 'commands' | 'measurements' | 'interventions' | 'checkpoints' | 'budgets' | 'artifacts' | 'reservations' | 'agentHistory';
+export type Entity = 'runs' | 'agents' | 'tasks' | 'messages' | 'observations' | 'commands' | 'measurements' | 'interventions' | 'checkpoints' | 'budgets' | 'artifacts' | 'reservations' | 'agentHistory' | 'operationalScopes' | 'operationalSamples' | 'operationalWatches' | 'watchTransitions' | 'watchAcknowledgements' | 'contextDeliveries' | 'sessionLifecycle';
 export interface EventContext {
   run: string; epoch: string; wallTime: string; gameTick: number | null; actor: string | null; task: string | null;
   causation: string | null; correlation: string | null; visibility: Visibility;

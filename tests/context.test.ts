@@ -13,6 +13,8 @@ import { PROBE_CAPS } from '../packages/codex/src/budget.js';
 import { ContextArchive, bytes, entityCost, paginate } from '../packages/core/context/archive.js';
 import type { Page } from '../packages/core/context/archive.js';
 import { AgentContext, RecipeCache } from '../packages/core/context/service.js';
+import { SessionLifecycle } from '../packages/core/context/lifecycle.js';
+import { OperationalStore, OperationalWatches } from '../packages/core/context/operational.js';
 import { permits, privateTo, taskVisibility } from '../packages/core/context/authorization.js';
 import type { Principal } from '../packages/core/context/authorization.js';
 import type { Reference, Visibility } from '../packages/core/execution/durable.js';
@@ -222,11 +224,29 @@ describe('phase 08 authorized bounded context', () => {
   it('replacement refreshes scoped world before returning durable work, without dispatch', async () => {
     const f = fixture(); assign(f); const t = f.c.task('work'); t.reservations = [{ kind: 'area', surface: 'nauvis', bounds: [{ x: 0, y: 0 }, { x: 4, y: 4 }] }];
     f.runtime.record('area', [{ entity: 'tasks', id: t.id, value: { ...t } }], taskVisibility(t.id));
-    let queries = 0; f.game.request = async input => { expect(input).toMatchObject({ op: 'observe' }); queries++; return { tick: 999, total: 1, entities: [{ name: 'belt', position: { x: 1, y: 1 } }], actors: {} }; };
+    let queries = 0; f.game.request = async input => { expect(input).toMatchObject({ op: 'observe' }); queries++; const offset = Number((input as { offset: number }).offset); return { tick: 999, total: 40, entities: Array.from({ length: Math.min(30, 40 - offset) }, (_, i) => ({ name: 'belt', position: { x: offset + i, y: 1 } })), nextOffset: offset + 30 < 40 ? offset + 30 : undefined, actors: {} }; };
     const session = f.bind(); const result = await f.gateway.call(session.token, 'replacement', { task: 'work', area: 0, offset: 0 });
-    expect(queries).toBe(1); expect(bytes(result)).toBeLessThanOrEqual(4096); expect(entityCost(result)).toBeLessThanOrEqual(30);
-    expect(JSON.stringify(result)).toContain('999'); expect(JSON.stringify(result)).toContain('Restore input belt'); expect(f.runtime.execution.pending()).toHaveLength(0);
+    expect(queries).toBe(2); expect(bytes(result)).toBeLessThanOrEqual(4096); expect(entityCost(result)).toBeLessThanOrEqual(30);
+    expect(result).toMatchObject({ mutationGate: { open: true }, budget: { spentTurns: 1, closed: false }, worldNext: { tool: 'world', offset: expect.any(Number), cursor: expect.any(String) } }); expect(JSON.stringify(result)).toContain('999'); expect(JSON.stringify(result)).toContain('Restore input belt'); expect(f.runtime.execution.pending()).toHaveLength(0);
     expect(f.runtime.journal.list('run', 'observations')).toHaveLength(1);
+  });
+  it('returns recipe-derived target demand and explicit unsupported nominal capacity', async () => {
+    const f = fixture(); assign(f); const t = f.c.task('work'); t.reservations = [{ kind: 'area', surface: 'nauvis', bounds: [{ x: 0, y: 0 }, { x: 4, y: 4 }] }];
+    t.productionTarget = { name: 'automation-science-pack', quality: 'normal', surface: 'nauvis', rate: 0.5, unit: 'items-per-game-second', recipe: 'automation-science-pack' };
+    f.runtime.record('target', [{ entity: 'tasks', id: t.id, value: { ...t }, visibility: taskVisibility(t.id) }]);
+    f.game.request = async input => (input as { op: string }).op === 'operational-register' ? { ok: true, tick: 0 } : (input as { op: string }).op === 'operational-read' ? { tick: 600, samples: [] } : { tick: 600, mods: { base: '2.0.77' }, recipe: { name: 'automation-science-pack', enabled: true, energy: 5, category: 'crafting', ingredients: [{ type: 'item', name: 'iron-gear-wheel', amount: 1 }, { type: 'item', name: 'copper-plate', amount: 1 }], products: [{ type: 'item', name: 'automation-science-pack', amount: 1 }] } };
+    const result = await f.bind().context.metrics('work', 0, 600, ['target-demand', 'nominal-capacity'], ['automation-science-pack', 'iron-gear-wheel']) as { metrics: Record<string, unknown>[] };
+    expect(result.metrics).toEqual(expect.arrayContaining([expect.objectContaining({ kind: 'target-demand', name: 'automation-science-pack', rate: 0.5, coverage: 'complete' }), expect.objectContaining({ kind: 'target-demand', name: 'iron-gear-wheel', rate: 0.5, coverage: 'complete' }), expect.objectContaining({ kind: 'nominal-capacity', coverage: 'unknown', reason: 'machine_capacity_not_sampled' })]));
+  });
+  it('returns fresh replacement evidence but keeps mutation fenced while a known command is pending', async () => {
+    const f = fixture(); assign(f); const t = f.c.task('work'); t.reservations = [{ kind: 'area', surface: 'nauvis', bounds: [{ x: 0, y: 0 }, { x: 4, y: 4 }] }];
+    f.runtime.record('area', [{ entity: 'tasks', id: t.id, value: { ...t } }], taskVisibility(t.id)); f.game.request = async () => ({ tick: 10, entities: [], actors: {} });
+    const session = f.bind(); new SessionLifecycle(f.runtime).begin('engineer', 'old-session', session.b.session);
+    f.runtime.execution.intent({ commandId: 'still-running', task: 'work', epoch: 'epoch', session: 'session', actor: 'builder-1', revision: 1, surface: 'nauvis', grants: [], deadline: 1000, steps: [] }, taskVisibility('work'));
+    f.runtime.record('private-command', [{ entity: 'commands', id: 'hidden-reference', value: { state: 'unknown', batch: { commandId: 'hidden-reference', task: 'work' } }, visibility: { kind: 'operator' } }]);
+    const result = await f.gateway.call(session.token, 'replacement', { task: 'work', area: 0, offset: 0 }); expect(result).toMatchObject({ mutationGate: { open: false, pendingCount: 1 } }); expect(JSON.stringify(result)).not.toContain('hidden-reference');
+    expect(() => f.gateway.call(session.token, 'build', { task: 'work', revision: 1, commandId: 'duplicate', deadline: 100, steps: [] })).toThrow('Mutation closed');
+    expect(() => f.gateway.call(session.token, 'message', { message: { id: 'blocked-message', recipient: 'foreman', task: 'work', revision: 1, intent: 'report', content: 'must not mutate', evidence: [] } })).toThrow('Mutation closed');
   });
   it('preserves replacement component continuations and records only one actual delivery', async () => {
     const f = fixture(); assign(f);
@@ -253,5 +273,61 @@ describe('phase 08 authorized bounded context', () => {
     f.runtime.record('new', [{ entity: 'tasks', id: 'new-work', value: { ...task(), id: 'new-work', goal: 'New objective', owner: 'engineer', manager: 'foreman', status: 'proposed' } }], taskVisibility('new-work'));
     const text = JSON.stringify(f.bind().context.briefing());
     for (const required of ['New objective', 'awaiting acknowledged release', 'uncertain-command', 'old-reservation', 'unknown']) expect(text).toContain(required);
+  });
+  it('routes durable watch conditions to the current task owner and acknowledges exact delivery', () => {
+    const f = fixture(); assign(f); const visibility = taskVisibility('work'); const store = new OperationalStore(f.runtime); const watches = new OperationalWatches(f.runtime);
+    store.register({ schema: 1, id: 'work.area.0', revision: 1, task: 'work', surface: 'nauvis', area: [{ x: 0, y: 0 }, { x: 4, y: 4 }], entityLimit: 100 }, visibility);
+    watches.register({ id: 'target.work.area.0', role: 'foreman', task: 'work', scopeId: 'work.area.0', scopeRevision: 1, metric: { kind: 'production', name: 'gear', quality: 'normal', surface: 'nauvis' }, threshold: 1, recovery: 1.05, persistenceTicks: 1 }, visibility);
+    watches.evaluate('target.work.area.0', 0, 0, visibility); watches.evaluate('target.work.area.0', 1, 0, visibility);
+    expect(JSON.stringify(f.bind('foreman').context.briefing())).not.toContain('target.work.area.0');
+    const engineerSession = f.bind('engineer'); const first = JSON.stringify(engineerSession.context.briefing()); expect(first).toContain('target.work.area.0'); expect(first).toContain('"gap":false');
+    expect(watches.pendingFor('engineer', new Set(['target.work.area.0']))).toEqual({ transitions: [], gap: false });
+    const next = JSON.stringify(engineerSession.context.briefing()); expect(next).toContain('target.work.area.0|work|active|0|1'); expect(next).toContain('"transitionCount":0');
+  });
+  it('keeps maximum watch reconciliation retrievable and closes replacement when the envelope cannot fit', async () => {
+    const f = fixture(); assign(f); const t = f.c.task('work'); t.reservations = [{ kind: 'area', surface: 'nauvis', bounds: [{ x: 0, y: 0 }, { x: 4, y: 4 }] }];
+    f.runtime.record('area', [{ entity: 'tasks', id: t.id, value: { ...t }, visibility: taskVisibility(t.id) }]); f.game.request = async () => ({ tick: 10, entities: [], actors: {} });
+    const visibility = taskVisibility('work'); const store = new OperationalStore(f.runtime); const watches = new OperationalWatches(f.runtime);
+    store.register({ schema: 1, id: 'work.area.0', revision: 1, task: 'work', surface: 'nauvis', area: [{ x: 0, y: 0 }, { x: 4, y: 4 }], entityLimit: 100 }, visibility);
+    watches.register({ id: 'overflow', role: 'engineer', task: 'work', scopeId: 'work.area.0', scopeRevision: 1, metric: { kind: 'production', name: 'gear', quality: 'normal', surface: 'nauvis' }, threshold: 1, recovery: 1.05, persistenceTicks: 1 }, visibility);
+    let tick = 0; for (let i = 0; i < 17; i++) { watches.evaluate('overflow', tick++, 0, visibility); watches.evaluate('overflow', tick++, 0, visibility); watches.evaluate('overflow', tick++, 2, visibility); watches.evaluate('overflow', tick++, 2, visibility); }
+    const session = f.bind(); const page = session.context.briefing() as Page; const text = JSON.stringify(page); expect(text).toContain('"gap":true'); expect(text).toContain('"transitionCount":32'); expect(text).not.toContain('entity-limit'); expect(entityCost(page)).toBeLessThanOrEqual(30);
+
+    for (let i = 0; i < 31; i++) watches.register({ id: `${'long-watch-'.padEnd(88, String(i % 10))}${i}`, role: `role-${i}`, task: 'work', scopeId: 'work.area.0', scopeRevision: 1, metric: { kind: 'production', name: 'gear', quality: 'normal', surface: 'nauvis' }, threshold: 1, recovery: 1.05, persistenceTicks: 1 }, visibility);
+    new SessionLifecycle(f.runtime).begin('engineer', 'old-session', session.b.session);
+    const replacement = await f.gateway.call(session.token, 'replacement', { task: 'work', area: 0, offset: 0 }); expect(replacement).toMatchObject({ reconstruction: { conditionsComplete: false }, mutationGate: { open: false, reason: 'operational conditions require bounded reconstruction' } });
+    expect(() => f.gateway.call(session.token, 'message', { message: { id: 'blocked-by-conditions', recipient: 'foreman', task: 'work', revision: 1, intent: 'report', content: 'must remain read-only', evidence: [] } })).toThrow('Mutation closed');
+  });
+  it('keeps a 61-step partial command compact and preserves its outcome before detail pagination', () => {
+    const f = fixture(); assign(f);
+    const steps = Array.from({ length: 61 }, (_, i) => ({ index: i + 1, status: i < 37 ? 'completed' : i === 37 ? 'failed' : 'cancelled', ...(i === 37 ? { reason: 'entity_precondition_failed' } : {}), startedTick: i, endedTick: i + 1, before: [], after: [], delta: [] }));
+    f.runtime.record('partial', [{ entity: 'commands', id: 'partial-61', value: { state: 'acknowledged', batch: { commandId: 'partial-61', task: 'work', revision: 1, steps: Array(61).fill({ kind: 'walk' }) }, receipt: { status: 'partial', completed: 37, unexecuted: 24, steps } }, visibility: taskVisibility('work') }]);
+    const session = f.bind(); const result = session.context.command('partial-61'); expect(bytes(result)).toBeLessThan(4096);
+    expect(result).toMatchObject({ commandId: 'partial-61', revision: 1, certainty: 'known', status: 'partial', completed: 37, remaining: 24, failedStep: 38, reason: 'entity_precondition_failed' });
+    expect(result).not.toHaveProperty('steps'); expect(JSON.stringify(session.context.briefing())).toContain('partial-61');
+    const minimum = new AgentContext(f.c, session.b, { bytes: 512, entities: 30 }).command('partial-61'); expect(bytes(minimum)).toBeLessThanOrEqual(512);
+    expect(() => new AgentContext(f.c, session.b, { bytes: 511, entities: 30 })).toThrow('Invalid context limits');
+  });
+  it('keeps eight actor stacks available independently of a 300-entity world', async () => {
+    const f = fixture(); assign(f); const t = f.c.task('work'); t.actor = 'builder-1'; t.reservations = [{ kind: 'area', surface: 'nauvis', bounds: [{ x: 0, y: 0 }, { x: 40, y: 40 }] }];
+    f.runtime.record('area', [{ entity: 'tasks', id: t.id, value: { ...t }, visibility: taskVisibility(t.id) }]);
+    const inventory = Array.from({ length: 8 }, (_, i) => ({ name: `stack-${i}`, quality: 'normal', count: 100 }));
+    f.game.request = async input => ({ tick: 10, entities: Array.from({ length: Math.min(30, 300 - Number((input as { offset: number }).offset)) }, (_, i) => ({ name: 'transport-belt', type: 'transport-belt', position: { x: i, y: 0 }, inventories: {} })), actors: { 'builder-1': { position: { x: 1, y: 1 }, inventory, connected: true } }, total: 300, nextOffset: Number((input as { offset: number }).offset) + 30 < 300 ? Number((input as { offset: number }).offset) + 30 : undefined });
+    const actor = await f.bind().context.actor('work', 0) as { actors: { inventory: unknown[] }[] }; expect(actor.actors[0]!.inventory).toHaveLength(8); expect(bytes(actor)).toBeLessThanOrEqual(4096);
+  });
+  it('filters machines before snapshot counts and refuses continuations after task revision', async () => {
+    const f = fixture(); assign(f); const t = f.c.task('work'); t.reservations = [{ kind: 'area', surface: 'nauvis', bounds: [{ x: 0, y: 0 }, { x: 40, y: 40 }] }];
+    f.runtime.record('area', [{ entity: 'tasks', id: t.id, value: { ...t }, visibility: taskVisibility(t.id) }]);
+    const all = [...Array.from({ length: 40 }, (_, i) => ({ name: 'transport-belt', type: 'transport-belt', position: { x: i, y: 0 } })), ...Array.from({ length: 3 }, (_, i) => ({ name: 'assembling-machine-1', type: 'assembling-machine', position: { x: i, y: 1 }, status: 'no_power', recipe: 'gear', inventories: { input: [] }, power: 0 }))];
+    f.game.request = async input => { const start = Number((input as { offset: number }).offset); const list = all.slice(start, start + 30); return { tick: 20, entities: list, actors: {}, total: all.length, nextOffset: start + list.length < all.length ? start + list.length : undefined }; };
+    const session = f.bind(); const first = await session.context.machines('work', 0, 0) as { total: number; snapshot: string; entities: Record<string, unknown>[] }; expect(first.total).toBe(3); expect(first.entities.every(e => e.status === 'no_power' && !('direction' in e))).toBe(true);
+    await expect(session.context.world('work', 0, 0, { fields: [] })).rejects.toThrow('Unsupported world filter');
+    f.runtime.record('revision', [{ entity: 'tasks', id: t.id, value: { ...t, revision: 2 }, visibility: taskVisibility(t.id) }]);
+    await expect(session.context.machines('work', 0, 0, undefined, undefined, first.snapshot)).rejects.toThrow(/scope|changed/);
+  });
+  it('returns an explicit bodyless actor view without granting execution authority', async () => {
+    const f = fixture(); assign(f); const t = f.c.task('work'); t.reservations = [{ kind: 'area', surface: 'nauvis', bounds: [{ x: 0, y: 0 }, { x: 4, y: 4 }] }];
+    f.runtime.record('area', [{ entity: 'tasks', id: t.id, value: { ...t, owner: 'foreman' }, visibility: taskVisibility(t.id) }]); f.game.request = async () => ({ tick: 1, entities: [], actors: {} });
+    const result = await f.bind('foreman').context.actor('work', 0); expect(result).toMatchObject({ actors: [], bodyless: true });
   });
 });

@@ -6,7 +6,7 @@ A local Factorio Space Age experimentation environment where specialized AI agen
 
 ## Current status
 
-Phases 01–12 are complete and archived; Phase 13's plate-to-science implementation and live gate are complete pending archive. The project now includes subscription access, legal character execution, pause/restore, durable coordination, the local dashboard, verification engine, bounded First Shift trials, and game-verified S1/S2 references and bypass controls. See the [handoff](docs/IMPLEMENTATION_HANDOFF.md), [S2 guide](scenarios/02-some-assembly-required/README.md), [trial report](docs/FIRST_SHIFT_AGENT_TRIAL_REPORT.md), [compatibility report](docs/COMPATIBILITY_REPORT.md) and [accepted safeguards](docs/decisions/001-review-hardening.md).
+Phases 01–13 are complete and archived. The project now includes subscription access, legal character execution, pause/restore, durable coordination, the local dashboard, verification engine, bounded First Shift trials, game-verified S1/S2 references and decision-focused operational observations. See the [handoff](docs/IMPLEMENTATION_HANDOFF.md), [S2 guide](scenarios/02-some-assembly-required/README.md), [trial report](docs/FIRST_SHIFT_AGENT_TRIAL_REPORT.md), [compatibility report](docs/COMPATIBILITY_REPORT.md) and [accepted safeguards](docs/decisions/001-review-hardening.md).
 
 ## Phased implementation
 
@@ -114,6 +114,29 @@ corepack.cmd pnpm game:plate-to-science-probe --run-file '<run-directory>/run.js
 ```
 
 S2 uses the same loader, reset barrier and evaluator with an 80×80 plate-fed fixture and explicit gear stage. Its `s2-v6` manifest, installed-recipe component-inventory calibration, legal reference and bypass matrix are frozen in the [scenario guide](scenarios/02-some-assembly-required/README.md) and [decision 015](docs/decisions/015-plate-to-science.md).
+
+## Decision-focused context
+
+Gameplay roles retain the legacy `observe`, `world` and archive tools and gain typed `metrics` plus `inspect` views for actor state, compact command outcomes and selected machine symptoms. Metrics identify scope/item/quality/surface, distinguish configured supply, measured production/consumption/delivery, target demand and stock change, and carry tick interval, method, freshness and complete/partial/unknown coverage. Initial live methods cover normal-quality S1/S2 assemblers and their public terminal/collector boundaries; they do not expose evaluator traces or claim scenario success.
+
+Filtered world/machine reads use short-lived authorization-bound snapshots; resume them with the returned opaque `snapshot` and `next`, using the same task/area/filter fields. Expiration, eviction, reassignment or scope revision requires a fresh query. Use `inspect` actor/command before fetching bulk world or receipt detail. Default briefings prioritize role decisions and keep full transcripts/entity lists on drill-down.
+
+Context delivery accounting records observable UTF-8 bytes and repetition separately from provider token usage. Provider occupancy and subscription balance remain unknown when unavailable. The default role-session fallback requests reconstruction after 8 admitted turns or 128 KiB delivered; active batches defer rotation, and fresh credentials cannot mutate until durable work and uncertain effects reconcile. See [Decision 016](docs/decisions/016-decision-focused-context.md) and the [context module guide](packages/core/context/README.md).
+
+The deterministic comparison consumes no model usage:
+
+```powershell
+corepack.cmd pnpm context:compare -- --output .runtime/decision-context-comparison/report.json
+```
+
+Dedicated live calibration creates an isolated S1 or S2 profile, reconciles sampler flow quantities, stock deltas and rates against operator-only raw engine/scenario counters and independently enumerated scoped inventories with a declared two-cadence tolerance, exercises healthy flow, starvation, output blockage, power loss, pause and managed save/load, then holds and stops its exact profile:
+
+```powershell
+corepack.cmd pnpm game:operational-probe -- --scenario 01-first-shift
+corepack.cmd pnpm game:operational-probe -- --scenario 02-some-assembly-required
+```
+
+These checks establish observation correctness and efficiency only. No model/gameplay improvement is claimed without a separately authorized comparison.
 
 ## Provider diagnostic (phase 02)
 

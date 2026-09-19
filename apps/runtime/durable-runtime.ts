@@ -95,7 +95,7 @@ export class DurableRuntime {
     const a = this.journal.get<Artifact>(this.run, 'artifacts', id);
     return a ? this.artifacts.read(a, audience) : { available: false as const, reason: 'missing' as const };
   }
-  query(request: Extract<GameRequest, { op: 'observe' | 'recipe' }>) { return this.game.request(request); }
+  query(request: Extract<GameRequest, { op: 'observe' | 'recipe' | 'operational-register' | 'operational-read' }>) { return this.game.request(request); }
   inspectControl() { return this.lifecycle.inspect(); }
   hasControlSession(): boolean { return this.session.length > 0; }
   heartbeat(control: ControlState) { return this.lifecycle.heartbeat(control); }

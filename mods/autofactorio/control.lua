@@ -5,6 +5,7 @@ local F=require("ownership")
 local V=require("verification")
 local S=require("first_shift")
 local SM=require("first_shift_measurement")
+local O=require("operational")
 local function setup()
  if remote.interfaces.freeplay then
   remote.call("freeplay","set_skip_intro",true);remote.call("freeplay","set_disable_crashsite",true);remote.call("freeplay","set_created_items",{})
@@ -77,6 +78,7 @@ script.on_event(defines.events.on_tick,function()
  local armed=L.tick()
  S.tick()
  SM.tick()
+ O.tick()
  if not armed then return end
  for actor,id in pairs(storage.af.active) do
   local o=storage.af.orders[id]
@@ -117,7 +119,7 @@ local function observe(r)
  local entities=game.surfaces[r.surface].find_entities_filtered{area=r.area};table.sort(entities,function(a,b)return (a.name..":"..a.position.x..":"..a.position.y)<(b.name..":"..b.position.x..":"..b.position.y) end)
  local out={};for i=r.offset+1,math.min(#entities,r.offset+r.limit) do local e=entities[i];local ref=C.ref(e);ref.protected=C.protected(e);ref.direction=e.direction;ref.type=e.type;ref.inventories={}
   for name in pairs(C.inventory_ids) do local ok,inv=pcall(function()return C.entity_inventory(e,name)end);if ok and inv then ref.inventories[name]=C.inventory(inv) end end
-  if e.type=="assembling-machine" then local recipe=e.get_recipe();ref.recipe=recipe and recipe.name;ref.craftingSpeed=e.crafting_speed end
+  if e.type=="assembling-machine" then local recipe=e.get_recipe();ref.recipe=recipe and recipe.name;ref.craftingSpeed=e.crafting_speed;ref.status=tostring(e.status);ref.power=e.electric_network_id and e.energy or nil end
   if e.type=="underground-belt" then ref.beltType=e.belt_to_ground_type;ref.neighbour=e.neighbours and C.ref(e.neighbours) end
   out[#out+1]=ref
  end
@@ -127,6 +129,8 @@ end
 local function gameplay(r)
  C.check(type(r)=="table","invalid_request")
  if r.op=="observe" then return observe(r)
+ elseif r.op=="operational-register" then C.keys(r,{"op","scope","sampleTicks","historySamples"});return O.register(r)
+ elseif r.op=="operational-read" then C.keys(r,{"op","scopeId","scopeRevision","afterTick"});return O.read(r)
  elseif r.op=="submit" then C.keys(r,{"op","batch"});return {ok=true,receipt=submit(r.batch)}
  elseif r.op=="receipt" or r.op=="cancel" then
   if r.op=="cancel" then C.keys(r,{"op","commandId","epoch","session"});C.check(r.epoch==storage.af.epoch and r.session==storage.af.session,"stale_epoch_or_session") else C.keys(r,{"op","commandId"}) end;C.id(r.commandId);local o=storage.af.orders[r.commandId]
@@ -153,6 +157,7 @@ remote.add_interface("autofactorio_v1",{rpc=function(payload)return encoded(game
 remote.add_interface("autofactorio_operator_v1",{rpc=function(payload)return encoded(function(r)
  if r.op=="scenario" then return S.rpc(r) end
  if r.op=="scenario-measurements" then return SM.read(r) end
+ if r.op=="operational-raw-counters" then C.keys(r,{"op","area"});return O.raw(r.area) end
  if r.op=="verification" then return V.rpc(r) end
  if r.op=="edits" then C.keys(r,{"op","after"});C.integer(r.after,0,2147483647);return E.read(r.after) end
  if r.op=="ownership" then C.keys(r,{"op","control"});return {ok=true,ack=F.control(r.control)} end

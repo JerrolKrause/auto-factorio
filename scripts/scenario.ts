@@ -8,6 +8,7 @@ import { Coordinator } from '../packages/core/orchestration/coordinator.js';
 import { team, soloTeam } from '../packages/core/orchestration/roles.js';
 import { PROBE_CAPS } from '../packages/codex/src/budget.js';
 import { ASTRA } from '../packages/codex/src/protocol.js';
+import { DEFAULT_OPERATIONAL_LIMITS } from '@autofactorio/contracts';
 import { Operator } from '../apps/runtime/operator.js';
 import { dashboard } from '../apps/runtime/http.js';
 
@@ -19,7 +20,7 @@ const { run, profile, port, game, life } = await prepareFirstShift(roster, value
 const runtime = new DurableRuntime(run.directory, run.run, run.epoch, game, life, [profile.password]);
 const agents = roster === 'team' ? team() : soloTeam();
 const revision = spawnSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf8', windowsHide: true });
-runtime.initialize({ objective: 'Sustain 30 automatic red science/minute for five scored minutes', scenario: run.manifest.id, scenarioVersion: run.manifest.version, seed: run.manifest.seed, codeCommit: revision.status === 0 ? revision.stdout.trim() + '+working-tree' : 'unknown', gameVersion: run.manifest.mods.base!, mods: run.manifest.mods, roster: agents.map(a => a.id), model: ASTRA, effort: 'low', instructionHashes: Object.fromEntries(agents.map(a => [a.id, fingerprint(a.definition)])), assisted: false, status: 'ready' });
+runtime.initialize({ objective: 'Sustain 30 automatic red science/minute for five scored minutes', scenario: run.manifest.id, scenarioVersion: run.manifest.version, seed: run.manifest.seed, codeCommit: revision.status === 0 ? revision.stdout.trim() + '+working-tree' : 'unknown', gameVersion: run.manifest.mods.base!, mods: run.manifest.mods, roster: agents.map(a => a.id), model: ASTRA, effort: 'low', instructionHashes: Object.fromEntries(agents.map(a => [a.id, fingerprint(a.definition)])), assisted: false, status: 'ready', operationalLimits: DEFAULT_OPERATIONAL_LIMITS, contextLifecycle: { schema: 1, maxTurns: DEFAULT_OPERATIONAL_LIMITS.rotationTurns, maxDeliveredBytes: DEFAULT_OPERATIONAL_LIMITS.rotationBytes } });
 const c = new Coordinator(runtime, { ...PROBE_CAPS, runMs: run.manifest.wallLimitMs }); agents.forEach(a => c.register(a));
 runtime.evidence('agent-observation', briefing(run.manifest, roster), { kind: 'shared' });
 runtime.record('scenario/origin', [{ entity: 'runs', id: 'scenario-origin', value: { ...run } }]);

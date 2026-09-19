@@ -1,6 +1,6 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { isDeepStrictEqual } from 'node:util';
-import { resourceKey, validateAssignment } from '@autofactorio/contracts';
+import { DEFAULT_OPERATIONAL_LIMITS, resourceKey, validateAssignment, validateProductionTarget } from '@autofactorio/contracts';
 import type { AgentDefinition, AgentHistory, AgentInstance, Batch, CoordinatedTask, ScopedMessage, ToolGroup } from '@autofactorio/contracts';
 import type { DurableRuntime } from '../../../apps/runtime/durable-runtime.js';
 import type { Budget, Caps, TurnBudget } from '../../codex/src/budget.js';
@@ -8,9 +8,10 @@ import type { Change, Command } from '../execution/durable.js';
 import { ASTRA } from '../../codex/src/protocol.js';
 import { privateTo, taskVisibility } from '../context/authorization.js';
 import { ContextArchive } from '../context/archive.js';
+import { OperationalStore, OperationalWatches } from '../context/operational.js';
 
 export interface SessionBinding { agent: string; session: string; generation: number; epoch: string; turn: string }
-export type TaskInput = Pick<CoordinatedTask, 'id' | 'goal' | 'parent' | 'dependencies' | 'scope' | 'resources' | 'successCriteria' | 'deadline' | 'committedPlan' | 'actor' | 'reservations' | 'criteria'>;
+export type TaskInput = Pick<CoordinatedTask, 'id' | 'goal' | 'parent' | 'dependencies' | 'scope' | 'resources' | 'successCriteria' | 'deadline' | 'committedPlan' | 'actor' | 'reservations' | 'criteria' | 'productionTarget'>;
 export type MessageInput = Pick<ScopedMessage, 'id' | 'recipient' | 'task' | 'revision' | 'intent' | 'content' | 'evidence'>;
 const terminal = (t: CoordinatedTask) => ['succeeded', 'failed', 'cancelled', 'superseded'].includes(t.status);
 const id = (s: string) => { if (typeof s !== 'string' || !/^[\w.-]{1,100}$/.test(s)) throw new Error('Invalid coordination identity'); };
@@ -23,12 +24,17 @@ export class Coordinator {
   private readonly interruptRequested = new Set<string>();
   private busy = false;
   private pumpWork: Promise<void> | null = null;
+  private readonly operational: OperationalStore;
+  private readonly watches: OperationalWatches;
   constructor(readonly runtime: DurableRuntime, caps: Caps, now = () => performance.now(), private readonly dispatchAllowed = () => true) {
     this.budget = runtime.createBudget(caps, now, t => { this.stopped.add(t.id); });
     runtime.admissionGuard = batch => {
       this.budget.tick(); const t = this.task(batch.task);
       if (this.held() || this.budget.state.closed || t.revision !== batch.revision || !['assigned', 'running'].includes(t.status) || !this.dependenciesReady(t) || this.budget.state.turns.some(b => b.role === t.owner && b.closed && b.cancellation !== 'confirmed')) throw new Error('Scheduler admission closed');
     };
+    const manifest = runtime.journal.get<{ operationalLimits?: typeof DEFAULT_OPERATIONAL_LIMITS }>(runtime.run, 'runs', runtime.run);
+    this.operational = new OperationalStore(runtime, manifest?.operationalLimits ?? DEFAULT_OPERATIONAL_LIMITS);
+    this.watches = new OperationalWatches(runtime, this.operational.limits);
   }
   agents(): AgentInstance[] { return this.runtime.journal.list(this.runtime.run, 'agents'); }
   /** Durable operator admission also protects late tools and a pump already awaiting the game. */
@@ -118,6 +124,7 @@ export class Coordinator {
     if (new Set(input.dependencies).size !== input.dependencies.length) throw new Error('Duplicate dependency');
     for (const dep of [...input.dependencies, ...(input.parent ? [input.parent] : [])]) { this.scoped(who, this.task(dep)); }
     if (input.actor === null && input.reservations.length) throw new Error('Bodyless task cannot reserve game resources');
+    if (input.productionTarget !== undefined) validateProductionTarget(input.productionTarget);
     if (input.actor) validateAssignment({ id: input.id, owner: who, task: input.id, revision: 1, actor: input.actor, resources: input.reservations.map(resource => ({ resource, grant: { id: resourceKey(resource), generation: 1 } })) });
   }
   private checkGraph(candidate: CoordinatedTask): void {
@@ -216,6 +223,18 @@ export class Coordinator {
       }
       if (controlErrors.length) throw new AggregateError(controlErrors, 'Ownership cancellation unconfirmed');
       await this.runtime.execution.reconcile();
+      for (const scope of this.operational.scopes()) {
+        const afterTick = this.operational.samples(scope.id, scope.revision).at(-1)?.tick ?? -1;
+        const response = await this.runtime.query({ op: 'operational-read', scopeId: scope.id, scopeRevision: scope.revision, afterTick });
+        for (const sample of Array.isArray(response.samples) ? response.samples : []) this.operational.ingest(sample as never, { kind: 'restricted', agents: [], roles: [], tasks: [scope.task] });
+      }
+      for (const watch of this.watches.list()) {
+        const scope = this.operational.scope(watch.scopeId);
+        if (!scope || scope.revision !== watch.scopeRevision) continue;
+        const metrics = this.operational.metrics(scope.id, Math.max(600, this.operational.limits.sampleTicks), undefined, [watch.metric.kind], [watch.metric.name]);
+        const metric = metrics.find(m => m.quality === watch.metric.quality && m.surface === watch.metric.surface);
+        if (metric?.coverage === 'complete' && metric.rate !== null) this.watches.evaluate(watch.id, metric.endTick, metric.rate, { kind: 'restricted', agents: [], roles: [], tasks: [watch.task] });
+      }
       if (this.held()) return;
       // Reconciliation can discover a failure for the first time. Stop its queued remainder before dispatch.
       for (const t of this.tasks().filter(t => t.status === 'running')) {
