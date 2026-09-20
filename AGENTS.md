@@ -24,6 +24,8 @@ For an authorized milestone, work autonomously through implementation, project d
 
 ## Build and verify
 
+For user-facing startup behavior, keep `npm start` as the single supported entrypoint: it must install the pinned dependencies, build the app, use fixed `localhost:3000`, open the browser, avoid duplicate instances, and report missing prerequisites or cleanup failures in human-readable language. Keep advanced `pnpm` launch commands documented as diagnostics, not as the ordinary-user path.
+
 Follow the [model-selection guide](docs/MODEL_SELECTION.md) for developer work. Plan bounded tasks with a recommended model/effort, rationale and escalation conditions; keep selections explicit and preserve verification, independent-review and gameplay model rules.
 
 Use the architecture's TypeScript/Lua boundaries and a small modular application. Validate the subscription and game connection before expanding infrastructure. Inspect applicable upstream code and notices before rewriting or copying game mechanics.

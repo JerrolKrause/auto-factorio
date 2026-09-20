@@ -24,6 +24,18 @@ async function http() {
   return { ...f, server, origin, headers };
 }
 describe('operator boundary and durable replay', () => {
+  it('creates a bookmark-safe same-origin session cookie on the health/page boundary', async () => {
+    const f = await http();
+    expect(f.origin).toMatch(/^http:\/\/localhost:\d+$/);
+    const health = await f.server.app.inject({ url: '/health', headers: { host: new URL(f.origin).host } });
+    expect(health.statusCode).toBe(200);
+    expect(health.headers['x-autofactorio-service']).toBe('dashboard');
+    const cookie = String(health.headers['set-cookie'] ?? '').split(';', 1)[0];
+    expect(cookie).toMatch(/^af_session=[a-f0-9]{64}$/);
+    const response = await f.server.app.inject({ url: '/api/snapshot', headers: { host: new URL(f.origin).host, origin: f.origin, cookie } });
+    expect(response.statusCode).toBe(200);
+  });
+
   it('requires exact local host, capability and command origin without CORS', async () => {
     const f = await http();
     for (const headers of [{ ...f.headers, host: 'attacker.test' }, { ...f.headers, origin: 'https://attacker.test' }, { ...f.headers, authorization: 'Bearer wrong' }, { ...f.headers, 'sec-fetch-site': 'cross-site' }]) {

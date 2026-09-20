@@ -20,22 +20,29 @@ export type DashboardOptions=WorkshopCompositionOptions;
 export function dashboard(operator: Operator, assets = path.resolve('apps/dashboard/dist'), options:DashboardOptions = {}) {
   const app = Fastify({ logger: false, bodyLimit: 4*1024*1024 });
   const capability = randomBytes(32).toString('hex');
+  const sessionCookie = `af_session=${capability}; Path=/; HttpOnly; SameSite=Strict; Max-Age=28800`;
   const streams = new Set<ServerResponse>();
   let origin = '';
   const runtime = operator.coordinator.runtime;
   const composition=composeWorkshop(runtime,options),workshop=composition.orchestrator,learning=composition.learning,library=composition.library,workshopRuntime=composition.controller;
+  const cookieCapability = (cookie: string | undefined) => cookie?.split(';').map(part => part.trim()).find(part => part.startsWith('af_session='))?.slice('af_session='.length) ?? '';
+  const validCapability = (request: { headers: { authorization?: string | undefined; cookie?: string | undefined } }) => {
+    const supplied = Buffer.from(request.headers.authorization ?? `Bearer ${cookieCapability(request.headers.cookie)}`);
+    const expected = Buffer.from('Bearer ' + capability);
+    return supplied.length === expected.length && timingSafeEqual(supplied, expected);
+  };
   app.addHook('onRequest', async (request, reply) => {
     reply.header('Cache-Control', 'no-store').header('Referrer-Policy', 'no-referrer')
       .header('X-Content-Type-Options', 'nosniff').header('Content-Security-Policy', "default-src 'self'; script-src 'self'; style-src 'self'; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'");
     if (!origin || request.headers.host !== new URL(origin).host) return reply.code(403).send({ error: 'Local host required' });
     const suppliedOrigin = request.headers.origin;
     if ((suppliedOrigin && suppliedOrigin !== origin) || request.headers['sec-fetch-site'] === 'cross-site') return reply.code(403).send({ error: 'Local origin required' });
-    if (!request.url.startsWith('/api/')) return;
-    const supplied = Buffer.from(request.headers.authorization ?? ''); const expected = Buffer.from('Bearer ' + capability);
-    if (supplied.length !== expected.length || !timingSafeEqual(supplied, expected)) return reply.code(401).send({ error: 'Local capability required' });
+    if (!request.url.startsWith('/api/')) { reply.header('Set-Cookie', sessionCookie); return; }
+    if (!validCapability(request)) return reply.code(401).send({ error: 'Local session missing; reload http://localhost:3000 to start a new local session' });
     if (request.method !== 'GET' && suppliedOrigin !== origin) return reply.code(403).send({ error: 'Local origin required' });
   });
   app.setErrorHandler((error, _request, reply) => reply.code(400).send({ error: error instanceof Error ? error.message : 'Request failed' }));
+  app.get('/health', (_request, reply) => reply.header('X-AutoFactorio-Service', 'dashboard').send({ status: 'ok', service: 'autofactorio-dashboard' }));
   app.get('/api/snapshot', () => {
     // No await between projections and cursor: one Node writer gives an atomic read boundary.
     const cursor = runtime.journal.cursor();
@@ -116,7 +123,11 @@ export function dashboard(operator: Operator, assets = path.resolve('apps/dashbo
   });
   return {
     app, capability,
-    async listen(port = 0) { origin = await app.listen({ host: '127.0.0.1', port }); return origin; },
+    async listen(port = 0) {
+      const bound = await app.listen({ host: '127.0.0.1', port });
+      origin = `http://localhost:${new URL(bound).port}`;
+      return origin;
+    },
     async close() { for (const s of streams) s.destroy(); await app.close(); await workshopRuntime?.close(); library.close(); },
   };
 }

@@ -35,7 +35,7 @@ else {
   const codex=value('--codex');if(!codex||!path.isAbsolute(codex))throw new Error('Interactive scenario dashboard requires --codex <absolute managed Codex executable>');
   const prepared=await prepareLiveWorkshopHost({directory:run.directory,codexExecutable:codex,port,game,lifecycle:life});
   const server = dashboard(operator,undefined,{workshopHost:prepared.host,managedModels:prepared.catalog.models}); const origin = await server.listen(0);
-  await writeFile(path.join(run.directory, 'dashboard.json'), JSON.stringify({ origin, url: origin + '/#cap=' + server.capability }));
+  await writeFile(path.join(run.directory, 'dashboard.json'), JSON.stringify({ origin, url: origin, capability: server.capability }));
   console.log(JSON.stringify({ origin, launchFile: path.join(run.directory, 'dashboard.json') }));
   const stop = operator.start(); let closing = false;
   const close = async () => { if (closing) return; closing = true; await stop(); await operator.control('pause'); await server.close(); runtime.close(); port.close(); };

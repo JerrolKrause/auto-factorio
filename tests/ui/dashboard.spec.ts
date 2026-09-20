@@ -18,7 +18,7 @@ test('operator watches two roles, inspects evidence, steers, controls and reopen
   const f = await dashboardFixture(mkdtempSync(path.join(os.tmpdir(), 'af-ui-')), true);
   const server = dashboard(f.operator); const origin = await server.listen(); const stop = f.operator.start(100);
   const context = await browser.newContext(); let page = await context.newPage();
-  const url = origin + '/#cap=' + server.capability;
+  const url = origin;
   try {
     await page.goto(url); await expect(page.getByRole('heading', { name: 'Control room.' })).toBeVisible();
     await expect(page.getByRole('heading', { name: 'foreman', exact: true })).toBeVisible(); await expect(page.getByRole('heading', { name: 'engineer', exact: true })).toBeVisible();

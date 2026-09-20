@@ -96,7 +96,7 @@ const workshopComposition=await prepareLiveWorkshopHost({directory:run.directory
 const server = dashboard(operator,undefined,{workshopHost:workshopComposition.host,managedModels:workshopComposition.catalog.models});
 resources.register('dashboard', () => server.close());
 const origin = await server.listen(0);
-await writeFile(path.join(run.directory, 'dashboard.json'), JSON.stringify({ origin, url: origin + '/#cap=' + server.capability }));
+await writeFile(path.join(run.directory, 'dashboard.json'), JSON.stringify({ origin, url: origin, capability: server.capability }));
 console.log(JSON.stringify({ directory: run.directory, run: run.run, kind, caps: TRIAL_CAPS, origin, dashboard: path.join(run.directory, 'dashboard.json') }));
 let failure: string | null = null; let reason = 'preflight-only'; let preflightPassed = false;
 let providerStop: string | null = null;

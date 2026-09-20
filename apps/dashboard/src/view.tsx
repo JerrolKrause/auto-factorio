@@ -13,23 +13,19 @@ export function App() {
   const [recipient, setRecipient] = useState('engineer'); const [advice, setAdvice] = useState('');
   const [pending, setPending] = useState(false); const adviceId = useRef(crypto.randomUUID());
   const [history, setHistory] = useState<Event[]>([]); const historyCursor = useRef(0);
-  const cap = useRef('');
   async function api(route: string, body?: unknown) {
-    const response = await fetch('/api/' + route, { headers: { Authorization: 'Bearer ' + cap.current, ...(body ? { 'Content-Type': 'application/json' } : {}) }, ...(body ? { method: 'POST', body: json(body) } : {}) });
+    const response = await fetch('/api/' + route, { headers: { ...(body ? { 'Content-Type': 'application/json' } : {}) }, ...(body ? { method: 'POST', body: json(body) } : {}) });
     const value: unknown = await response.json();
     if (!response.ok) throw new Error(show((value as { error?: string }).error)); return value;
   }
   useEffect(() => {
-    const fragment = new URLSearchParams(location.hash.slice(1)).get('cap');
-    cap.current = fragment ?? sessionStorage.getItem('af-capability') ?? '';
-    if (fragment) { sessionStorage.setItem('af-capability', fragment); window.history.replaceState(null, '', location.pathname); }
     let closed = false; const abort = new AbortController();
     let timer: ReturnType<typeof setTimeout>;
     const connect = async () => {
       try {
         const initial = await api('snapshot') as DashboardSnapshot;
         if (closed) return; setData(initial); setConnection('Live');
-        const response = await fetch('/api/events?after=' + initial.cursor, { headers: { Authorization: 'Bearer ' + cap.current }, signal: abort.signal });
+        const response = await fetch('/api/events?after=' + initial.cursor, { signal: abort.signal });
         if (!response.ok || !response.body) throw new Error('Event stream unavailable');
         const reader = response.body.getReader(); const decoder = new TextDecoder(); let buffer = '';
         while (!closed) {

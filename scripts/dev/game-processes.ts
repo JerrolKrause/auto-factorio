@@ -11,7 +11,7 @@ export interface GameProfile {
   mods: string; settings: string; save: string; log: string; port: number; gamePort: number; password: string;
 }
 export interface ProjectProcess { pid: number; config: string; startedAt: string; kind: 'server' | 'observer'; gamePort?: number; rconPort?: number }
-const installation = 'C:/Program Files (x86)/Steam/steamapps/common/Factorio';
+const installation = process.env.AUTOFACTORIO_FACTORIO_DIR ?? 'C:/Program Files (x86)/Steam/steamapps/common/Factorio';
 const quote = (value: string) => "'" + value.replaceAll("'", "''") + "'";
 export async function ownedPath(file: string): Promise<string> {
   const root = await realpath('.runtime'); const resolved = await realpath(file); const relative = path.relative(root, resolved);

@@ -8,6 +8,7 @@
     "node": ">=24 <25"
   },
   "scripts": {
+    "start": "node scripts/start.mjs",
     "build": "tsc -b --stopBuildOnErrors && vite build apps/dashboard",
     "dashboard": "node dist/scripts/dashboard.js",
     "test:ui": "playwright test",
