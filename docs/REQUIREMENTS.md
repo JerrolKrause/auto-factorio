@@ -1,6 +1,6 @@
 # AutoFactorio requirements
 
-Status: product scope approved by the user on 10 September 2026, with all eight adversarial review corrections approved on 11 September 2026. Numerical operating defaults and implementation details remain adjustable during validation; the accepted safeguards below must be preserved. See [decision 001](decisions/001-review-hardening.md).
+Status: product scope approved by the user on 10 September 2026, with all eight adversarial review corrections approved on 11 September 2026 and the blueprint workshop extension approved on 19 September 2026. Numerical operating defaults and implementation details remain adjustable during validation; the accepted safeguards below must be preserved. See [decision 001](decisions/001-review-hardening.md) and [decision 017](decisions/017-blueprint-workshop.md).
 
 ## Purpose and user
 
@@ -30,6 +30,9 @@ Improvement means better tools, instructions, coordination, and explicit memory,
 | R16 | Durable state survives compaction and model-session replacement. | A fresh session reconstructs the objective, ownership, committed plan, pending actions and current world without duplicate placement. |
 | R17 | Use existing subscription access only. | Verify ChatGPT authentication; prohibit automatic API/provider fallback or credit purchase. Enforce run/per-turn time and tool limits, use reported token ceilings where supported, and interrupt active turns on run exhaustion. Unknown allowance remains unknown. |
 | R18 | Measure outcomes independently of agent claims. | Require fresh science production/delivery, the scenario's automated upstream chain, and quantitative fuel replenishment where applicable. Enforce verification-phase mutation restrictions; missing evidence invalidates scoring. Neither claims nor plans alter completion. |
+| R19 | Provide a configurable blueprint workshop with direct and legal-character construction. | A trusted host resolves the brief against installed data, then a runtime-owned driver pins ports, profile, build mode, iteration/checkpoint policy, managed model selections, budgets and scoring before mutation and continues independently of the browser. Both construction paths preserve supported content; only an eligible target-passing fixed-window score may become the best valid revision, otherwise the result is explicitly no-valid. |
+| R20 | Preserve reusable component families as immutable, compatible native blueprints. | Stable family/variant/revision identities, compatibility fingerprints, evidence statuses, search, idempotent admission and clean blueprint/book round trips work without the AutoFactorio mod. Verification labels are derived from exact durable evaluation/export/build evidence inside the trusted runtime; callers cannot assert them. Ordinary runs reuse supported revisions through finite-inventory character batches. |
+| R21 | Permit bounded autonomous maintenance only through attested future-session bundles. | Learning may change typed registered role instructions, scoped lessons and confined design helpers within fixed caps. Exact combined bundles declare complete controls and require every applicable regression, interaction, behavior and fresh review result to pass conclusively before atomic activation; protected policy, evaluator, provider and budget controls remain outside learning authority, and rollback/quarantine preserve history and pinned active sessions. |
 
 ## Initial agent responsibilities
 
@@ -67,10 +70,10 @@ Provider turns can contain multiple model inferences and tool calls. Record turn
 
 Before the durable runtime milestone, prove a real hosted-game pause under continued polling and a disarmed checkpoint/load/reconcile/re-arm cycle with pending work. Unknown or uncontrolled saves are not automatically continued unless the same pre-execution barrier can be established. Fake adapters and provider-session resumption alone do not satisfy this gate.
 
-Development runs can contain human advice. Reports distinguish assisted and unassisted runs; accepted strategy improvements are versioned and tested in fresh trials. No automatic promotion of speculative lessons into permanent instructions.
+Development runs can contain human advice. Reports distinguish assisted and unassisted runs; accepted strategy improvements are versioned and tested in fresh trials. Speculative lessons are never promoted. The workshop may automatically activate a scoped maintenance bundle only after the R21 immutable-bundle gates pass; this is the approved exception to the original manual-promotion default.
 
 ## Deferred scope
 
-Combat, fresh-map survival, full rocket progression, planetary expansion gameplay, public hosted services, API billing, model fine-tuning, screenshot-dependent play, and automatic use of external blueprint libraries are outside the initial release. Foundational contracts must accommodate multiple surfaces, quality, fluid products and probabilistic recipes without claiming complete support for those systems yet.
+Combat, fresh-map survival, full rocket progression, planetary expansion gameplay, public hosted services, API billing, model fine-tuning, screenshot-dependent play, and automatic use of external blueprint libraries are outside the initial release. The implemented local library admits only AutoFactorio-produced or explicitly imported, validated artifacts; it does not browse or trust an external library. Workshop support is limited to declared deterministic normal-quality item/fluid recipes and its published compatibility matrix.
 
 The project includes software and a mod, not redistributed Factorio binaries or expansion assets. The user supplies the licensed game installation.

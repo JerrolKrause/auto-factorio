@@ -4,14 +4,15 @@ import type { AddressInfo } from 'node:net';
 import { object, string } from '../../codex/src/protocol.js';
 import type { Budget } from '../../codex/src/budget.js';
 import type { Sink } from '../../codex/src/protocol.js';
-export type Role = 'foreman' | 'engineer';
+export type Role = 'foreman' | 'engineer' | 'workshop-designer' | 'workshop-scorer' | 'workshop-learnings';
 interface Grant { role: Role; turn: string | null; revoked: boolean }
-const names: Record<Role, string[]> = { foreman: ['observe', 'handoff'], engineer: ['observe', 'report', 'checkpoint'] };
+const names: Record<Role, string[]> = { foreman: ['observe', 'handoff'], engineer: ['observe', 'report', 'checkpoint'], 'workshop-designer':['observe','checkpoint'], 'workshop-scorer':['observe'], 'workshop-learnings':['observe'] };
 export class Gateway {
   private readonly grants = new Map<string, Grant>();
   private readonly waits = new Map<string, () => void>();
   readonly messages: { from: Role; to: Role; text: string }[] = [];
   readonly attempts: { role: Role; tool: string; allowed: boolean; reason: string | null }[] = [];
+  private readonly observations = new Map<Role, unknown>();
   constructor(private readonly budget: Budget, private readonly sink: Sink) {}
   issue(role: Role): string {
     const token = randomBytes(32).toString('hex'); this.grants.set(token, { role, turn: null, revoked: false }); return token;
@@ -26,6 +27,7 @@ export class Gateway {
     this.waits.get(token)?.(); this.waits.delete(token);
   }
   revokeTurn(turn: string): void { for (const [token, grant] of this.grants) if (grant.turn === turn) this.revoke(token); }
+  setObservation(role:Role,value:unknown):void{this.observations.set(role,structuredClone(value));}
   authenticated(token: string): boolean { return this.grants.has(token); }
   catalog(token: string): unknown[] {
     const grant = this.grants.get(token); if (!grant) throw new Error('Unauthenticated MCP identity');
@@ -50,8 +52,9 @@ export class Gateway {
     let result: unknown;
     try {
       if (error) throw new Error(error);
-      if (tool === 'observe') result = { identity: grant.role, messages: this.messages.filter(m => m.to === grant.role), synthetic: true };
+      if (tool === 'observe') result = { identity: grant.role, messages: this.messages.filter(m => m.to === grant.role), state:structuredClone(this.observations.get(grant.role)??null), synthetic: true };
       else if (tool === 'handoff' || tool === 'report') {
+        if(grant.role!=='foreman'&&grant.role!=='engineer')throw new Error('Workshop roles cannot message gameplay roles');
         const message = { from: grant.role, to: grant.role === 'foreman' ? 'engineer' as const : 'foreman' as const, text: string(input.text) };
         this.messages.push(message); result = message;
       } else {

@@ -10,6 +10,11 @@ const batch: Batch={commandId:'c1',epoch:'phase03',session:'local-test',task:'ph
 const recipe: RecipeFacts={name:'iron-gear-wheel',energy:0.5,category:'crafting',ingredients:[{type:'item',name:'iron-plate',amount:2}],products:[{type:'item',name:'iron-gear-wheel',amount:1}]};
 describe('structured game boundary',()=>{
  it('validates a bounded grant-bearing batch',()=>{expect(validateRequest({op:'submit',batch})).toEqual({op:'submit',batch});});
+ it('validates bounded configuration, module, filter and wire actions without exposing workshop setup',()=>{
+  const target={name:'assembling-machine-2',quality:'normal',position:{x:0,y:0},unit:1};const other={name:'small-electric-pole',quality:'normal',position:{x:3,y:0},unit:2};
+  for(const step of [{kind:'module',target,item:{name:'speed-module',quality:'normal',count:2}},{kind:'filter',target,slot:1,item:{name:'iron-plate',quality:'normal'}},{kind:'bar',target:{...target,name:'wooden-chest'},inventory:'chest',limit:8},{kind:'wire',target,other,fromConnector:1,toConnector:1}])expect(validateRequest({op:'submit',batch:{...batch,steps:[step]}})).toBeTruthy();
+  expect(()=>validateRequest({op:'submit',batch:{...batch,steps:[{kind:'wire',target,other,fromConnector:999,toConnector:1}]}})).toThrow();expect(()=>validateRequest({op:'workshop-setup'})).toThrow('Unsupported');
+ });
  it('accepts S2 coordinates at the payload layer while ownership retains the exact area gate',()=>{
   expect(validateRequest({op:'submit',batch:{...batch,grants:diagnosticGrants(1,40),steps:[{kind:'walk',position:{x:-37.5,y:-8.5}}]}})).toBeTruthy();
   expect(()=>validateRequest({op:'submit',batch:{...batch,steps:[{kind:'walk',position:{x:4097,y:0}}]}})).toThrow('Position outside assignment');
@@ -25,6 +30,7 @@ describe('structured game boundary',()=>{
  it('allows a bounded large held-ledger echo only for operator reconciliation',()=>{
   const ledger={receipt:'x'.repeat(100000)};
   expect(()=>wrapper({op:'reconcile',ledger},true)).not.toThrow();
+  expect(()=>wrapper({op:'workshop-materialize',entities:'x'.repeat(100000)},true)).not.toThrow();
   expect(()=>wrapper({op:'reconcile',ledger})).toThrow('large');
   expect(()=>wrapper({op:'state',ledger},true)).toThrow('large');
   expect(()=>wrapper({op:'reconcile',ledger:'x'.repeat(4*1024*1024)},true)).toThrow('large');

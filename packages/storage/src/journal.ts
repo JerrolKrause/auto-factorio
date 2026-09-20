@@ -3,7 +3,7 @@ import path from 'node:path';
 import { mkdirSync } from 'node:fs';
 import type { Change, Entity, Event, EventContext, Journal, Visibility } from '../../core/execution/durable.js';
 
-export const entities: Entity[] = ['runs', 'agents', 'tasks', 'messages', 'observations', 'commands', 'measurements', 'interventions', 'checkpoints', 'budgets', 'artifacts', 'reservations', 'agentHistory', 'operationalScopes', 'operationalSamples', 'operationalWatches', 'watchTransitions', 'watchAcknowledgements', 'contextDeliveries', 'sessionLifecycle'];
+export const entities: Entity[] = ['runs', 'agents', 'tasks', 'messages', 'observations', 'commands', 'measurements', 'interventions', 'checkpoints', 'budgets', 'artifacts', 'reservations', 'agentHistory', 'operationalScopes', 'operationalSamples', 'operationalWatches', 'watchTransitions', 'watchAcknowledgements', 'contextDeliveries', 'sessionLifecycle', 'workshopSessions', 'workshopIterations', 'workshopArtifacts', 'workshopOperations', 'workshopProfiles', 'libraryEntries', 'learningCandidates', 'learningOutcomes', 'learningBundles', 'activations', 'usage'];
 export function visibility(v: Visibility): void {
   if (!v || !['operator', 'shared', 'restricted'].includes(v.kind)) throw new Error('Explicit visibility required');
   if (v.kind === 'restricted' && (!['agents', 'roles', 'tasks'].every(k => Array.isArray(v[k as 'agents'])) || [...v.agents, ...v.roles, ...v.tasks].some(x => typeof x !== 'string' || !x))) throw new Error('Invalid restricted scope');

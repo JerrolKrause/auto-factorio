@@ -1,0 +1,23 @@
+{
+  "schema": 1,
+  "observedAt": "2026-09-19",
+  "game": { "version": "2.0.77", "build": 84539, "platform": "win64", "distribution": "steam" },
+  "mods": { "base": "2.0.77", "space-age": "2.0.77", "quality": "2.0.77", "elevated-rails": "2.0.77" },
+  "sources": {
+    "runtime-api.json": "594b4ec98cc5fbee322d7380db49a388ab38b0d69c06f00ead877cffbb37f578",
+    "prototype-api.json": "29772ece6140b515d295a504c6f9ac5bc9e653d8b1470e8cd6db825f93fcc756",
+    "space-age/prototypes/entity/entities.lua": "7825fcb0ef10bd5112a0018bbc67cd134dd9cbdb766bc1e612f1901045bb2dcc",
+    "space-age/prototypes/technology.lua": "64ff6fc1a01270b646e4a61d2470c2c52c6b78a378d3ddaa0059bd3418cc4ea5"
+  },
+  "runtime": {
+    "LuaSurface": ["create_entity", "find_entities_filtered"],
+    "LuaEntity": ["get_module_inventory", "get_recipe", "get_wire_connector", "set_recipe", "crafting_progress", "direction", "filter_slot_count", "fluidbox", "products_finished", "quality", "speed"],
+    "LuaInventory": ["insert", "remove"],
+    "LuaForce": ["recipes", "technologies"]
+  },
+  "prototypes": {
+    "foundry": { "type": "assembling-machine", "moduleSlots": 4, "craftingCategories": ["metallurgy", "pressing", "crafting-with-fluid-or-metallurgy", "metallurgy-or-assembling"] },
+    "electromagnetic-plant": { "type": "assembling-machine", "moduleSlots": 5, "craftingCategories": ["electromagnetics", "electronics", "electronics-with-fluid", "electronics-or-assembling"] },
+    "electromagnetic-plant-technology": { "prerequisites": ["holmium-processing"], "unlocks": ["electromagnetic-plant", "superconductor", "supercapacitor", "electrolyte"] }
+  }
+}

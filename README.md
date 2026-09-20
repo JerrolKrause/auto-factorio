@@ -6,7 +6,7 @@ A local Factorio Space Age experimentation environment where specialized AI agen
 
 ## Current status
 
-Phases 01–13 are complete and archived. The project now includes subscription access, legal character execution, pause/restore, durable coordination, the local dashboard, verification engine, bounded First Shift trials, game-verified S1/S2 references and decision-focused operational observations. See the [handoff](docs/IMPLEMENTATION_HANDOFF.md), [S2 guide](scenarios/02-some-assembly-required/README.md), [trial report](docs/FIRST_SHIFT_AGENT_TRIAL_REPORT.md), [compatibility report](docs/COMPATIBILITY_REPORT.md) and [accepted safeguards](docs/decisions/001-review-hardening.md).
+Phases 01–13 are complete and archived. The project now also includes the implemented blueprint workshop: capability profiles, immutable blueprint families, direct and legal-character construction, exact-window evaluation, role-scoped managed inference, the dashboard workflow and bounded learning bundles. See the [handoff](docs/IMPLEMENTATION_HANDOFF.md), [workshop decision](docs/decisions/017-blueprint-workshop.md), [S2 guide](scenarios/02-some-assembly-required/README.md), [trial report](docs/FIRST_SHIFT_AGENT_TRIAL_REPORT.md), [compatibility report](docs/COMPATIBILITY_REPORT.md) and [accepted safeguards](docs/decisions/001-review-hardening.md).
 
 ## Phased implementation
 
@@ -80,11 +80,11 @@ The [development workflow](docs/DEVELOPMENT_WORKFLOW.md) covers contextual UTF-8
 corepack.cmd pnpm build
 corepack.cmd pnpm dashboard --fixture
 # Or attach the operator host to an existing dedicated project game:
-corepack.cmd pnpm dashboard --profile-file '.runtime/phase09-reviewed-profile.json'
+corepack.cmd pnpm dashboard --profile-file '.runtime/phase09-reviewed-profile.json' --codex 'C:\absolute\path\to\codex.exe'
 corepack.cmd pnpm test:ui
 ```
 
-The launcher reports the path of its `dashboard.json`. Open that file's `url` in a browser: its fragment grants access to this local operator session. `--fixture` is a synthetic demonstration with two roles and example tasks. The game option registers the two roles and starts safely paused; it does not start model inference. The page shows role states, dependencies, evidence, production coverage, batch progress, assistance and budgets. Advice is a durable role inbox; interpretation is acknowledged separately through the coordination gateway. Ordinary advice preserves active batches; explicit reprioritization records a human intervention and fences the old revision.
+The launcher reports the path of its `dashboard.json`. Open that file's `url` in a browser: its fragment grants access to this local operator session. `--fixture` is a synthetic demonstration with two roles and example tasks. The game option requires the managed Codex executable, validates ChatGPT authentication and the model catalog without starting inference, registers the two roles and starts safely paused. Workshop launch then uses the selected managed models and the attached dedicated game; no provider/model/billing fallback is permitted. The page shows role states, dependencies, evidence, production coverage, batch progress, workshop checkpoints, assistance and budgets. Advice is a durable role inbox; interpretation is acknowledged separately through the coordination gateway. Ordinary advice preserves active batches; explicit reprioritization records a human intervention and fences the old revision.
 
 Pause/stop close new admission, interrupt bound sessions and establish acknowledged game cancellation. Resume reconciles and refreshes authority; old task revisions need new plans/grants. Unknown controls and missing telemetry remain explicit. Closing/reopening the tab does not stop the host or reset budgets. `--directory <project .runtime path>` reopens existing run data; the SQLite writer lock rejects concurrent owners. Press Ctrl+C in the host terminal to request a held game state and shut down.
 
@@ -94,7 +94,7 @@ Browser tests use the installed Microsoft Edge. `game:dashboard-probe --profile-
 
 ```powershell
 corepack.cmd pnpm build
-corepack.cmd pnpm scenario:launch --scenario 01-first-shift --roster team
+corepack.cmd pnpm scenario:launch --scenario 01-first-shift --roster team --codex 'C:\absolute\path\to\codex.exe'
 # --roster solo uses the same fixture and rules.
 # After closing the previous controller with Ctrl+C:
 corepack.cmd pnpm scenario:launch --reset '<previous-run-directory>/run.json' --roster team
@@ -138,9 +138,26 @@ corepack.cmd pnpm game:operational-probe -- --scenario 02-some-assembly-required
 
 These checks establish observation correctness and efficiency only. No model/gameplay improvement is claimed without a separately authorized comparison.
 
+## Blueprint workshop
+
+The dashboard can launch a versioned component assignment from a brief, preset or library revision; an authorized caller can submit the same full contract. Every mode is checked against the running game's installed data, and Improve supplies the exact compatible parent document. The session pins a capability profile, ports and exact rates, direct or legal-character construction, fixed measurement windows, iteration/checkpoint rules, per-role managed model selections and one durable aggregate provider budget before work begins. Library revisions are immutable and export as ordinary Factorio blueprint strings or books; optional portable metadata contains interfaces and evidence references without provider transcripts or credentials.
+
+Build before running the bounded acceptance probes:
+
+```powershell
+corepack pnpm game:workshop-probe
+corepack pnpm game:workshop-measure-probe
+corepack pnpm game:workshop-spaceage-probe
+corepack pnpm game:workshop-character-probe
+corepack pnpm game:blueprint-native-probe
+corepack pnpm provider:workshop-exercise --live --codex '<absolute installed codex.exe>'
+```
+
+The game probes create and clean dedicated project profiles. The provider exercise uses managed ChatGPT access only, writes a fixed manifest before inference, and has explicit turn/token limits. The production host accounts designer, scorer and learnings calls under one durable session owner, reserves an owner-specific share of turns, tools, elapsed provider time and finite reported tokens for maintenance, and holds unresolved external outcomes instead of replaying them. Stop succeeds only after provider and game adapters return confirmed completion or cancellation receipts; an uncertain cancellation leaves the session held. Learning cadence records visible no-change, proposal or deferred-maintenance outcomes before any optional activation checkpoint, so an admitted maintenance failure does not discard completed blueprint work. Activation is limited to exact attested cumulative bundles in registered instruction, lesson and helper scopes. Follow-on bundles retain the incumbent files and control obligations, and every nonempty bundle, including lesson-only changes, requires representative behavior evidence. Future sessions consume pinned instructions and lessons and run a pinned helper once through the confined worker with trusted plan authorization; active sessions keep their pinned bundle, while rollback or quarantine affects future sessions. See [decision 017](docs/decisions/017-blueprint-workshop.md) for supported mechanics and confinement limits.
+
 ## Provider diagnostic (phase 02)
 
-Build first, then supply the absolute installed Codex executable. The adapter currently pins Codex 0.154.0; it will not upgrade prerequisites or substitute a model.
+Build first, then supply the absolute installed Codex executable. The adapter currently pins the revalidated installed Codex 0.155.1; it will not upgrade prerequisites or substitute a model.
 
 ```powershell
 corepack pnpm provider:probe --codex 'C:/Users/Jerrol/AppData/Roaming/npm/node_modules/@openai/codex/node_modules/@openai/codex-win32-x64/vendor/x86_64-pc-windows-msvc/bin/codex.exe'

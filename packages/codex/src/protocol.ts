@@ -18,5 +18,5 @@ export interface RpcPort {
   onEvent(listener: (method: string, params: unknown) => void): () => void;
   close(): void;
 }
-export const PINNED_CODEX = '0.154.0';
+export const PINNED_CODEX = '0.155.1';
 export const ASTRA = 'gpt-6-astra';

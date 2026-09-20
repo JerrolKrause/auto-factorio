@@ -7,6 +7,11 @@ export type Step =
   | { kind: 'rotate' | 'mine'; target: Target }
   | { kind: 'recipe'; target: Target; recipe: string }
   | { kind: 'transfer'; target: Target; inventory: 'chest' | 'input' | 'output' | 'fuel'; flow: 'put' | 'take'; item: Item }
+  | { kind: 'module'; target: Target; item: Item }
+  | { kind: 'filter'; target: Target; slot: number; item: Omit<Item,'count'> | null }
+  | { kind: 'bar'; target: Target; inventory: 'chest'; limit: number | null }
+  | { kind: 'wire'; target: Target; other: Target; fromConnector: number; toConnector: number }
+  | { kind: 'setting'; target: Target; name: 'active'|'inserter_filter_mode'|'splitter_input_priority'|'splitter_output_priority'|'underground_type'; value: string|boolean }
   | { kind: 'craft'; recipe: string; count: number };
 export interface Batch {
   commandId: string; epoch: string; session: string; task: string; revision: number;
@@ -62,6 +67,11 @@ export function validateRequest(v: unknown): GameRequest {
         case 'recipe':keys(s,['kind','target','recipe']);target(s.target);name(s.recipe);break;
         case 'craft':keys(s,['kind','recipe','count']);name(s.recipe);integer(s.count,1,100);break;
         case 'transfer':keys(s,['kind','target','inventory','flow','item']);target(s.target);item(s.item);if(!['chest','input','output','fuel'].includes(String(s.inventory))||!['put','take'].includes(String(s.flow)))throw new Error('Unsupported transfer');break;
+        case 'module':keys(s,['kind','target','item']);target(s.target);item(s.item);break;
+        case 'filter':keys(s,['kind','target','slot','item']);target(s.target);integer(s.slot,1,100);if(s.item!==null){const f=record(s.item);keys(f,['name','quality']);name(f.name);name(f.quality);}break;
+        case 'bar':keys(s,['kind','target','inventory','limit']);target(s.target);if(s.inventory!=='chest')throw new Error('Unsupported inventory bar');if(s.limit!==null)integer(s.limit,1,1000);break;
+        case 'wire':keys(s,['kind','target','other','fromConnector','toConnector']);target(s.target);target(s.other);integer(s.fromConnector,0,255);integer(s.toConnector,0,255);break;
+        case 'setting':keys(s,['kind','target','name','value']);target(s.target);if(!['active','inserter_filter_mode','splitter_input_priority','splitter_output_priority','underground_type'].includes(String(s.name))||!['string','boolean'].includes(typeof s.value))throw new Error('Unsupported entity setting');break;
         default:throw new Error('Unsupported action');
       }} break;
     }

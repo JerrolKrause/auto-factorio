@@ -57,8 +57,8 @@ export function wrapper(payload: unknown, operator = false): string {
   const bytes = Buffer.from(JSON.stringify(payload));
   // Reconciliation echoes verified receipts; an ordinary S1 ledger exceeds the
   // gameplay batch limit. Only this operator operation receives the larger cap.
-  const reconcile = operator && payload !== null && typeof payload === 'object' && 'op' in payload && payload.op === 'reconcile';
-  if (bytes.length > (reconcile ? 4 * 1024 * 1024 : 64 * 1024)) throw new Error('RPC payload too large');
+  const large = operator && payload !== null && typeof payload === 'object' && 'op' in payload && (payload.op === 'reconcile' || payload.op === 'workshop-materialize');
+  if (bytes.length > (large ? 4 * 1024 * 1024 : 64 * 1024)) throw new Error('RPC payload too large');
   const escaped = Array.from(bytes, b => '\\' + b.toString().padStart(3, '0')).join('');
   return '/silent-command rcon.print(remote.call("' + (operator ? 'autofactorio_operator_v1' : 'autofactorio_v1') + '","rpc","' + escaped + '"))';
 }

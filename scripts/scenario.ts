@@ -11,6 +11,7 @@ import { ASTRA } from '../packages/codex/src/protocol.js';
 import { DEFAULT_OPERATIONAL_LIMITS } from '@autofactorio/contracts';
 import { Operator } from '../apps/runtime/operator.js';
 import { dashboard } from '../apps/runtime/http.js';
+import { prepareLiveWorkshopHost } from '../apps/runtime/workshop-live-host.js';
 
 const value = (name: string) => { const i = process.argv.indexOf(name); return i < 0 ? undefined : process.argv[i + 1]; };
 const scenario = value('--scenario') ?? '01-first-shift';
@@ -31,7 +32,9 @@ if (value('--result-file')) await writeFile(value('--result-file')!, JSON.string
 console.log(JSON.stringify({ scenario: run.manifest.id, roster, directory: run.directory, runFile: path.join(run.directory, 'run.json'), inference: 'not started' }));
 if (process.argv.includes('--hold')) { runtime.close(); port.close(); }
 else {
-  const server = dashboard(operator); const origin = await server.listen(0);
+  const codex=value('--codex');if(!codex||!path.isAbsolute(codex))throw new Error('Interactive scenario dashboard requires --codex <absolute managed Codex executable>');
+  const prepared=await prepareLiveWorkshopHost({directory:run.directory,codexExecutable:codex,port,game,lifecycle:life});
+  const server = dashboard(operator,undefined,{workshopHost:prepared.host,managedModels:prepared.catalog.models}); const origin = await server.listen(0);
   await writeFile(path.join(run.directory, 'dashboard.json'), JSON.stringify({ origin, url: origin + '/#cap=' + server.capability }));
   console.log(JSON.stringify({ origin, launchFile: path.join(run.directory, 'dashboard.json') }));
   const stop = operator.start(); let closing = false;

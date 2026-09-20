@@ -26,7 +26,7 @@ function M.target(t)
 end
 function M.find(surface,t)
   for _,e in pairs(surface.find_entities_filtered{position=t.position,name=t.name}) do
-    if e.valid and e.quality.name==t.quality and (e.unit_number or false)==(t.unit or false) and M.distance(e.position,t.position)<0.01 then return e end
+    if e.valid and e.quality.name==t.quality and (not t.unit or e.unit_number==t.unit) and M.distance(e.position,t.position)<0.01 then return e end
   end
   error("entity_precondition_failed",0)
 end

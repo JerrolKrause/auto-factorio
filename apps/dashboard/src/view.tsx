@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import type { DashboardSnapshot } from '../../runtime/dashboard-types.js';
 import type { Event } from '../../../packages/core/execution/durable.js';
 import { applyEvent, roleState } from './state.js';
+import { WorkshopPanel } from './workshop.js';
 
 const json = (v: unknown) => JSON.stringify(v, null, 2);
 const show = (v: unknown) => v === null || v === undefined ? 'Unknown' : String(v);
@@ -62,6 +63,7 @@ export function App() {
     <section className="controlbar"><div><span className={'badge ' + controls?.status}>{controls?.status ?? 'Unconfirmed'}</span><small>Game {controls?.connected ? 'connected' : 'disconnected'} · Cancellation {controls?.cancellation ?? 'unconfirmed'} · Inference {controls?.inference ?? 'unconfirmed'} · Checkpoint {controls?.checkpoint ?? 'unknown'}</small></div><nav>{(['pause', 'stop', 'resume'] as const).map(action => <button key={action} disabled={pending || connection !== 'Live' || (action === 'resume' && controls?.scoringClosed)} onClick={() => void command('control', { action })}>{action}</button>)}</nav></section>
     {controls?.scoringClosed && <p className="alert">Budget closed. This run cannot earn further scored output.</p>}
     <p className="hint" data-testid="run-accounting"><strong>{assisted ? 'Assisted run' : 'No assistance recorded'}</strong> · Turns {show(budget?.state?.spentTurns)} / {show(budget?.caps?.turns)} · Wall time {Math.round((budget?.state?.elapsedMs ?? 0) / 1000)} / {Math.round((budget?.caps?.runMs ?? 0) / 1000)} seconds · Reported tokens {show(budget?.state?.reportedTokens)} / {show(budget?.caps?.tokens)}</p>
+    <WorkshopPanel api={api} data={data} inspect={setDetail}/>
     <div className="layout"><div>
       <section className="panel"><div className="sectiontitle"><h2>Agent roster</h2><span>{agents.length} roles</span></div><div className="roster">{agents.map(a => <article className="agent" key={show(a.id)}><span className="agenticon">{show(a.id).slice(0, 1).toUpperCase()}</span><h3>{show(a.id)}</h3><p className="badge">{data ? roleState(a, data) : 'Unknown activity'}</p><p>{a.assignment ? 'Task: ' + show(a.assignment) : 'No current assignment'}</p><button onClick={() => setDetail(a)}>Inspect role →</button></article>)}</div></section>
       <section className="panel"><div className="sectiontitle"><h2>Committed work</h2><span>Dependencies & revisions</span></div>{!tasks.length && <p className="empty">No tasks committed yet.</p>}{tasks.map(t => <article className="task" key={show(t.id)}><div><strong>{show(t.goal)}</strong><p>{show(t.id)} · revision {show(t.revision)} · {show(t.owner)} · {show(t.status)} {t.wait ? ' / ' + show(t.wait) : ''}</p><p>Depends on: {(t.dependencies as string[] ?? []).join(' → ') || 'No dependencies'}</p></div><button onClick={() => setDetail(t)}>Evidence</button><button onClick={() => { const goal = prompt('Revised goal', show(t.goal)); if (goal) void command('reprioritize', { task: t.id, revision: t.revision, goal, committedPlan: t.committedPlan }); }}>Reprioritize</button></article>)}</section>

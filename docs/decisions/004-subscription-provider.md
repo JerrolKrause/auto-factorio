@@ -2,7 +2,7 @@
 
 Date: 15 September 2026. Scope: phase 02, `af-02-subscription-provider`.
 
-Use Codex 0.154.0 app-server over stdio with managed ChatGPT authentication and exact `gpt-6-astra` / `low` effort. The adapter rejects other builds, API/external-token authentication, model substitution and unavailable included allowance. It exposes no purchase, reset-credit, configuration-write or general admin protocol methods. Unknown allowance remains unknown and withholds new inference in this included-only diagnostic.
+Use the tested Codex app-server over stdio with managed ChatGPT authentication and exact selected model/effort. The current compatibility pin is 0.155.1; 0.154.0 was the original inspected release. The adapter rejects other builds, API/external-token authentication, model substitution and unavailable included allowance. It exposes no purchase, reset-credit, configuration-write or general admin protocol methods. Unknown allowance remains unknown and withholds new inference in this included-only diagnostic.
 
 Each role has its own process and synthetic workspace. Start threads with the pinned experimental `environments: []` field and require the response's environment selection, runtime workspace roots and instruction sources to be empty. Disable native shell, editing-environment access, browser, computer use, apps/connectors/plugins, native subagents and other bypass sources through per-launch configuration. Disable every inherited MCP server. Read the effective configuration and MCP catalog before turn admission. MCP stays the ordinary Streamable HTTP protocol; experimental dynamic tools are not used.
 

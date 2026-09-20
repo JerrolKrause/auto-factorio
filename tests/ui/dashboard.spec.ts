@@ -4,6 +4,15 @@ import os from 'node:os';
 import path from 'node:path';
 import { dashboardFixture } from '../../scripts/dev/dashboard-fixture.js';
 import { dashboard } from '../../apps/runtime/http.js';
+import { LiveWorkshopHost } from '../../apps/runtime/workshop-live-host.js';
+import type { WorkshopGame, WorkshopInference } from '../../apps/runtime/workshop-live-host.js';
+import type { WorkshopEvaluationReport } from '@autofactorio/contracts';
+
+function productionWorkshopHost(directory:string){
+  const inference:WorkshopInference={async invoke(_session,role,_selection,observation){if(role==='workshop-designer'){const assignment=(observation as {assignment:{ports:unknown[]}}).assignment;return JSON.stringify({schema:1,label:'Managed production host cell',description:'Production host composed with acceptance adapters',entities:[{id:'assembler',entityNumber:1,name:'assembling-machine-1',position:{x:0,y:0},direction:0,quality:'normal',recipe:'electronic-circuit'}],wires:[],ports:assignment.ports,icons:[{index:1,name:'electronic-circuit'}],tiles:[]});}return role==='workshop-scorer'?JSON.stringify({feedback:'Measured production-host candidate'}):JSON.stringify({decision:'no-change',reason:'No repeated failure',evidence:['valid-attempts']});},async close(){}};
+  const game:WorkshopGame={async resolveProfile(profileId,product){return{gameVersion:'2.0.77',mods:{base:'2.0.77'},profileId,profileRevision:1,surface:'nauvis',technologies:['automation','electronics'],allowedEquipment:['assembling-machine-1','transport-belt','inserter','small-electric-pole'],modules:[],beacons:[],recipe:{id:product,category:'crafting',energy:0.5,ingredients:[{type:'item',name:'iron-plate',amount:1},{type:'item',name:'copper-cable',amount:3}],products:[{type:'item',name:product,amount:1}]},machine:'assembling-machine-1'};},async build(session){return{id:`${session.id}-${session.activeIteration}`,generation:1,surface:'af-ui-production',characterEvidence:session.assignment.construction==='character'?['game-receipt:ui-character']:null};},async measure(session):Promise<WorkshopEvaluationReport>{const rule=session.assignment.throughput[0]!,port=session.assignment.ports.find(value=>value.id===rule.portId)!,measured=String((session.activeIteration??1)*60);return{schema:1,attemptId:`${session.id}:${session.activeIteration}`,valid:true,passed:true,reasons:[],ports:[{portId:port.id,windows:Array.from({length:rule.windows},(_,index)=>({index,required:{numerator:'1',denominator:'1'},productionLower:{numerator:measured,denominator:'1'},deliveryLower:{numerator:measured,denominator:'1'},passed:true,reasons:[]}))}],evidence:['production-host-game-adapter']};}};
+  return new LiveWorkshopHost(directory,inference,game);
+}
 
 test('operator watches two roles, inspects evidence, steers, controls and reopens the browser', async ({ browser }) => {
   const f = await dashboardFixture(mkdtempSync(path.join(os.tmpdir(), 'af-ui-')), true);
@@ -48,4 +57,31 @@ test('all documented role states remain distinct in deterministic UI fixtures', 
     f.state.production = {}; f.c.finish(t.id, true); await f.operator.poll();
     await expect(page.locator('.measurement')).toContainText('Telemetry unavailable');
   } finally { await server.close(); f.close(); }
+});
+
+test('workshop form resolves supported selections, launches five-attempt character mode, and survives reconnect', async ({ browser }) => {
+  const f=await dashboardFixture(mkdtempSync(path.join(os.tmpdir(),'af-ui-workshop-')),true);
+  const server=dashboard(f.operator,undefined,{managedModels:[{id:'gpt-6-astra',displayName:'Astra',efforts:['low','medium']},{id:'gpt-5.6-sol',displayName:'Sol',efforts:['medium']}],workshopHost:productionWorkshopHost(f.runtime.directory)});const origin=await server.listen();const context=await browser.newContext();let page=await context.newPage();const url=origin+'/#cap='+server.capability;
+  try{
+    await page.goto(url);const panel=page.getByTestId('workshop');
+    await expect(panel.getByRole('heading',{name:'Design, prove, preserve.'})).toBeVisible();
+    await expect(panel.getByLabel('Attempts',{exact:true})).toHaveValue('5');
+    await panel.getByLabel('Construction').selectOption('character');
+    await panel.getByLabel('Designer model').selectOption('gpt-6-astra');
+    await panel.getByLabel('Designer effort').selectOption('medium');
+    await panel.getByLabel('Scorer model').selectOption('gpt-5.6-sol');
+    await expect(panel.getByLabel('Scorer effort')).toHaveValue('medium');
+    await panel.getByLabel('Learnings model').selectOption('gpt-5.6-sol');
+    await panel.getByLabel('afterScore').check();
+    await panel.getByLabel('Preset name').fill('Five character attempts');
+    await panel.getByRole('button',{name:'Save preset'}).click();
+    await expect(panel.getByLabel('Load preset')).toContainText('five-character-attempts');
+    await panel.getByLabel('Attempts',{exact:true}).fill('3');await panel.getByLabel('Load preset').selectOption('five-character-attempts');await expect(panel.getByLabel('Attempts',{exact:true})).toHaveValue('5');
+    await panel.getByRole('button',{name:'Launch workshop'}).click();
+    await expect(panel).toContainText('checkpoint');await expect(panel).toContainText('gpt-5.6-sol');
+    let sessions=f.runtime.journal.list<{id:string;stage:string;activeIteration:number;assignment:Record<string,unknown>}>(f.runtime.run,'workshopSessions');expect(sessions).toHaveLength(1);expect(sessions[0]?.assignment).toMatchObject({construction:'character',iterations:{attempts:5},checkpoints:{afterScore:true},models:{overrides:{designer:{reasoningEffort:'medium'},scorer:{modelId:'gpt-5.6-sol'},learnings:{modelId:'gpt-5.6-sol'}}}});const assistedId=sessions[0]!.id;await panel.getByTestId(`checkpoint-${assistedId}`).getByRole('button',{name:'Continue'}).click();await expect.poll(()=>f.runtime.journal.get<{stage:string;activeIteration:number}>(f.runtime.run,'workshopSessions',assistedId)).toMatchObject({stage:'checkpoint',activeIteration:2});await expect(panel.locator('.workshop-row').filter({hasText:'Produce 60 electronic circuits'}).first()).toContainText('iteration 2');await panel.getByTestId(`checkpoint-${assistedId}`).getByRole('button',{name:'Finish'}).click();await expect.poll(()=>f.runtime.journal.get<{stage:string}>(f.runtime.run,'workshopSessions',assistedId)?.stage).toBe('complete');sessions=f.runtime.journal.list(f.runtime.run,'workshopSessions') as typeof sessions;
+    const bad={...sessions[0]!.assignment,id:'unsupported-selection',comparisonSeries:'new-series',models:{sessionDefault:{provider:'other',modelId:'unknown',reasoningEffort:'low'},overrides:{}}};const response=await server.app.inject({method:'POST',url:'/api/workshop/launch',headers:{host:new URL(origin).host,origin,authorization:'Bearer '+server.capability},payload:{assignment:bad}});expect(response.statusCode).toBe(400);expect(response.body).toContain('unavailable');expect(f.runtime.journal.list(f.runtime.run,'workshopSessions')).toHaveLength(1);
+    await page.close();page=await context.newPage();await page.goto(url);
+    const reopened=page.getByTestId('workshop');await expect(reopened).toContainText('Produce 60 electronic circuits');await reopened.getByLabel('Construction').selectOption('direct');await reopened.getByLabel('afterScore').uncheck();await reopened.getByLabel('libraryAdmission').check();await reopened.getByLabel('learningActivation').check();await reopened.getByRole('button',{name:'Launch workshop'}).click();await page.close();page=await context.newPage();await page.goto(url);const direct=()=>f.runtime.journal.list<{id:string;stage:string;checkpoint:{kind:string}|null;iterations:unknown[]}>(f.runtime.run,'workshopSessions').find(value=>value.id!==assistedId)!;await expect.poll(()=>direct()).toMatchObject({stage:'checkpoint',checkpoint:{kind:'libraryAdmission'}});const directPanel=page.getByTestId(`checkpoint-${direct().id}`);await directPanel.getByRole('button',{name:'Continue'}).click();await expect.poll(()=>direct().stage).toBe('complete');await expect(page.getByTestId('workshop')).toContainText('no-change');expect(f.runtime.journal.list(f.runtime.run,'learningOutcomes')).toHaveLength(1);expect(f.runtime.journal.list(f.runtime.run,'workshopSessions')).toHaveLength(2);expect(direct().iterations).toHaveLength(5);
+  }finally{await context.close();await server.close();f.close();}
 });

@@ -1,8 +1,12 @@
 import { setTimeout as delay } from 'node:timers/promises';
-import { ASTRA, object, string } from './protocol.js';
+import { object, string } from './protocol.js';
 import type { RpcPort, Sink } from './protocol.js';
 import { checkAllowance, discover } from './preflight.js';
 import type { Budget, TurnBudget } from './budget.js';
+import type { ModelSelection } from '@autofactorio/contracts';
+import { DEFAULT_MANAGED_SELECTION } from './preflight.js';
+
+export interface ProviderCancellation { acknowledged:boolean; failures:string[] }
 
 /** One transport/credential generation per turn. Resume uses a replacement instance. */
 export class Provider {
@@ -12,9 +16,11 @@ export class Provider {
   private used = false;
   private sessionVerified = false;
   private catalogVerified = false;
+  private interruption: Promise<ProviderCancellation> | null = null;
+  private interrupted = false;
   private readonly unsubscribe;
   constructor(readonly role: string, private readonly rpc: RpcPort, private readonly budget: Budget, private readonly sink: Sink,
-    private readonly revoke: () => void, private readonly reconcile: () => Promise<boolean>) {
+    private readonly revoke: () => void, private readonly reconcile: () => Promise<boolean>, readonly selection: ModelSelection = DEFAULT_MANAGED_SELECTION) {
     this.unsubscribe = rpc.onEvent((method, params) => this.event(method, params));
   }
   private emit(kind: string, data: unknown, late = this.turn?.closed === true || this.turn?.finished === true): void {
@@ -23,11 +29,11 @@ export class Provider {
   }
   async initialize(): Promise<void> {
     await this.rpc.call('initialize', { clientInfo: { name: 'autofactorio', version: '0.1.0' }, capabilities: { experimentalApi: true } });
-    this.emit('provider/ready', await discover(this.rpc));
+    this.emit('provider/ready', await discover(this.rpc, this.selection));
   }
   async sessionStart(cwd: string, resumeId?: string, instructions?: string): Promise<void> {
     if (this.session) throw new Error('Session already selected');
-    const common = { cwd, model: ASTRA, modelProvider: 'openai', approvalPolicy: 'never', sandbox: 'read-only',
+    const common = { cwd, model: this.selection.modelId, modelProvider: this.selection.provider, approvalPolicy: 'never', sandbox: 'read-only',
       baseInstructions: instructions ?? `You are AutoFactorio's synthetic ${this.role}. Use only the supplied gameplay MCP tools. Explain decisions briefly. No real game is connected.`,
       developerInstructions: `Identity is assigned by the runtime. Never submit identity arguments. Role: ${this.role}.` };
     const response = object(await this.rpc.call(resumeId ? 'thread/resume' : 'thread/start', resumeId ? { ...common, threadId: resumeId } : { ...common, environments: [] }));
@@ -35,7 +41,7 @@ export class Provider {
     const environments = object(response.thread).environments;
     if (!resumeId && (!Array.isArray(environments) || environments.length !== 0)) throw new Error('Gameplay environment selection unverified');
     if (resumeId && this.session !== resumeId) throw new Error('Resume session mismatch');
-    if (response.model !== ASTRA || response.modelProvider !== 'openai' || response.reasoningEffort !== 'low') throw new Error('Actual model/provider/effort mismatch');
+    if (response.model !== this.selection.modelId || response.modelProvider !== this.selection.provider || response.reasoningEffort !== this.selection.reasoningEffort) throw new Error('Actual model/provider/effort mismatch');
     if (!resumeId && (!Array.isArray(response.runtimeWorkspaceRoots) || response.runtimeWorkspaceRoots.length !== 0)) throw new Error('Gameplay local environment is still enabled');
     if (!Array.isArray(response.instructionSources) || response.instructionSources.length !== 0) throw new Error('Unscoped instruction source loaded');
     this.sessionVerified = true;
@@ -52,12 +58,14 @@ export class Provider {
   }
   async start(input: string, bind: (id: string) => void): Promise<void> {
     if (!this.session || this.used) throw new Error('New transport/credential required for each provider turn');
+    if (this.interrupted) throw new Error('Provider turn cancelled before admission');
     if (!this.sessionVerified || !this.catalogVerified) throw new Error('Session/catalog isolation has not passed');
-    await discover(this.rpc); // Check managed auth and included allowance again at admission.
+    await discover(this.rpc, this.selection); // Check managed auth, exact availability and included allowance again at admission.
+    if (this.interrupted) throw new Error('Provider turn cancelled before admission');
     this.used = true; this.turn = this.budget.admit(this.role);
     this.emit('turn/submitted', { input });
     try {
-      const result = object(await this.rpc.call('turn/start', { threadId: this.session, input: [{ type: 'text', text: input, text_elements: [] }], environments: [], model: ASTRA, effort: 'low' }));
+      const result = object(await this.rpc.call('turn/start', { threadId: this.session, input: [{ type: 'text', text: input, text_elements: [] }], environments: [], model: this.selection.modelId, effort: this.selection.reasoningEffort }));
       this.wireTurn = string(object(result.turn).id);
       const actual = await this.turnEnvironments();
       if (!Array.isArray(actual) || actual.length !== 0) throw new Error('Turn environment isolation unverified');
@@ -85,24 +93,34 @@ export class Provider {
     try { this.emit('steer/acknowledged', await this.rpc.call('turn/steer', { threadId: this.session, expectedTurnId: this.wireTurn, input: [{ type: 'text', text, text_elements: [] }] })); }
     catch (error) { this.emit('steer/unconfirmed', { error: String(error) }); throw error; }
   }
-  async interrupt(): Promise<void> {
+  async interrupt(): Promise<void> { await this.interruptStatus(); }
+  interruptStatus(): Promise<ProviderCancellation> {
+    this.interruption ??= Promise.resolve().then(()=>this.performInterrupt());
+    return this.interruption;
+  }
+  private async performInterrupt(): Promise<ProviderCancellation> {
+    this.interrupted = true;
     this.revoke();
-    if (!this.turn) return;
-    if (!this.turn.closed && !this.turn.finished) { this.budget.closeTurn(this.turn, 'operator_interrupt'); return; }
+    if (!this.turn) return { acknowledged:true, failures:[] };
+    if (!this.turn.closed && !this.turn.finished) this.budget.closeTurn(this.turn, 'operator_interrupt');
+    if (this.turn.finished) return { acknowledged:true, failures:[] };
+    const failures:string[]=[];
     if (this.wireTurn && this.session && !this.turn.finished) {
       try { await this.rpc.call('turn/interrupt', { threadId: this.session, turnId: this.wireTurn }); this.emit('interrupt/acknowledged', { confirmedCompletion: false }); }
-      catch (error) { this.emit('interrupt/unconfirmed', { error: String(error) }); }
-    }
-    // Callback is synthetic cancellation now; a real game must supply acknowledged reconciliation later.
-    try { if (await this.reconcile()) this.budget.confirmCancellation(this.turn.id); }
-    catch { /* Retain unconfirmed cancellation. */ }
+      catch (error) { failures.push(`provider_interrupt:${String(error)}`);this.emit('interrupt/unconfirmed', { error: String(error) }); }
+    } else failures.push('provider_interrupt:missing_wire_identity');
+    let reconciliationFailed=false;if(!this.turn.finished)try { if (await this.reconcile()) this.budget.confirmCancellation(this.turn.id);else reconciliationFailed=true; }
+    catch(error) { failures.push(`provider_reconciliation:${String(error)}`); }
+    const deadline=Date.now()+1000;while(!this.turn.finished&&this.turn.cancellation!=='confirmed'&&Date.now()<deadline)await delay(25);
+    const acknowledged=this.turn.finished||this.turn.cancellation==='confirmed';if(!acknowledged&&reconciliationFailed)failures.push('provider_reconciliation:unconfirmed');if(!acknowledged&&!failures.length)failures.push('provider_cancellation:unconfirmed');
     this.emit('cancellation/status', { status: this.turn.cancellation });
+    return { acknowledged, failures:acknowledged?[]:failures };
   }
   private event(method: string, value: unknown): void {
     const late = this.turn?.closed === true || this.turn?.finished === true;
     const params = value && typeof value === 'object' ? object(value) : {};
     const session = params.threadId;
-    if (method === 'model/rerouted' && params.toModel !== ASTRA) this.budget.closeRun('model_substitution');
+    if (method === 'model/rerouted' && params.toModel !== this.selection.modelId) this.budget.closeRun('model_substitution');
     if (method === 'account/updated' && params.authMode !== 'chatgpt') this.budget.closeRun('authentication_changed');
     if (method === 'error' && ['usageLimitExceeded', 'rateLimitExceeded', 'unauthorized'].includes(String(object(params.error).codexErrorInfo))) this.budget.closeRun('account_or_auth_error');
     if (typeof session === 'string' && this.session && session !== this.session) return;

@@ -14,6 +14,7 @@ import { team } from '../packages/core/orchestration/roles.js';
 import { ASTRA, PINNED_CODEX } from '../packages/codex/src/protocol.js';
 import { Operator } from '../apps/runtime/operator.js';
 import { dashboard } from '../apps/runtime/http.js';
+import { prepareLiveWorkshopHost } from '../apps/runtime/workshop-live-host.js';
 import { CoordinationGateway } from '../packages/tools/src/coordination.js';
 import { CoordinationMcp } from '../packages/tools/src/coordination-mcp.js';
 import { GameplayProvider, gameplayInstructions } from '../apps/runtime/gameplay-provider.js';
@@ -91,7 +92,8 @@ const sink = (e: Parameters<ConstructorParameters<typeof GameplayProvider>[6]>[0
 };
 const providers = new GameplayProvider(codexExecutable, run.directory, c, mcp, transport.url, inherited, sink);
 resources.register('providers', () => providers.close());
-const server = dashboard(operator);
+const workshopComposition=await prepareLiveWorkshopHost({directory:run.directory,codexExecutable,port,game,lifecycle:life});
+const server = dashboard(operator,undefined,{workshopHost:workshopComposition.host,managedModels:workshopComposition.catalog.models});
 resources.register('dashboard', () => server.close());
 const origin = await server.listen(0);
 await writeFile(path.join(run.directory, 'dashboard.json'), JSON.stringify({ origin, url: origin + '/#cap=' + server.capability }));

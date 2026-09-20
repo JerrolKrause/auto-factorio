@@ -6,6 +6,7 @@ local V=require("verification")
 local S=require("first_shift")
 local SM=require("first_shift_measurement")
 local O=require("operational")
+local W=require("workshop")
 local function setup()
  if remote.interfaces.freeplay then
   remote.call("freeplay","set_skip_intro",true);remote.call("freeplay","set_disable_crashsite",true);remote.call("freeplay","set_created_items",{})
@@ -18,6 +19,7 @@ local function setup()
  storage.af={epoch="phase03",session="local-test",actors={},orders={},active={},paths={},protected={}}
  L.init()
  F.init()
+ W.init()
  local function fixture(name,pos)
   local e=surface.create_entity{name=name,position=pos,force="player"};storage.af.protected[e.unit_number or (e.name..":"..e.position.x..":"..e.position.y)]=true;return e
  end
@@ -67,7 +69,7 @@ local function submit(b)
  local existing=storage.af.orders[b.commandId]
  if existing then C.check(C.same(existing.batch,b),"command_id_conflict");return receipt(existing) end
  C.check(storage.af.control.armed and not game.tick_paused,"executor_disarmed");local p=authority(b)
- for _,s in ipairs(b.steps) do V.guard(s);S.guard(s) end
+ for _,s in ipairs(b.steps) do V.guard(s);S.guard(s);W.guard(s) end
  C.check(b.deadline>game.tick and b.deadline<=game.tick+36000,"invalid_deadline");C.check(not storage.af.active[b.actor],"actor_busy")
  local n=0;for _ in pairs(storage.af.orders) do n=n+1 end;C.check(n<200,"receipt_capacity")
  C.check(not p.crafting_queue or #p.crafting_queue==0,"crafting_busy")
@@ -79,6 +81,7 @@ script.on_event(defines.events.on_tick,function()
  S.tick()
  SM.tick()
  O.tick()
+ W.tick()
  if not armed then return end
  for actor,id in pairs(storage.af.active) do
   local o=storage.af.orders[id]
@@ -89,6 +92,7 @@ script.on_event(defines.events.on_tick,function()
    local step=o.batch.steps[o.completed+1]
    V.guard(step)
    S.guard(step)
+   W.guard(step)
    if not o.work then o.work={startedTick=game.tick,before=inventory(p)} end
    if A.tick(p,o,step) then
     A.neutral(p,false);local after=inventory(p);o.steps[#o.steps+1]={index=o.completed+1,status="completed",startedTick=o.work.startedTick,endedTick=game.tick,before=o.work.before,after=after,delta=C.delta(o.work.before,after)}
@@ -155,6 +159,7 @@ end
 remote.add_interface("autofactorio_v1",{rpc=function(payload)return encoded(gameplay,payload)end})
 -- Operator-only diagnostics are never exposed through the gameplay validator/gateway.
 remote.add_interface("autofactorio_operator_v1",{rpc=function(payload)return encoded(function(r)
+ if type(r.op)=="string" and r.op:match("^workshop%-") then return W.rpc(r) end
  if r.op=="scenario" then return S.rpc(r) end
  if r.op=="scenario-measurements" then return SM.read(r) end
  if r.op=="operational-raw-counters" then C.keys(r,{"op","area"});return O.raw(r.area) end

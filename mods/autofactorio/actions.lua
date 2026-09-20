@@ -9,6 +9,11 @@ function M.validate(s)
  elseif s.kind=="recipe" then C.keys(s,{"kind","target","recipe"});C.target(s.target);C.id(s.recipe)
  elseif s.kind=="craft" then C.keys(s,{"kind","recipe","count"});C.id(s.recipe);C.integer(s.count,1,100)
  elseif s.kind=="transfer" then C.keys(s,{"kind","target","inventory","flow","item"});C.target(s.target);C.check(C.inventory_ids[s.inventory] and (s.flow=="put" or s.flow=="take"),"unsupported_transfer");C.keys(s.item,{"name","quality","count"});C.id(s.item.name);C.id(s.item.quality);C.integer(s.item.count,1,1000)
+ elseif s.kind=="module" then C.keys(s,{"kind","target","item"});C.target(s.target);C.keys(s.item,{"name","quality","count"});C.id(s.item.name);C.id(s.item.quality);C.integer(s.item.count,1,1000)
+ elseif s.kind=="filter" then C.keys(s,{"kind","target","slot","item"});C.target(s.target);C.integer(s.slot,1,100);if s.item then C.keys(s.item,{"name","quality"});C.id(s.item.name);C.id(s.item.quality) end
+ elseif s.kind=="bar" then C.keys(s,{"kind","target","inventory","limit"});C.target(s.target);C.check(s.inventory=="chest","unsupported_inventory_bar");if s.limit then C.integer(s.limit,1,1000) end
+ elseif s.kind=="wire" then C.keys(s,{"kind","target","other","fromConnector","toConnector"});C.target(s.target);C.target(s.other);C.integer(s.fromConnector,0,255);C.integer(s.toConnector,0,255)
+ elseif s.kind=="setting" then C.keys(s,{"kind","target","name","value"});C.target(s.target);C.check(s.name=="active" or s.name=="inserter_filter_mode" or s.name=="splitter_input_priority" or s.name=="splitter_output_priority" or s.name=="underground_type","unsupported_entity_setting");C.check(type(s.value)=="string" or type(s.value)=="boolean","invalid_entity_setting")
  else error("unsupported_action",0) end
 end
 function M.neutral(p,craft)
@@ -72,6 +77,16 @@ function M.tick(p,o,s)
   F.box(o.batch,e.bounding_box)
   C.check(source.get_item_count(s.item)>=s.item.count,"insufficient_inventory");C.check(dest.get_insertable_count(s.item)>=s.item.count,"destination_full")
   local n=source.remove(s.item);local inserted=dest.insert{name=s.item.name,quality=s.item.quality,count=n};if inserted<n then C.check(source.insert{name=s.item.name,quality=s.item.quality,count=n-inserted}==n-inserted,"transfer_refund_failed") end;C.check(inserted==s.item.count,"partial_transfer");return true
+ elseif s.kind=="module" then
+  local e=entity(p,s);local modules=e.get_module_inventory();C.check(modules,"unsupported_module_inventory");local main=p.get_main_inventory();F.box(o.batch,e.bounding_box);C.check(main.get_item_count(s.item)>=s.item.count,"insufficient_inventory");C.check(modules.get_insertable_count(s.item)>=s.item.count,"module_inventory_full");local removed=main.remove(s.item);local inserted=modules.insert{name=s.item.name,quality=s.item.quality,count=removed};if inserted<removed then main.insert{name=s.item.name,quality=s.item.quality,count=removed-inserted} end;C.check(inserted==s.item.count,"partial_module_insert");return true
+ elseif s.kind=="filter" then
+  local e=entity(p,s);F.box(o.batch,e.bounding_box);C.check(s.slot<=e.filter_slot_count,"filter_slot_unavailable");e.set_filter(s.slot,s.item);local actual=e.get_filter(s.slot);C.check((not s.item and not actual) or (actual and actual.name==s.item.name and actual.quality==s.item.quality),"filter_failed");return true
+ elseif s.kind=="bar" then
+  local e=entity(p,s);local inv=C.entity_inventory(e,s.inventory);C.check(inv and inv.supports_bar(),"inventory_bar_unsupported");F.box(o.batch,e.bounding_box);inv.set_bar(s.limit);C.check(inv.get_bar()==s.limit,"inventory_bar_failed");return true
+ elseif s.kind=="wire" then
+  local e=entity(p,s);local other=C.find(p.surface,s.other);C.check(not C.protected(other) and other.force==p.force,"unrelated_structure");C.check(C.distance(p.position,other.position)<=p.reach_distance and p.can_reach_entity(other),"out_of_reach");F.box(o.batch,e.bounding_box);F.box(o.batch,other.bounding_box);local from=e.get_wire_connector(s.fromConnector,true);local target=other.get_wire_connector(s.toConnector,true);C.check(from and target and from.can_wire_reach(target),"wire_out_of_reach");C.check(from.is_connected_to(target) or from.connect_to(target,true,defines.wire_origin.player),"wire_failed");return true
+ elseif s.kind=="setting" then
+  local e=entity(p,s);F.box(o.batch,e.bounding_box);local key=s.name=="underground_type" and "belt_to_ground_type" or s.name;local ok=pcall(function()e[key]=s.value end);C.check(ok and e[key]==s.value,"entity_setting_failed");return true
  end
  error("unsupported_action",0)
 end

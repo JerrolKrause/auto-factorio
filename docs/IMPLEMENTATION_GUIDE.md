@@ -307,6 +307,8 @@ Work in C:\@Projects\AutoFactorio. Follow phase 16 of docs/IMPLEMENTATION_GUIDE.
 
 ### 17 — Retrospectives and checkpoint branches
 
+The blueprint workshop is a supplemental component-design workflow, not a substitute for this phase. It reuses durable reports, context inspection, usage accounting and rollback concepts; completing the workshop does not satisfy Phase 17's scenario comparison, checkpoint-branch isolation or restore gates. Phase 17 must preserve the workshop entities and operator/private visibility boundaries when it extends shared history/export code.
+
 [Open the change](../openspec/changes/af-17-retrospectives-branches/proposal.md) · [Task checklist](../openspec/changes/af-17-retrospectives-branches/tasks.md)
 
 **Entry:** Phase 16 (`af-16-fault-recovery`) has a passed implementation gate in the handoff.

@@ -1,0 +1,30 @@
+import { record } from '@autofactorio/contracts';
+import type { BlueprintDocument, Position, ProductIdentity, WorkshopWindowMeasurement } from '@autofactorio/contracts';
+import type { CapabilityProfile } from '../../core/workshop/profiles.js';
+import { normalizeBlueprint } from '../../core/workshop/blueprint.js';
+import type { CommandPort } from './rcon.js';
+import { wrapper } from './rcon.js';
+
+export interface WorkshopFixture { id:string;kind:'source'|'sink'|'power';position:Position;product:{kind:'item'|'fluid';name:string;quality:'normal'};rate:number }
+export interface WorkshopSetup { id:string;surface:string;force:string;profile:CapabilityProfile;area:[Position,Position];maxTiles:number;fixtures:WorkshopFixture[] }
+export interface InstalledWorkshopProfile { gameVersion:string;mods:Record<string,string>;profileId:string;profileRevision:number;surface:string;technologies:string[];allowedEquipment:string[];modules:string[];beacons:string[];recipe:{id:string;category:string;energy:number;ingredients:{type:'item'|'fluid';name:string;amount:number;temperature?:number}[];products:{type:'item'|'fluid';name:string;amount:number;temperature?:number}[]};machine:string }
+export class WorkshopControl {
+  constructor(private port:CommandPort){}
+  private async rpc(request:Record<string,unknown>){const response=record(JSON.parse(await this.port.command(wrapper(request,true))));if(response.ok!==true)throw new Error(String(response.error??'Workshop operation unacknowledged'));return response;}
+  async installedProfile(profileId:string,product:string):Promise<InstalledWorkshopProfile>{const response=await this.rpc({op:'workshop-profile',profileId,product}),list=(value:unknown)=>Array.isArray(value)?value:value&&typeof value==='object'&&Object.keys(value).length===0?[]:null;for(const key of ['gameVersion','profileId','surface','machine'] as const)if(typeof response[key]!=='string')throw new Error('Incomplete installed workshop profile');for(const key of ['technologies','allowedEquipment','modules','beacons'] as const){const values=list(response[key]);if(!values)throw new Error('Incomplete installed workshop profile');response[key]=values;}const recipe=record(response.recipe);for(const key of ['ingredients','products'] as const){const values=list(recipe[key]);if(!values)throw new Error('Incomplete installed workshop recipe');recipe[key]=values;}return response as unknown as InstalledWorkshopProfile;}
+  setup(input:WorkshopSetup){return this.rpc({op:'workshop-setup',id:input.id,surface:input.surface,force:input.force,profileFingerprint:input.profile.fingerprint,technologies:input.profile.technologies,recipes:input.profile.recipes,allowedEquipment:input.profile.allowedEquipment,surfaceProperties:input.profile.surfaceProperties??{},area:input.area,maxTiles:input.maxTiles,fixtures:input.fixtures});}
+  expand(id:string,generation:number,area:[Position,Position]){return this.rpc({op:'workshop-expand',id,generation,area});}
+  inspect(id:string){return this.rpc({op:'workshop-inspect',id});}
+  enter(id:string,actor:string){return this.rpc({op:'workshop-enter',id,actor});}
+  actor(id:string,actor:string){return this.rpc({op:'workshop-actor',id,actor});}
+  async provision(id:string,actor:string,operationId:string,items:{name:string;quality:'normal';count:number}[]){const response=await this.rpc({op:'workshop-provision',id,actor,operationId,items});if(response.operationId!==operationId||!Number.isSafeInteger(response.tick)||!Array.isArray(response.before)||!Array.isArray(response.after))throw new Error('Incomplete provision receipt');return response;}
+  materialize(id:string,generation:number,operationId:string,input:BlueprintDocument){const document=normalizeBlueprint(input);return this.rpc({op:'workshop-materialize',id,generation,operationId,entities:document.entities.map(e=>({id:e.id,name:e.name,position:e.position,direction:e.direction,quality:e.quality,recipe:e.recipe??false,modules:e.modules??{},filters:e.filters??[],inventoryBar:e.inventoryBar??false,undergroundType:e.undergroundType??false,settings:e.settings??{}})),wires:document.wires.map(w=>({from:{entityId:w.from.entityId,connector:Number(w.from.connector)},to:{entityId:w.to.entityId,connector:Number(w.to.connector)}}))});}
+  measureConfigure(input:{id:string;generation:number;attemptId:string;settlingTicks:number;windowTicks:number;windows:number;requestedSpeed:number;ports:{id:string;fixtureId:string;product:Pick<ProductIdentity,'kind'|'name'|'quality'>}[]}){return this.rpc({op:'workshop-measure-configure',...input});}
+  async measureRead(id:string,attemptId:string,after:number){const response=await this.rpc({op:'workshop-measure-read',id,attemptId,after});const samples=Array.isArray(response.samples)?response.samples:Object.keys(record(response.samples)).length===0?[]:null;if(!samples||!Number.isSafeInteger(response.tick)||typeof response.state!=='string'||typeof response.finished!=='boolean')throw new Error('Incomplete workshop measurement response');return{tick:Number(response.tick),state:response.state,finished:response.finished,samples:samples as WorkshopWindowMeasurement[],requestedSpeed:Number(response.requestedSpeed),achievedSpeed:Number(response.achievedSpeed)};}
+}
+export class WorkshopMeasurementSession {
+  state:'active'|'complete'|'invalid'|'closed'='active';readonly samples:WorkshopWindowMeasurement[]=[];reason:string|null=null;private after=-1;
+  constructor(private control:WorkshopControl,private id:string,private attemptId:string){}
+  async poll(){if(this.state!=='active')throw new Error('Workshop measurement session is closed');try{const page=await this.control.measureRead(this.id,this.attemptId,this.after);for(const sample of page.samples)if(sample.index>this.after){this.samples.push(sample);this.after=sample.index;}if(page.finished)this.state='complete';return page;}catch(error){this.state='invalid';this.reason=`measurement_disconnect:${String(error)}`;throw error;}}
+  close(reason:string){if(this.state==='active'){this.state='closed';this.reason=reason;}}
+}

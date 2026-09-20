@@ -1,0 +1,3 @@
+import { readFile } from 'node:fs/promises';
+import vm from 'node:vm';
+const chunks=[];for await(const chunk of process.stdin)chunks.push(chunk);const input=JSON.parse(Buffer.concat(chunks).toString('utf8'));const source=await readFile(process.argv[2],'utf8');const context=vm.createContext(Object.freeze({structuredClone}),{codeGeneration:{strings:false,wasm:false}});const helper=new vm.Script(`(${source})`,{filename:'activated-helper'}).runInContext(context,{timeout:1000});if(typeof helper!=='function')throw new Error('Helper source must be one function expression');const output=await helper(structuredClone(input));process.stdout.write(JSON.stringify(output));
