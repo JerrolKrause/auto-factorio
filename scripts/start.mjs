@@ -24,15 +24,17 @@ function usage() {
   console.log(`AutoFactorio startup
 
 Usage:
-  npm start              Prepare dependencies, build, start the app, and open ${url}
+  npm start              Prepare dependencies, build, open visible Factorio, and open ${url}
   npm start -- --fixture Start the local demonstration dashboard without Factorio/Codex
   npm start -- --real    Require a real Factorio + managed Codex session
+  npm start -- --headless Run the real session without opening a Factorio client
 
 Optional environment variables:
   AUTOFACTORIO_CODEX                Absolute path to the supported codex executable
   AUTOFACTORIO_PROFILE_FILE         Existing project profile JSON for a running Factorio server
   AUTOFACTORIO_FACTORIO_DIR         Factorio installation directory
   AUTOFACTORIO_START_MODE           auto (default), fixture, or real
+  AUTOFACTORIO_HEADLESS             1 or true to suppress the visible Factorio client
 `);
 }
 
@@ -41,8 +43,10 @@ function options() {
   if (args.includes('--help') || args.includes('-h')) return { help: true };
   const explicit = args.includes('--fixture') ? 'fixture' : args.includes('--real') ? 'real' : null;
   const mode = explicit ?? process.env.AUTOFACTORIO_START_MODE ?? 'auto';
+  const headless = args.includes('--headless') || ['1', 'true'].includes(String(process.env.AUTOFACTORIO_HEADLESS ?? '').toLowerCase());
   if (!['auto', 'fixture', 'real'].includes(mode)) throw new StartupError('startup options', `Unknown startup mode “${mode}”. Use auto, fixture, or real.`);
-  return { help: false, mode };
+  if (mode === 'fixture' && headless) throw new StartupError('startup options', '--headless cannot be combined with fixture mode because fixture mode starts no game.');
+  return { help: false, mode, headless };
 }
 
 function text(error) {
@@ -197,6 +201,12 @@ async function stopGame(profileFile) {
   catch (error) { console.error(`\nWARNING: ${text(error)} The project-owned Factorio process may still be running. Run npm run game:processes to inspect it.`); }
 }
 
+async function stopObserver(profileFile) {
+  if (!profileFile || !existsSync(profileFile)) return;
+  try { await run(process.execPath, ['dist/scripts/game-processes.js', '--stop-observer-profile-file', profileFile], { label: 'Factorio observer cleanup' }); }
+  catch (error) { console.error(`\nWARNING: ${text(error)} The project-owned visible Factorio client may still be running. Run npm run game:processes to inspect it.`); }
+}
+
 async function main() {
   const selected = options();
   if (selected.help) { usage(); return; }
@@ -213,7 +223,7 @@ async function main() {
   const codex = findCodex();
   const factorio = factorioAvailable();
   const requestedProfile = process.env.AUTOFACTORIO_PROFILE_FILE;
-  const realRequested = selected.mode === 'real' || Boolean(requestedProfile);
+  const realRequested = selected.mode === 'real' || selected.headless || Boolean(requestedProfile);
   let mode = selected.mode === 'fixture' ? 'fixture' : 'real';
   let profileFile = requestedProfile ? path.resolve(requestedProfile) : undefined;
   if (mode === 'real' && !codex) {
@@ -233,23 +243,31 @@ async function main() {
   if (mode === 'real' && !profileFile) {
     profileFile = path.join(runtimeRoot, 'factorio-profile.json');
     const environment = { ...process.env, AUTOFACTORIO_FACTORIO_DIR: factorio };
-    console.log('Preparing a project-owned Factorio server. This may take a few minutes the first time.');
+    console.log(`Preparing a project-owned Factorio server${selected.headless ? ' in headless mode' : ' with a visible client'}. This may take a few minutes the first time.`);
     ownedGame = true;
-    await run(process.execPath, ['dist/scripts/game-launch.js', '--headless', '--result-file', profileFile], { label: 'Factorio launch', env: environment });
+    const gameArgs = ['dist/scripts/game-launch.js', '--result-file', profileFile];
+    if (selected.headless) gameArgs.push('--headless');
+    await run(process.execPath, gameArgs, { label: 'Factorio launch', env: environment });
   }
   if (mode === 'real' && (!profileFile || !existsSync(profileFile))) throw new StartupError('Factorio profile check', 'The requested Factorio profile file does not exist. Provide a valid project-owned profile with AUTOFACTORIO_PROFILE_FILE.');
+  if (mode === 'real' && profileFile && requestedProfile && !selected.headless) {
+    console.log('Connecting a visible Factorio client to the supplied project server.');
+    const result=await run(process.execPath, ['dist/scripts/game-observer.js', '--profile-file', profileFile], { label: 'visible Factorio launch', quiet: true });
+    const observer=JSON.parse(result.stdout.trim().split(/\r?\n/).at(-1) ?? '{}');ownedObserver=observer.launched===true;
+  }
   const launched = await launchDashboard(mode, codex, profileFile);
-  await writeFile(path.join(runtimeRoot, 'session.json'), JSON.stringify({ url, mode, profileFile: profileFile ?? null, directory: launched.directory, startedAt: new Date().toISOString() }, null, 2));
+  await writeFile(path.join(runtimeRoot, 'session.json'), JSON.stringify({ url, mode, headless: mode === 'real' && selected.headless, profileFile: profileFile ?? null, directory: launched.directory, startedAt: new Date().toISOString() }, null, 2));
   console.log(`\nAutoFactorio is ready at ${url}`);
-  console.log(mode === 'fixture' ? 'Mode: local demonstration (no game or model inference).' : 'Mode: connected Factorio session (starts paused; model inference remains user-controlled).');
+  console.log(mode === 'fixture' ? 'Mode: local demonstration (no game or model inference).' : selected.headless ? 'Mode: connected headless Factorio session (starts paused; model inference remains user-controlled).' : 'Mode: connected visible Factorio session (starts paused; model inference remains user-controlled).');
   if (!openBrowser()) console.log(`Open ${url} in a browser.`);
   const stopped = await new Promise(resolve => launched.child.once('exit', (code, signal) => resolve({ code, signal })));
   if (!stopping) throw new StartupError('dashboard runtime', `The dashboard stopped unexpectedly (${stopped.code ?? stopped.signal ?? 'unknown outcome'}).`);
-  await stopGame(ownedGame ? profileFile : undefined);
+  if(ownedGame)await stopGame(profileFile);else if(ownedObserver)await stopObserver(profileFile);
 }
 
 let stopping = false;
 let ownedGame = false;
+let ownedObserver = false;
 async function shutdown() {
   if (stopping) return;
   stopping = true;
@@ -262,6 +280,7 @@ try {
   await main();
 } catch (error) {
   if (ownedGame) await stopGame(process.env.AUTOFACTORIO_PROFILE_FILE ? undefined : path.join(runtimeRoot, 'factorio-profile.json'));
+  else if(ownedObserver)await stopObserver(process.env.AUTOFACTORIO_PROFILE_FILE);
   if (error instanceof StartupError && error.stage === 'Node.js check') printPrerequisiteHelp();
   else console.error(`\nSTARTUP ERROR: ${text(error)}`);
   process.exitCode = 1;

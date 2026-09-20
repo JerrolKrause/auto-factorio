@@ -34,7 +34,7 @@ if (process.argv.includes('--fixture')) {
     const c = new Coordinator(runtime, { ...PROBE_CAPS, runMs: 3600000 });
     if (!c.agents().length) team().forEach(a => c.register(a));
     operator = new Operator(c); await operator.control('pause');
-    const prepared=await prepareLiveWorkshopHost({directory,codexExecutable:codex,port,game,lifecycle:life});workshopOptions={workshopHost:prepared.host,managedModels:prepared.catalog.models};
+    const prepared=await prepareLiveWorkshopHost({directory,codexExecutable:codex,port,game,lifecycle:life,activity:value=>runtime.record(`workshop/${value.category}-${value.status}`,[{entity:'workshopOperations',id:value.id,value:{...value}}])});workshopOptions={workshopHost:prepared.host,managedModels:prepared.catalog.models};
   } catch (error) {
     port?.close();
     throw new Error(`Factorio dashboard initialization failed: ${error instanceof Error ? error.message : String(error)}`);

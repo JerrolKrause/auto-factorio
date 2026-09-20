@@ -115,13 +115,13 @@ export async function recordProcesses(profile: GameProfile, update: Record<strin
   try { old = JSON.parse(await readFile(file, 'utf8')); } catch { /* first launch */ }
   await writeFile(file, JSON.stringify({ ...old, config: profile.config, observerConfig: profile.observerConfig, ...update }, null, 2));
 }
-export async function startObserver(profile: GameProfile, replaceConfig?: string): Promise<number> {
+export async function startObserver(profile: GameProfile, replaceConfig?: string, onSpawn?: (pid:number)=>void): Promise<number> {
   await ownedPath(profile.observerConfig);
   if (replaceConfig) await stopProfile(replaceConfig);
   const observers = (await listProjectProcesses()).filter(p => p.kind === 'observer');
   if (observers.length) throw new Error('A project observer is already running; reuse it or explicitly replace its paused profile');
   const child = spawn('C:/Program Files (x86)/Steam/steam.exe', ['-applaunch', '427520', '--config', profile.observerConfig, '--mod-directory', profile.mods, '--mp-connect', `127.0.0.1:${profile.gamePort}`, '--disable-audio', '--window-size', '1280x800'], { windowsHide: false, detached: true, stdio: 'ignore' });
-  await new Promise<void>((resolve, reject) => { child.once('spawn', resolve); child.once('error', () => reject(new Error('Steam observer launch failed'))); }); child.unref();
+  await new Promise<void>((resolve, reject) => { child.once('spawn', resolve); child.once('error', () => reject(new Error('Steam observer launch failed'))); }); child.unref();onSpawn?.(child.pid!);
   await recordProcesses(profile, { observerLauncherPid: child.pid! }); return child.pid!;
 }
 export async function identifyObserver(profile: GameProfile): Promise<number> {

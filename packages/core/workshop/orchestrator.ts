@@ -16,7 +16,7 @@ export interface WorkshopSessionState {
   iterations: WorkshopIterationState[]; activeIteration: number|null; bestIteration: number|null; validIterations: number[];
   steeringRevision: number; stopReason: string|null; checkpointDeadline: string|null; pinnedBundleHash: string; operationResults: Record<string, unknown>;
   checkpoint:WorkshopCheckpointState|null; checkpointDecisions:Record<string,'continue'|'finish'>;
-  operationIntents:Record<string,{stage:WorkshopStage;status:'dispatched'|'unknown'|'acknowledged';at:string}>;
+  operationIntents:Record<string,{stage:WorkshopStage;status:'dispatched'|'unknown'|'acknowledged'|'failed';at:string;failure?:string}>;
   assistance: { revision:number; text:string; at:string }[]; finalOutcome: 'best-valid'|'no-valid-result'|null;
 }
 const allowed: Record<WorkshopStage, WorkshopStage[]> = {
@@ -76,6 +76,7 @@ export class WorkshopOrchestrator {
   steer(id: string, revision: number, text: string): WorkshopSessionState { if(!text.trim())throw new Error('Stale or invalid workshop steering');return this.resolveCheckpoint(id,revision,'continue',text); }
   timeout(id: string, now: string): 'waiting'|'finish'|'continue' { const s=this.get(id); if (s.stage!=='checkpoint'||!s.checkpoint||Date.parse(now)<Date.parse(s.checkpoint.deadline)) return 'waiting';const action=s.assignment.checkpoints.timeoutAction;this.resolveCheckpoint(id,s.steeringRevision+1,action,'review-timeout');return action; }
   stop(id: string, reason: string): WorkshopSessionState { const s=this.get(id); if (!reason.trim()) throw new Error('Stop reason required'); s.stage='stopped'; s.stopReason=reason; this.save(s,'workshop/stopped'); return s; }
+  fail(id:string,reason:string):WorkshopSessionState { const s=this.get(id);if(!reason.trim())throw new Error('Failure reason required');for(const [operationId,intent] of Object.entries(s.operationIntents))if(intent.status==='dispatched')s.operationIntents[operationId]={...intent,status:'failed',failure:reason};s.stage='stopped';s.stopReason=reason;this.save(s,'workshop/failed');return s; }
   hold(id:string,reason:string):WorkshopSessionState { const s=this.get(id);if(!reason.trim())throw new Error('Hold reason required');s.stage='held';s.stopReason=reason;this.save(s,'workshop/held');return s; }
   holdInFlight(id:string,reason:string):WorkshopSessionState { const s=this.get(id);if(!reason.trim())throw new Error('Hold reason required');for(const [operationId,intent] of Object.entries(s.operationIntents))if(intent.status==='dispatched')s.operationIntents[operationId]={...intent,status:'unknown'};s.stage='held';s.stopReason=reason;this.save(s,'workshop/cancellation-unconfirmed');return s; }
   finalize(id:string):WorkshopSessionState { const s=this.get(id);if(s.stage!=='scoring'&&s.stage!=='checkpoint')throw new Error('Workshop cannot finalize from current stage');if(s.stage==='checkpoint'&&s.checkpointDeadline)throw new Error('Checkpoint unresolved');s.stage='finalizing';s.finalOutcome=s.bestIteration===null?'no-valid-result':'best-valid';this.save(s,'workshop/finalized');return s; }

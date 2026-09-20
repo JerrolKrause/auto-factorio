@@ -44,16 +44,19 @@ The planned full stack is Node 24 LTS, TypeScript, Lua, Codex app-server, MCP, R
 
 ## Verified local commands
 
-Use Node 24 LTS. Git is not needed to run an installed copy. The supported startup path installs the pinned pnpm version through Corepack, builds the app, starts every local app resource, and opens the browser; prerequisite upgrades remain user-managed. Dependency installation may invoke existing native build tools; this host had Python 3.12.1 and VS2019 BuildTools. See [decision 003](docs/decisions/003-compatibility-foundation.md).
+Use Node 24 LTS. Git is not needed to run an installed copy. The supported startup path installs the pinned pnpm version through Corepack, builds the app, starts a dedicated server plus visible Factorio client, and opens the browser; prerequisite upgrades remain user-managed. Dependency installation may invoke existing native build tools; this host had Python 3.12.1 and VS2019 BuildTools. See [decision 003](docs/decisions/003-compatibility-foundation.md).
 
 ```powershell
 Set-Location -LiteralPath 'C:\@Projects\AutoFactorio'
 npm start
-# The normal user entrypoint: opens http://localhost:3000.
+# The normal user entrypoint: opens Factorio and http://localhost:3000.
 # If Factorio/Codex are not configured, it explicitly starts a local demonstration mode.
 
 # Optional: demonstration mode on purpose, without Factorio or Codex.
 npm start -- --fixture
+
+# Optional automation mode: run the connected game without a graphical client.
+npm start -- --headless
 
 # Developer/diagnostic commands:
 corepack pnpm install --frozen-lockfile
@@ -85,11 +88,11 @@ The [development workflow](docs/DEVELOPMENT_WORKFLOW.md) covers contextual UTF-8
 
 ## Local control dashboard (phase 09)
 
-For ordinary use, run `npm start`. The launcher owns dependency installation, the TypeScript/dashboard build, the fixed `localhost:3000` port, browser launch, duplicate-start detection and cleanup. It never buys provider access or starts model inference. If the supported managed Codex executable and Factorio installation are not discoverable, startup says exactly what is missing and opens a clearly reported demonstration dashboard instead.
+For ordinary use, run `npm start`. The launcher owns dependency installation, the TypeScript/dashboard build, a dedicated server and visible Factorio client, the fixed `localhost:3000` port, browser launch, duplicate-start detection and cleanup. It waits for the visible `builder-1` connection before reporting readiness. It never buys provider access or starts model inference. If the supported managed Codex executable and Factorio installation are not discoverable, startup says exactly what is missing and opens a clearly reported demonstration dashboard instead. `npm start -- --headless` is the explicit automation alternative.
 
 The app uses a same-origin, HttpOnly local session cookie created when `localhost:3000` is opened. The old `#cap=...` fragment is no longer required; old capability links remain accepted for compatibility. Bookmark `http://localhost:3000` directly.
 
-If the port is already occupied by another program, startup stops with a readable message instead of silently moving to another port. If AutoFactorio is already running there, a second `npm start` opens the existing session instead of creating duplicate resources. For a real session, set `AUTOFACTORIO_CODEX` to the supported `codex-cli 0.155.1` executable, or set `AUTOFACTORIO_PROFILE_FILE` to an existing project-owned Factorio profile. `AUTOFACTORIO_FACTORIO_DIR` can override the default Steam installation location.
+If the port is already occupied by another program, startup stops with a readable message instead of silently moving to another port. If AutoFactorio is already running there, a second `npm start` opens the existing session instead of creating duplicate resources. For a real session, set `AUTOFACTORIO_CODEX` to the supported `codex-cli 0.155.1` executable, or set `AUTOFACTORIO_PROFILE_FILE` to an existing project-owned Factorio profile. Ordinary startup attaches or reuses that profile's project-owned observer; explicit headless startup does not. `AUTOFACTORIO_FACTORIO_DIR` can override the default Steam installation location.
 
 ```powershell
 corepack.cmd pnpm build
@@ -99,7 +102,7 @@ corepack.cmd pnpm dashboard --profile-file '.runtime/phase09-reviewed-profile.js
 corepack.cmd pnpm test:ui
 ```
 
-The low-level launcher writes `dashboard.json` under its run directory. `--fixture` is a synthetic demonstration with two roles and example tasks. The game option requires the managed Codex executable, validates ChatGPT authentication and the model catalog without starting inference, registers the two roles and starts safely paused. Workshop launch then uses the selected managed models and the attached dedicated game; no provider/model/billing fallback is permitted. The page shows role states, dependencies, evidence, production coverage, batch progress, workshop checkpoints, assistance and budgets. Advice is a durable role inbox; interpretation is acknowledged separately through the coordination gateway. Ordinary advice preserves active batches; explicit reprioritization records a human intervention and fences the old revision.
+The low-level launcher writes `dashboard.json` under its run directory. `--fixture` is a synthetic demonstration with two roles and example tasks. The game option requires the managed Codex executable, validates ChatGPT authentication and the model catalog without starting inference, registers the two roles and starts safely paused. Workshop launch then uses the selected managed models and the attached dedicated game; no provider/model/billing fallback is permitted. Legal-character launch preflights the connected visible builder before inference, while direct construction remains headless-compatible. The page shows role states, dependencies, evidence, production coverage, batch progress, workshop phase/failure/activity records, checkpoints, assistance and budgets. Advice is a durable role inbox; interpretation is acknowledged separately through the coordination gateway. Ordinary advice preserves active batches; explicit reprioritization records a human intervention and fences the old revision.
 
 Pause/stop close new admission, interrupt bound sessions and establish acknowledged game cancellation. Resume reconciles and refreshes authority; old task revisions need new plans/grants. Unknown controls and missing telemetry remain explicit. Closing/reopening the tab does not stop the host or reset budgets. `--directory <project .runtime path>` reopens existing run data; the SQLite writer lock rejects concurrent owners. Press Ctrl+C in the host terminal to request a held game state and shut down.
 

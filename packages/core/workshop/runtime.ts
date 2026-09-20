@@ -10,9 +10,14 @@ import type { WorkshopUsageLedger } from './usage.js';
 export interface WorkshopRuntimeServices { library:BlueprintLibrary; learning:LearningService; usage:WorkshopUsageLedger; sessions:()=>WorkshopSessionState[] }
 export type WorkshopCancellation = EffectReceipt;
 
+export class WorkshopEffectOutcomeError extends Error {
+  constructor(readonly outcome:'failed'|'unknown',cause:unknown){super(String(cause),cause instanceof Error?{cause}:undefined);this.name='WorkshopEffectOutcomeError';}
+}
+
 export interface WorkshopRuntimeHost {
   bindServices?(services:WorkshopRuntimeServices):void;
   resolve(input:unknown):Promise<WorkshopAssignment>;
+  preflight?(assignment:WorkshopAssignment):Promise<void>;
   design(session:WorkshopSessionState,iteration:number):Promise<WorkshopCandidateRef>;
   build(session:WorkshopSessionState,candidate:WorkshopCandidateRef):Promise<void>;
   measure(session:WorkshopSessionState,candidate:WorkshopCandidateRef):Promise<WorkshopEvaluationReport>;
@@ -33,6 +38,7 @@ export class WorkshopRuntime {
   constructor(private orchestrator:WorkshopOrchestrator,private host:WorkshopRuntimeHost,private library:BlueprintLibrary,private available:()=>ModelSelection[],private bundleHash:(sessionId:string)=>string,private listSessions:()=>WorkshopSessionState[],private publish:(entry:LibraryEntry)=>void){}
   async launch(input:unknown):Promise<WorkshopSessionState>{
     const assignment=validateWorkshopAssignment(await this.host.resolve(input)),available=this.available();
+    await this.host.preflight?.(assignment);
     if(!available.length)throw new Error('Managed model catalog unavailable; workshop inference withheld');
     for(const[role,selection]of Object.entries(resolveWorkshopModels(assignment.models)))if(!available.some(value=>JSON.stringify(value)===JSON.stringify(selection)))throw new Error(`${role} managed selection unavailable; no fallback`);
     const session=this.orchestrator.configure(assignment.id,assignment,this.bundleHash(assignment.id));this.orchestrator.preflight(session.id,available);if(assignment.checkpoints.brief)this.orchestrator.requestCheckpoint(session.id,'brief','preflight');else this.orchestrator.beginIteration(session.id);this.track(session.id);return this.orchestrator.get(session.id);
@@ -44,7 +50,7 @@ export class WorkshopRuntime {
   async close():Promise<void>{this.closing=true;for(const timer of this.timers.values())clearTimeout(timer);this.timers.clear();const active=[...this.active.keys()],cancellations=active.map(async id=>{try{return{id,result:this.cancellation(await this.host.cancel(id),id)};}catch(error){return{id,result:{schema:1 as const,effectId:`workshop:${id}`,outcome:'unknown' as const,failures:[String(error)]}};}});const results=await Promise.all(cancellations);for(const {id,result}of results){const session=this.orchestrator.get(id);if(!['complete','held','stopped'].includes(session.stage))this.orchestrator.holdInFlight(id,result.outcome!=='unknown'?'runtime_closed_with_inflight_effect':`close_cancellation_unconfirmed:${result.failures.join('|')}`);}await Promise.allSettled(this.active.values());await this.host.close?.();}
   private sessions():WorkshopSessionState[]{return this.listSessions();}
   private track(id:string):void{if(this.closing)return;const session=this.orchestrator.get(id);const prior=this.timers.get(id);if(prior){clearTimeout(prior);this.timers.delete(id);}if(session.stage==='checkpoint'&&session.checkpoint){const delay=Math.max(0,Date.parse(session.checkpoint.deadline)-Date.now());const timer=setTimeout(()=>{this.timers.delete(id);if(this.orchestrator.timeout(id,new Date().toISOString())!=='waiting')this.enqueue(id);},Math.min(delay,2_147_483_647));timer.unref?.();this.timers.set(id,timer);return;}this.enqueue(id);}
-  private enqueue(id:string):void{if(this.closing||this.active.has(id))return;const task=Promise.resolve().then(()=>this.run(id)).catch(error=>{const current=this.orchestrator.get(id);if(!['complete','held','stopped'].includes(current.stage)){const reason=String(error);if(reason.includes('Workshop effect outcome unknown'))this.orchestrator.hold(id,`workshop_runtime_held:${reason}`);else this.orchestrator.stop(id,`workshop_runtime_failed:${reason}`);}}).finally(()=>this.active.delete(id));this.active.set(id,task);}
+  private enqueue(id:string):void{if(this.closing||this.active.has(id))return;const task=Promise.resolve().then(()=>this.run(id)).catch(error=>{const current=this.orchestrator.get(id);if(!['complete','held','stopped'].includes(current.stage)){const reason=String(error),unknown=error instanceof WorkshopEffectOutcomeError&&error.outcome==='unknown'||reason.includes('Workshop effect outcome unknown');if(unknown)this.orchestrator.holdInFlight(id,`workshop_runtime_held:${reason}`);else this.orchestrator.fail(id,`workshop_runtime_failed:${reason}`);}}).finally(()=>this.active.delete(id));this.active.set(id,task);}
   private async run(id:string):Promise<void>{
     for(;;){
       let session=this.orchestrator.get(id);if(['complete','held','stopped'].includes(session.stage))return;if(session.stage==='checkpoint'){this.track(id);return;}

@@ -42,6 +42,13 @@ export function App() {
     };
     void connect(); return () => { closed = true; abort.abort(); clearTimeout(timer); };
   }, []);
+  useEffect(() => {
+    if(!data||!detail||typeof detail!=='object'||Array.isArray(detail))return;
+    const current=detail as Record<string,unknown>,id=current.id;
+    if(typeof id!=='string'||!('assignment'in current&&'stage'in current))return;
+    const latest=data.projections.workshopSessions?.find(value=>value.id===id);
+    if(latest&&latest!==detail)setDetail(latest);
+  }, [data,detail]);
   async function command(route: string, body: unknown) {
     setPending(true); setError('');
     try { const result = await api(route, body); setDetail(result); return true; }
