@@ -81,7 +81,7 @@ The tooling SHALL provide a no-inference, no-game-launch preflight using existin
 
 ### Requirement: Task-appropriate developer models and bounded delegation
 
-Developer guidance SHALL recommend Sol/medium for milestone ownership, Terra/medium for bounded implementation, Astra for consequential design and unfamiliar diagnosis, and Luna/medium for routine verification and focused test authorship. It SHALL preserve configured gameplay models, independent review rules and subscription-only access. Delegated work SHALL have explicit boundaries, stable inputs, expected results and a budget; test authors SHALL receive behavioral acceptance cases. Unavailable requested models SHALL be reported without silent substitution or API fallback.
+Developer guidance SHALL recommend Sol/high for milestone ownership, Terra/medium for bounded implementation, Astra for consequential design and unfamiliar diagnosis, and Luna/medium for routine verification and focused test authorship. It SHALL preserve configured gameplay models, independent review rules and subscription-only access. Delegated work SHALL have explicit boundaries, stable inputs, expected results and a budget; test authors SHALL receive behavioral acceptance cases. Unavailable requested models SHALL be reported without silent substitution or API fallback.
 
 #### Scenario: Test work is delegated
 
