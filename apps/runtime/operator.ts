@@ -19,6 +19,9 @@ export class Operator {
   private polling = false;
   private pollWork: Promise<void> = Promise.resolve();
   private lastControl: ControlState | null = null;
+  private gameReservations = 0;
+  private gameReservationTail: Promise<void> = Promise.resolve();
+  private controlSettled: Promise<void> = Promise.resolve();
   constructor(readonly coordinator: Coordinator) {
     this.interventions = new Interventions(coordinator);
     if (!coordinator.runtime.hasControlSession()) this.save({ ...this.state(), admission: false, requested: 'pause', status: 'unconfirmed', cancellation: 'unconfirmed', inference: 'unconfirmed', connected: false, error: 'Controller replacement requires reconciliation' });
@@ -44,8 +47,11 @@ export class Operator {
   }
   /** Synchronous durable admission closure precedes every await and late provider/game callback. */
   async control(action: 'pause' | 'stop' | 'resume'): Promise<OperatorState> {
+    if (this.gameReservations) throw new Error('Game control reserved by workshop operation');
     if (this.busy) throw new Error('Control operation in progress');
     this.busy = true;
+    let settleControl!: () => void;
+    this.controlSettled = new Promise<void>(resolve => { settleControl = resolve; });
     this.save({ ...this.state(), admission: false, requested: action, status: 'unconfirmed', cancellation: 'unconfirmed', inference: this.inferenceConfirmed() ? 'confirmed' : 'unconfirmed', error: null });
     const c = this.coordinator;
     try {
@@ -71,7 +77,7 @@ export class Operator {
       }
     } catch (error) {
       this.save({ ...this.state(), admission: false, status: 'unconfirmed', error: String(error), checkpoint: 'unconfirmed' });
-    } finally { this.busy = false; }
+    } finally { this.busy = false; settleControl(); }
     return this.state();
   }
   async reprioritize(task: string, revision: number, input: TaskInput): Promise<void> {
@@ -96,9 +102,31 @@ export class Operator {
     ], { kind: 'operator' }, input.gameTick);
   }
   poll(): Promise<void> {
+    if (this.gameReservations) return this.pollWork;
     if (this.polling || this.busy) return this.pollWork;
     this.pollWork = this.performPoll();
     return this.pollWork;
+  }
+  /** Serializes trusted game-side operations and keeps routine recovery from changing their pause state. */
+  async reserveGameControl(): Promise<() => void> {
+    let unlock!: () => void;
+    const gate = new Promise<void>(resolve => { unlock = resolve; });
+    const prior = this.gameReservationTail;
+    this.gameReservationTail = prior.then(() => gate);
+    this.gameReservations++;
+    await prior;
+    // The reservation counter rejects later controls; this await closes the
+    // opposite ordering where a control passed its gate first.
+    await this.controlSettled;
+    await this.pollWork;
+    let released = false;
+    return () => {
+      if (released) return;
+      released = true;
+      this.gameReservations--;
+      unlock();
+      if (!this.gameReservations) void this.poll().catch(error => console.error('Operator monitoring failed:', String(error)));
+    };
   }
   private async performPoll(): Promise<void> {
     this.polling = true;

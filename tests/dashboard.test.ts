@@ -127,6 +127,23 @@ describe('operator controls and integrity', () => {
     const pause = f.operator.control('pause'); expect(f.c.held()).toBe(true); await Promise.resolve(); expect(interrupted).toBe(true); release(); await poll;
     expect((await pause).status).toBe('paused'); expect(f.state.armed).toBe(false);
   });
+  it('suspends routine polling while a trusted workshop operation owns game control', async () => {
+    const f = await fixture(); const release = await f.operator.reserveGameControl();
+    const tick = f.operator.state().gameTick; f.state.tick += 50;
+    await f.operator.poll(); expect(f.operator.state().gameTick).toBe(tick);
+    await expect(f.operator.control('pause')).rejects.toThrow('reserved by workshop');
+    release(); await expect.poll(() => f.operator.state().gameTick).toBeGreaterThan(tick ?? 0);
+  });
+  it('waits for an already-started operator control before granting workshop game control', async () => {
+    const f = await fixture(); const inspect = f.life.inspect.bind(f.life);
+    let unblock!: () => void; const blocked = new Promise<void>(resolve => { unblock = resolve; });
+    let entered!: () => void; const started = new Promise<void>(resolve => { entered = resolve; });
+    let first = true; f.life.inspect = async () => { if (first) { first = false; entered(); await blocked; } return inspect(); };
+    const pause = f.operator.control('pause'); await started; let granted = false;
+    const reservation = f.operator.reserveGameControl().then(release => { granted = true; return release; });
+    await Promise.resolve(); expect(granted).toBe(false); unblock(); await pause;
+    const release = await reservation; expect(granted).toBe(true); release(); await f.operator.poll();
+  });
   it.each(['deferred', 'rejected'])('interrupts inference before %s game recovery settles', async mode => {
     const f = await fixture(); let interrupted = 0;
     const turn = f.c.budget.admit('engineer'); f.c.bind('engineer', 'session', turn.id, async () => { interrupted++; f.c.finish(turn.id, true); });
