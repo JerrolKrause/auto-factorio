@@ -34,7 +34,7 @@ Phase 13's legal S2 reference and all required negative controls passed in Facto
 | --- | --- |
 | [AGENTS.md](AGENTS.md) | Concise instructions for coding agents |
 | [Model selection](docs/MODEL_SELECTION.md) | When to use Astra, Sol, Terra, Luna or deterministic scripts |
-| [Development efficiency](docs/DEVELOPMENT_EFFICIENCY.md) | Usage, watching, preflight, contracts, task routing and bounded handoffs |
+| [Development efficiency](docs/DEVELOPMENT_EFFICIENCY.md) | Usage, watching, preflight, contracts, task routing, change readiness and bounded handoffs |
 | [Implementation handoff](docs/IMPLEMENTATION_HANDOFF.md) | Project context, current state, first action and milestone gates |
 | [Requirements](docs/REQUIREMENTS.md) | Approved scope and acceptance evidence |
 | [Architecture](docs/ARCHITECTURE.md) | Proposed stack, boundaries, contracts and repository structure |
@@ -55,6 +55,7 @@ corepack pnpm test
 corepack pnpm check:docs
 corepack pnpm dev:preflight --input docs/examples/development-preflight.example.json
 corepack pnpm dev:task --change <change-name> --task <task-id> # preview only unless --start is explicit
+corepack pnpm change:ready --input <change-readiness.json>
 corepack pnpm diagnose --data-dir 'C:/@Projects/AutoFactorio/.runtime/local' --factorio-dir 'C:/Program Files (x86)/Steam/steamapps/common/Factorio'
 ```
 

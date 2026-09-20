@@ -45,7 +45,8 @@
     "dev:watch": "node scripts/dev/watch.mjs",
     "dev:contract": "node scripts/dev/contract.mjs",
     "dev:preflight": "node scripts/dev/preflight.mjs",
-    "dev:task": "node scripts/dev/task.mjs"
+    "dev:task": "node scripts/dev/task.mjs",
+    "change:ready": "node scripts/dev/change-readiness.mjs"
   },
   "dependencies": {
     "@autofactorio/contracts": "workspace:*",

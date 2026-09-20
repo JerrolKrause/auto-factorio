@@ -8,36 +8,22 @@ import type { TaskInput } from '../../packages/core/orchestration/coordinator.js
 import { entities } from '../../packages/storage/src/journal.js';
 import type { DashboardSnapshot } from './dashboard-types.js';
 import { validateWorkshopAssignment } from '@autofactorio/contracts';
-import type { ModelSelection } from '@autofactorio/contracts';
-import { WorkshopOrchestrator } from '../../packages/core/workshop/orchestrator.js';
-import type { WorkshopSessionState } from '../../packages/core/workshop/orchestrator.js';
-import { LearningService } from '../../packages/core/workshop/learning.js';
-import { BlueprintLibrary } from '../../packages/core/workshop/library.js';
-import { WorkshopRuntime } from '../../packages/core/workshop/runtime.js';
-import type { WorkshopRuntimeHost } from '../../packages/core/workshop/runtime.js';
-import { WorkshopUsageLedger } from '../../packages/core/workshop/usage.js';
+import { composeWorkshop } from './workshop-composition.js';
+import type { WorkshopCompositionOptions } from './workshop-composition.js';
 
 function record(value: unknown): Record<string, unknown> {
   if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('Expected object');
   return value as Record<string, unknown>;
 }
 const text = (v: unknown) => { if (typeof v !== 'string') throw new Error('Expected string'); return v; };
-export interface DashboardOptions { managedModels?: { id:string; displayName:string|null; efforts:string[] }[]; workshopBundleHash?:string; workshopHost?:WorkshopRuntimeHost&{close?:()=>void|Promise<void>} }
+export type DashboardOptions=WorkshopCompositionOptions;
 export function dashboard(operator: Operator, assets = path.resolve('apps/dashboard/dist'), options:DashboardOptions = {}) {
   const app = Fastify({ logger: false, bodyLimit: 4*1024*1024 });
   const capability = randomBytes(32).toString('hex');
   const streams = new Set<ServerResponse>();
   let origin = '';
   const runtime = operator.coordinator.runtime;
-  const workshop = new WorkshopOrchestrator(runtime.journal, () => runtime.context());
-  const learning = new LearningService(runtime.journal, () => runtime.context());
-  const usage = new WorkshopUsageLedger(runtime.journal, () => runtime.context());
-  const library = new BlueprintLibrary(path.join(runtime.directory,'blueprint-library'));
-  const available=():ModelSelection[]=>(options.managedModels??[]).flatMap(model=>model.efforts.map(reasoningEffort=>({provider:'openai',modelId:model.id,reasoningEffort})));
-  const sessions=()=>runtime.journal.list<WorkshopSessionState>(runtime.run,'workshopSessions');
-  options.workshopHost?.bindServices?.({library,learning,usage,sessions});
-  const workshopRuntime=options.workshopHost?new WorkshopRuntime(workshop,options.workshopHost,library,available,id=>options.workshopBundleHash??learning.pin(id).hash,sessions,entry=>{const publicEntry={...entry} as Partial<typeof entry>;delete publicEntry.directory;runtime.record('workshop/library-admitted',[{entity:'libraryEntries',id:entry.revisionHash,value:{...publicEntry}}]);}):null;
-  workshopRuntime?.recover();
+  const composition=composeWorkshop(runtime,options),workshop=composition.orchestrator,learning=composition.learning,library=composition.library,workshopRuntime=composition.controller;
   app.addHook('onRequest', async (request, reply) => {
     reply.header('Cache-Control', 'no-store').header('Referrer-Policy', 'no-referrer')
       .header('X-Content-Type-Options', 'nosniff').header('Content-Security-Policy', "default-src 'self'; script-src 'self'; style-src 'self'; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'");

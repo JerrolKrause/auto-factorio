@@ -1,0 +1,62 @@
+{
+  "version": 1,
+  "change": "change-application-reliability",
+  "lifecycle": "reviewed-clean",
+  "capabilities": ["external-effect-safety", "learning-integrity", "inference-budgeting", "production-composition", "change-closeout"],
+  "integrationBoundaries": ["provider-host", "host-game", "runtime-learning", "runtime-inference", "dashboard-runtime", "developer-contract"],
+  "slices": [
+    {"id": "external-effect-safety", "capabilities": ["external-effect-safety"], "integrationBoundaries": ["provider-host", "host-game"], "scenarios": ["S1"]},
+    {"id": "workshop-runtime-governance", "capabilities": ["learning-integrity", "inference-budgeting", "production-composition"], "integrationBoundaries": ["runtime-learning", "runtime-inference", "dashboard-runtime"], "scenarios": ["S2", "S3", "S4"]},
+    {"id": "deterministic-closeout", "capabilities": ["change-closeout"], "integrationBoundaries": ["developer-contract"], "scenarios": ["S5"]}
+  ],
+  "scenarios": [
+    {
+      "id": "S1",
+      "requirement": "Missing, malformed, contradictory and unconfirmed child receipts keep cancellation unknown.",
+      "entrypoint": {"kind": "production", "path": "packages/contracts/src/effects.ts"},
+      "effectful": true,
+      "negativeCases": ["missing receipt", "unknown receipt with no failure text", "terminal receipt with failures"],
+      "recovery": true,
+      "checks": [{"command": "corepack.cmd pnpm verify", "evidence": [".runtime/contracts/change-application-reliability-final-task-verification/verification-assignment-1789905860337-c4483b82/T1.log"]}]
+    },
+    {
+      "id": "S2",
+      "requirement": "Learning activation uses the exact cumulative effective bundle and control set.",
+      "entrypoint": {"kind": "production", "path": "packages/core/workshop/learning.ts"},
+      "effectful": false,
+      "checks": [{"command": "corepack.cmd pnpm verify", "evidence": [".runtime/contracts/change-application-reliability-final-task-verification/verification-assignment-1789905860337-c4483b82/T1.log"]}]
+    },
+    {
+      "id": "S3",
+      "requirement": "One aggregate admission owner partitions finite inference budgets and closes unknown finite-token owners.",
+      "entrypoint": {"kind": "production", "path": "packages/core/workshop/usage.ts"},
+      "effectful": true,
+      "negativeCases": ["duplicate invocation identity", "unknown finite-token usage", "exhausted reserved share"],
+      "recovery": true,
+      "checks": [{"command": "corepack.cmd pnpm verify", "evidence": [".runtime/contracts/change-application-reliability-final-task-verification/verification-assignment-1789905860337-c4483b82/T1.log"]}]
+    },
+    {
+      "id": "S4",
+      "requirement": "Dashboard, acceptance harness and live probe construct workshop services through composeWorkshop.",
+      "entrypoint": {"kind": "production", "path": "apps/runtime/workshop-composition.ts"},
+      "effectful": false,
+      "checks": [{"command": "corepack.cmd pnpm test:ui", "evidence": [".runtime/contracts/change-application-reliability-final-task-verification/verification-assignment-1789905860337-c4483b82/T2.log"]}]
+    },
+    {
+      "id": "S5",
+      "requirement": "Closeout requires unique vertical slices, real verifier evidence, source-matched contracts, checked tasks and handoff markers.",
+      "entrypoint": {"kind": "production", "path": "scripts/dev/change-readiness.mjs"},
+      "effectful": false,
+      "checks": [{"command": "corepack.cmd pnpm verify", "evidence": [".runtime/contracts/change-application-reliability-final-task-verification/verification-assignment-1789905860337-c4483b82/T1.log"]}]
+    }
+  ],
+  "contracts": {
+    "verification": {"assignment": ".runtime/contracts/change-application-reliability-final-task-verification/verification-assignment-1789905860337-c4483b82/assignment.json", "result": ".runtime/contracts/change-application-reliability-final-task-verification/verification-assignment-1789905860337-c4483b82/result.json"},
+    "review": {"assignment": ".runtime/contracts/change-application-reliability-final-review/review-assignment-1789905678029-968ed2cd/assignment.json", "result": ".runtime/contracts/change-application-reliability-final-review/review-assignment-1789905678029-968ed2cd/result.json"}
+  },
+  "closeout": {
+    "taskFile": "docs/change-readiness/change-application-reliability-tasks.md",
+    "handoffFile": "docs/IMPLEMENTATION_HANDOFF.md",
+    "requiredHandoffMarkers": ["change-application-reliability", "reviewed-clean", "verification-c4c0ae2e-b9ed-4d37-9dea-3ec3e73ad30b", "review-903b4334-7cb8-4525-9b1f-80b43ac33718"]
+  }
+}

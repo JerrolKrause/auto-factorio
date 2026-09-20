@@ -185,18 +185,18 @@ describe('correlated public lifecycle', () => {
   });
   it('correlates start/steer/interrupt and requires a terminal interruption event', async () => {
     const h = await harness(); await h.provider.steer('change'); h.budget.closeRun('stop'); await Promise.all(h.controls);
-    expect(await h.provider.interruptStatus()).toEqual({acknowledged:true,failures:[]});expect(h.provider.turn!.interrupt).toBe('unconfirmed'); expect(h.revoked()).toBe(true);
+    expect(await h.provider.interruptStatus()).toMatchObject({schema:1,outcome:'cancelled',failures:[]});expect(h.provider.turn!.interrupt).toBe('unconfirmed'); expect(h.revoked()).toBe(true);
     h.rpc.emit('turn/completed', { threadId: 's1', turn: { id: 'w1', status: 'interrupted' } });
     expect(h.provider.turn!.interrupt).toBe('confirmed'); expect(h.events.find(e => e.kind === 'steer/acknowledged')).toMatchObject({ role: 'engineer', session: 's1', turn: 'turn-1' });
     await expect(h.provider.start('retry', () => {})).rejects.toThrow('New transport');
   });
-  it('fences a turn cancelled before provider admission',async()=>{const rpc=new FakeRpc(),provider=new Provider('engineer',rpc,budgetHarness().budget,()=>{},()=>{},async()=>false);await provider.initialize();await provider.sessionStart('workspace');await provider.catalog(['autofactorio:observe']);expect(await provider.interruptStatus()).toEqual({acknowledged:true,failures:[]});await expect(provider.start('must not start',()=>{})).rejects.toThrow('cancelled before admission');expect(rpc.calls.filter(call=>call.method==='turn/start')).toHaveLength(0);});
-  it('returns one consistent confirmed receipt when reconciliation supersedes an interrupt RPC failure',async()=>{const h=await harness(true);h.rpc.replies['turn/interrupt']=new Error('lost acknowledgement');h.budget.closeRun('stop');await Promise.all(h.controls);expect(await h.provider.interruptStatus()).toEqual({acknowledged:true,failures:[]});});
+  it('fences a turn cancelled before provider admission',async()=>{const rpc=new FakeRpc(),provider=new Provider('engineer',rpc,budgetHarness().budget,()=>{},()=>{},async()=>false);await provider.initialize();await provider.sessionStart('workspace');await provider.catalog(['autofactorio:observe']);expect(await provider.interruptStatus()).toMatchObject({schema:1,outcome:'cancelled',failures:[]});await expect(provider.start('must not start',()=>{})).rejects.toThrow('cancelled before admission');expect(rpc.calls.filter(call=>call.method==='turn/start')).toHaveLength(0);});
+  it('returns one consistent confirmed receipt when reconciliation supersedes an interrupt RPC failure',async()=>{const h=await harness(true);h.rpc.replies['turn/interrupt']=new Error('lost acknowledgement');h.budget.closeRun('stop');await Promise.all(h.controls);expect(await h.provider.interruptStatus()).toMatchObject({schema:1,outcome:'cancelled',failures:[]});});
   it('retains late output, rejects late tools and exposes unconfirmed controls', async () => {
     const h = await harness(false); h.rpc.replies['turn/interrupt'] = new Error('timeout'); h.budget.closeRun('stop'); await Promise.all(h.controls);
     h.rpc.emit('item/agentMessage/delta', { threadId: 's1', turnId: 'w1', delta: 'late action' });
     expect(h.events.at(-1)).toMatchObject({ late: true, data: { delta: 'late action' } }); expect(h.budget.attempt('turn-1')).toBe(false);
-    expect(await h.provider.interruptStatus()).toMatchObject({acknowledged:false,failures:[expect.stringContaining('provider_interrupt:'),expect.stringContaining('provider_reconciliation:unconfirmed')]});expect(h.provider.turn!.cancellation).toBe('unconfirmed'); expect(h.provider.turn!.interrupt).toBe('unconfirmed');
+    expect(await h.provider.interruptStatus()).toMatchObject({schema:1,outcome:'unknown',failures:[expect.stringContaining('provider_interrupt:'),expect.stringContaining('provider_reconciliation:unconfirmed')]});expect(h.provider.turn!.cancellation).toBe('unconfirmed'); expect(h.provider.turn!.interrupt).toBe('unconfirmed');
   });
   it('resumes the same history using a replacement transport with spent budget intact', async () => {
     const h = await harness(); h.rpc.emit('turn/completed', { threadId: 's1', turn: { id: 'w1', status: 'completed' } }); h.provider.close();

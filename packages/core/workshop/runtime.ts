@@ -1,5 +1,5 @@
-import { resolveWorkshopModels, validateWorkshopAssignment } from '@autofactorio/contracts';
-import type { ModelSelection, WorkshopAssignment, WorkshopCandidateRef, WorkshopEvaluationReport, WorkshopScore } from '@autofactorio/contracts';
+import { normalizeEffectReceipt, resolveWorkshopModels, validateWorkshopAssignment } from '@autofactorio/contracts';
+import type { EffectReceipt, ModelSelection, WorkshopAssignment, WorkshopCandidateRef, WorkshopEvaluationReport, WorkshopScore } from '@autofactorio/contracts';
 import type { LibraryAdmission, LibraryEntry } from './library.js';
 import { BlueprintLibrary } from './library.js';
 import type { LearningService } from './learning.js';
@@ -8,14 +8,7 @@ import { WorkshopOrchestrator } from './orchestrator.js';
 import type { WorkshopUsageLedger } from './usage.js';
 
 export interface WorkshopRuntimeServices { library:BlueprintLibrary; learning:LearningService; usage:WorkshopUsageLedger; sessions:()=>WorkshopSessionState[] }
-export interface WorkshopCancellation { acknowledged:boolean; failures:string[] }
-export function normalizeWorkshopCancellation(value:unknown,source:string):WorkshopCancellation{
-  if(!value||typeof value!=='object')return{acknowledged:false,failures:[`${source}:missing_receipt`]};
-  const receipt=value as Partial<WorkshopCancellation>;if(typeof receipt.acknowledged!=='boolean'||!Array.isArray(receipt.failures)||receipt.failures.some(item=>typeof item!=='string'||!item.length))return{acknowledged:false,failures:[`${source}:malformed_receipt`]};
-  if(receipt.acknowledged&&receipt.failures.length===0)return{acknowledged:true,failures:[]};
-  if(receipt.acknowledged)return{acknowledged:false,failures:[`${source}:contradictory_receipt`,...receipt.failures]};
-  return{acknowledged:false,failures:receipt.failures.length?receipt.failures:[`${source}:unconfirmed_receipt`]};
-}
+export type WorkshopCancellation = EffectReceipt;
 
 export interface WorkshopRuntimeHost {
   bindServices?(services:WorkshopRuntimeServices):void;
@@ -47,8 +40,8 @@ export class WorkshopRuntime {
   resume(id:string):WorkshopSessionState{const session=this.orchestrator.get(id);if(['complete','stopped'].includes(session.stage))return session;if(session.stage==='checkpoint')throw new Error('Checkpoint unresolved');this.track(id);return session;}
   recover():void{for(const session of this.sessions())if(!['complete','held','stopped'].includes(session.stage))this.track(session.id);}
   pending(id:string):Promise<void>|undefined{return this.active.get(id);}
-  async stop(id:string,reason:string):Promise<WorkshopSessionState>{let cancellation:WorkshopCancellation;try{cancellation=this.cancellation(await this.host.cancel(id));}catch(error){cancellation={acknowledged:false,failures:[String(error)]};}if(!cancellation.acknowledged)return this.orchestrator.holdInFlight(id,`stop_cancellation_unconfirmed:${cancellation.failures.join('|')}`);return this.orchestrator.stop(id,reason);}
-  async close():Promise<void>{this.closing=true;for(const timer of this.timers.values())clearTimeout(timer);this.timers.clear();const active=[...this.active.keys()],cancellations=active.map(async id=>{try{return{id,result:this.cancellation(await this.host.cancel(id))};}catch(error){return{id,result:{acknowledged:false,failures:[String(error)]}};}});const results=await Promise.all(cancellations);for(const {id,result}of results){const session=this.orchestrator.get(id);if(!['complete','held','stopped'].includes(session.stage))this.orchestrator.holdInFlight(id,result.acknowledged?'runtime_closed_with_inflight_effect':`close_cancellation_unconfirmed:${result.failures.join('|')}`);}await Promise.allSettled(this.active.values());await this.host.close?.();}
+  async stop(id:string,reason:string):Promise<WorkshopSessionState>{let cancellation:WorkshopCancellation;try{cancellation=this.cancellation(await this.host.cancel(id),id);}catch(error){cancellation={schema:1,effectId:`workshop:${id}`,outcome:'unknown',failures:[String(error)]};}if(cancellation.outcome==='unknown')return this.orchestrator.holdInFlight(id,`stop_cancellation_unconfirmed:${cancellation.failures.join('|')}`);return this.orchestrator.stop(id,reason);}
+  async close():Promise<void>{this.closing=true;for(const timer of this.timers.values())clearTimeout(timer);this.timers.clear();const active=[...this.active.keys()],cancellations=active.map(async id=>{try{return{id,result:this.cancellation(await this.host.cancel(id),id)};}catch(error){return{id,result:{schema:1 as const,effectId:`workshop:${id}`,outcome:'unknown' as const,failures:[String(error)]}};}});const results=await Promise.all(cancellations);for(const {id,result}of results){const session=this.orchestrator.get(id);if(!['complete','held','stopped'].includes(session.stage))this.orchestrator.holdInFlight(id,result.outcome!=='unknown'?'runtime_closed_with_inflight_effect':`close_cancellation_unconfirmed:${result.failures.join('|')}`);}await Promise.allSettled(this.active.values());await this.host.close?.();}
   private sessions():WorkshopSessionState[]{return this.listSessions();}
   private track(id:string):void{if(this.closing)return;const session=this.orchestrator.get(id);const prior=this.timers.get(id);if(prior){clearTimeout(prior);this.timers.delete(id);}if(session.stage==='checkpoint'&&session.checkpoint){const delay=Math.max(0,Date.parse(session.checkpoint.deadline)-Date.now());const timer=setTimeout(()=>{this.timers.delete(id);if(this.orchestrator.timeout(id,new Date().toISOString())!=='waiting')this.enqueue(id);},Math.min(delay,2_147_483_647));timer.unref?.();this.timers.set(id,timer);return;}this.enqueue(id);}
   private enqueue(id:string):void{if(this.closing||this.active.has(id))return;const task=Promise.resolve().then(()=>this.run(id)).catch(error=>{const current=this.orchestrator.get(id);if(!['complete','held','stopped'].includes(current.stage)){const reason=String(error);if(reason.includes('Workshop effect outcome unknown'))this.orchestrator.hold(id,`workshop_runtime_held:${reason}`);else this.orchestrator.stop(id,`workshop_runtime_failed:${reason}`);}}).finally(()=>this.active.delete(id));this.active.set(id,task);}
@@ -82,5 +75,5 @@ export class WorkshopRuntime {
     }
   }
   private reconcile<T>(session:WorkshopSessionState,operationId:string):Promise<{resolved:true;value:T}|{resolved:false}>{return this.host.reconcile?.<T>(session,operationId)??Promise.resolve({resolved:false});}
-  private cancellation(value:unknown):WorkshopCancellation{return normalizeWorkshopCancellation(value,'workshop_cancellation');}
+  private cancellation(value:unknown,id:string):WorkshopCancellation{return normalizeEffectReceipt(value,`workshop:${id}`,'workshop_cancellation');}
 }

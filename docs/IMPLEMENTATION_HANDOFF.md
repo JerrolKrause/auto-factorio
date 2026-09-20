@@ -1,6 +1,14 @@
 # Implementation handoff
 
-## Current implementation — Blueprint workshop, 19 September 2026
+## Current implementation — Change-application reliability, 20 September 2026
+
+The blueprint workshop remains complete at commit `970303fc9346d58da9966699b1b8b6e7b0a2fb3b`. Its direct follow-up hardening adds shared strict external-effect receipts, canonical cumulative learning bundles, one aggregate inference-admission owner, a production workshop composition root and the deterministic `change:ready` closeout gate. The tracked [readiness manifest](change-readiness/change-application-reliability.json) is **reviewed-clean** for `change-application-reliability`; detailed causes and corrections are in the [blueprint workshop retrospective](retrospectives/af-blueprint-workshop.md).
+
+Final delegated verification `verification-c4c0ae2e-b9ed-4d37-9dea-3ec3e73ad30b` is valid, ready and source-matched. `corepack.cmd pnpm verify` passed both builds, lint, **424/424 tests in 24 files** and docs; `corepack.cmd pnpm test:ui` passed **3/3** flows; whitespace passed and `game:processes` returned `[]`. Independent review found **5 issues (1 P1, 4 P2); 5 fixed, 0 rejected, 0 remaining**. The final follow-up `review-903b4334-7cb8-4525-9b1f-80b43ac33718` is valid, ready and source-matched with no findings. No provider inference or Factorio launch was performed. Concurrent startup-path work was preserved and is outside this closeout.
+
+**Next bounded action:** commit this hardening only on instruction. No archive, commit, publish or push is included in this task.
+
+## Detailed blueprint workshop evidence — 19 September 2026
 
 [`af-blueprint-workshop`](../openspec/changes/archive/2026-09-19-af-blueprint-workshop/tasks.md) is implementation-complete, synced and archived on baseline `162a9a601e695d38a610203d3c0b15a00034db4f` plus the source included in this closeout commit. All 27 tasks are complete. It adds versioned workshop/model/score/learning contracts, installed-data profiles, canonical native blueprint and immutable library storage, isolated workshop Lua privileges, direct and legal-character construction, exact-window evaluation/scoring, durable runtime-owned orchestration and usage ownership, dashboard/API flows, and exact-bundle learning activation with a confined helper worker. The trusted host resolves brief, preset, existing-revision and authorized full-contract launches against running installed data, supplies the exact compatible parent to Improve, and derives library verification and useful-distinction evidence inside the runtime rather than accepting labels from HTTP. The local library remains separate from deferred automatic external-library use.
 

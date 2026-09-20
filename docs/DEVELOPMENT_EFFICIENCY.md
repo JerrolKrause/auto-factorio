@@ -6,6 +6,8 @@ These helpers reduce developer-session bookkeeping without reducing acceptance c
 
 Before crossing a new integration boundary, record the task/spec links, exact owned files, invariants, failure cases, acceptance commands, resource owner/cleanup and escalation condition. Sol/high owns milestones; Terra/medium handles clear bounded modules; Luna/medium handles routine verification and focused tests; Astra is reserved for consequential design or unfamiliar diagnosis. Missing requested models are blockers, never substitution or API-billing triggers.
 
+Changes spanning more than two capabilities or more than four integration boundaries require at least two independently accepted vertical slices. Assign each scenario to exactly one slice so duplicated slice records cannot satisfy the gate. Each slice names its production entrypoint, covered scenarios and acceptance commands. Effectful scenarios also name negative cases and recovery coverage. Fixture-only coverage cannot close a production scenario.
+
 A test-author packet adds stable interfaces, named test-file ownership, behavioral cases, forbidden side effects, a time/provider budget and the expected evidence. The parent integrates results rather than duplicating routine polling. Verification and review keep their dedicated contracts; reviewers inherit the authorized author model.
 
 ## Session discipline
@@ -15,6 +17,12 @@ Use `dev:usage` with an explicit root, interval and run mapping. A session plan 
 Run `dev:preflight` before experiment spending. Serialize game profiles, browsers and timeout-sensitive suites under one named owner. After the same unchanged failure occurs twice, return its exact command, signature, evidence and the next discriminating check before rerunning. Stabilize the source candidate before final verification/review; reuse evidence only when its declared dependencies remain unchanged.
 
 A compact handoff contains revision/fingerprints, current decisions, remaining criteria, evidence paths and exits, session-plan state, resource cleanup, limitations and one next bounded action.
+
+## Change readiness
+
+Copy [change-readiness.template.json](examples/change-readiness.template.json) into a task-owned path and fill its capabilities, boundaries, slices and scenario map before crossing the first integration boundary. Update the same manifest with verification/review contracts and closeout markers rather than maintaining a second status ledger.
+
+Run `corepack.cmd pnpm change:ready --input <manifest.json>` before closeout. The deterministic gate requires each production entrypoint in the verification source, each scenario command and existing evidence path in a passing verification check, negative/recovery cases for effects, completed task checkboxes, matching handoff markers, and ready source-matched verification and review contracts. Its lifecycle is `candidate -> verified -> reviewed-with-findings -> corrected -> reverified -> reviewed-clean -> closable`; use `final` only after `reviewed-clean`. `--render-handoff` emits a compact status block. Detailed review history belongs in `docs/retrospectives/`, not the current handoff entry.
 
 ## No-inference worked example
 

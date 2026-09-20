@@ -1,0 +1,37 @@
+{
+  "version": 1,
+  "change": "replace-with-change-name",
+  "lifecycle": "candidate",
+  "capabilities": ["capability-name"],
+  "integrationBoundaries": ["production-composition", "external-effect"],
+  "slices": [
+    {
+      "id": "vertical-slice-1",
+      "capabilities": ["capability-name"],
+      "integrationBoundaries": ["production-composition", "external-effect"],
+      "scenarios": ["S1"]
+    }
+  ],
+  "scenarios": [
+    {
+      "id": "S1",
+      "requirement": "Describe the observable behavior",
+      "entrypoint": { "kind": "production", "path": "path/to/production-entrypoint.ts" },
+      "effectful": true,
+      "negativeCases": ["lost acknowledgement", "cancellation during admission"],
+      "recovery": true,
+      "checks": [
+        { "command": "exact acceptance command", "evidence": ["evidence/path"] }
+      ]
+    }
+  ],
+  "contracts": {
+    "verification": { "assignment": ".runtime/contracts/verification/assignment.json", "result": ".runtime/contracts/verification/result.json" },
+    "review": { "assignment": ".runtime/contracts/review/assignment.json", "result": ".runtime/contracts/review/result.json" }
+  },
+  "closeout": {
+    "taskFile": "path/to/tasks.md",
+    "handoffFile": "docs/IMPLEMENTATION_HANDOFF.md",
+    "requiredHandoffMarkers": ["replace-with-change-name", "reviewed-clean", "verification-assignment-id", "review-assignment-id"]
+  }
+}

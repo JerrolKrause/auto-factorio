@@ -1,4 +1,4 @@
-import { validateWorkshopAssignment } from '@autofactorio/contracts';
+import { effectReceipt, validateWorkshopAssignment } from '@autofactorio/contracts';
 import type { WorkshopAssignment, WorkshopEvaluationReport, WorkshopScore } from '@autofactorio/contracts';
 import type { WorkshopRuntimeHost } from '../../packages/core/workshop/runtime.js';
 
@@ -16,7 +16,7 @@ export const workshopHostFixture:WorkshopRuntimeHost={
   async finalization(){return{admission:null,learningRequired:true};},
   async prepareLearning(){return{activationRequired:true};},
   async activateLearning(){},
-  cancel(){return{acknowledged:true,failures:[]};},
+  cancel(sessionId){return effectReceipt(`workshop:${sessionId}`,'cancelled');},
 };
 
 export type ResolvedWorkshopFixture=WorkshopAssignment;

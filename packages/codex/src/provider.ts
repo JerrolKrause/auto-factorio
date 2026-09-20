@@ -3,10 +3,9 @@ import { object, string } from './protocol.js';
 import type { RpcPort, Sink } from './protocol.js';
 import { checkAllowance, discover } from './preflight.js';
 import type { Budget, TurnBudget } from './budget.js';
-import type { ModelSelection } from '@autofactorio/contracts';
+import { effectReceipt } from '@autofactorio/contracts';
+import type { EffectReceipt, ModelSelection } from '@autofactorio/contracts';
 import { DEFAULT_MANAGED_SELECTION } from './preflight.js';
-
-export interface ProviderCancellation { acknowledged:boolean; failures:string[] }
 
 /** One transport/credential generation per turn. Resume uses a replacement instance. */
 export class Provider {
@@ -16,7 +15,7 @@ export class Provider {
   private used = false;
   private sessionVerified = false;
   private catalogVerified = false;
-  private interruption: Promise<ProviderCancellation> | null = null;
+  private interruption: Promise<EffectReceipt> | null = null;
   private interrupted = false;
   private readonly unsubscribe;
   constructor(readonly role: string, private readonly rpc: RpcPort, private readonly budget: Budget, private readonly sink: Sink,
@@ -94,16 +93,17 @@ export class Provider {
     catch (error) { this.emit('steer/unconfirmed', { error: String(error) }); throw error; }
   }
   async interrupt(): Promise<void> { await this.interruptStatus(); }
-  interruptStatus(): Promise<ProviderCancellation> {
+  interruptStatus(): Promise<EffectReceipt> {
     this.interruption ??= Promise.resolve().then(()=>this.performInterrupt());
     return this.interruption;
   }
-  private async performInterrupt(): Promise<ProviderCancellation> {
+  private async performInterrupt(): Promise<EffectReceipt> {
     this.interrupted = true;
     this.revoke();
-    if (!this.turn) return { acknowledged:true, failures:[] };
+    const effectId = `provider:${this.session ?? this.role}`;
+    if (!this.turn) return effectReceipt(effectId, 'cancelled');
     if (!this.turn.closed && !this.turn.finished) this.budget.closeTurn(this.turn, 'operator_interrupt');
-    if (this.turn.finished) return { acknowledged:true, failures:[] };
+    if (this.turn.finished) return effectReceipt(effectId, 'completed');
     const failures:string[]=[];
     if (this.wireTurn && this.session && !this.turn.finished) {
       try { await this.rpc.call('turn/interrupt', { threadId: this.session, turnId: this.wireTurn }); this.emit('interrupt/acknowledged', { confirmedCompletion: false }); }
@@ -114,7 +114,8 @@ export class Provider {
     const deadline=Date.now()+1000;while(!this.turn.finished&&this.turn.cancellation!=='confirmed'&&Date.now()<deadline)await delay(25);
     const acknowledged=this.turn.finished||this.turn.cancellation==='confirmed';if(!acknowledged&&reconciliationFailed)failures.push('provider_reconciliation:unconfirmed');if(!acknowledged&&!failures.length)failures.push('provider_cancellation:unconfirmed');
     this.emit('cancellation/status', { status: this.turn.cancellation });
-    return { acknowledged, failures:acknowledged?[]:failures };
+    if (acknowledged) return effectReceipt(effectId, this.turn.finished ? 'completed' : 'cancelled');
+    return { schema: 1, effectId, outcome: 'unknown', failures };
   }
   private event(method: string, value: unknown): void {
     const late = this.turn?.closed === true || this.turn?.finished === true;
