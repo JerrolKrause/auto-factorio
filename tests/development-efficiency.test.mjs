@@ -176,13 +176,15 @@ describe('task routing and preview-first launch', () => {
 
   it('launches once with safe argv after discovery and records uncertain outcomes', async () => {
     const root = await temp('af-task-'); await mkdir(path.join(root, '.runtime')); const file = path.join(root, 'tasks.md'); await writeFile(file, markdown(false)); const calls = [];
-    const result = await selectTask({ tasksFile: file, taskId: '1.1', root, start: true, model: 'gpt-5.6-sol', reason: 'broader ownership' }, { discover: async () => ({ authentication: 'chatgpt', model: 'gpt-5.6-sol', effort: 'medium' }), launch: (script, args) => { calls.push({ script, args }); return { pid: null, unref() {} }; } });
+    const admission = { plan: { version: 1, objective: 'Legacy author-start fixture', sessions: { author: 'fixture-author', workers: [], runs: [] }, startTime: new Date().toISOString(), checkpointCadenceMs: 30000, limits: [{ unit: 'wallMs', value: 60000, closeoutReserve: 5000 }] }, usageReport: { sessions: [{ sessionId: 'fixture-author' }], usage: { input: 0, cachedInput: 0, output: 0, reasoning: 0 }, coverage: { complete: false, aggregate: false } }, unknownAlternative: { reason: 'No real usage in injected launch fixture; one bounded admission', maxAdmissions: 1, deadlineMs: Date.now() + 60000 } };
+    const result = await selectTask({ tasksFile: file, taskId: '1.1', root, start: true, model: 'gpt-5.6-sol', reason: 'broader ownership', ...admission }, { discover: async () => ({ authentication: 'chatgpt', model: 'gpt-5.6-sol', effort: 'medium' }), launch: (script, args) => { calls.push({ script, args }); return { pid: null, unref() {} }; } });
     expect(calls).toHaveLength(1); expect(calls[0].args).toEqual(expect.arrayContaining(['-Model', 'gpt-5.6-sol', '-Effort', 'medium'])); expect(result.launchOutcome).toBe('unknown');
   });
 
   it('refuses a task source change between discovery and launch', async () => {
     const root = await temp('af-task-'); await mkdir(path.join(root, '.runtime')); const file = path.join(root, 'tasks.md'); await writeFile(file, markdown(false)); let launched = false;
-    await expect(selectTask({ tasksFile: file, taskId: '1.1', root, start: true }, { discover: async () => { await writeFile(file, `${markdown(false)}\nchanged`); return { authentication: 'chatgpt' }; }, launch: () => { launched = true; return { pid: 1 }; } })).rejects.toThrow('source changed');
+    const admission = { plan: { version: 1, objective: 'Legacy stale-source fixture', sessions: { author: 'fixture-author', workers: [], runs: [] }, startTime: new Date().toISOString(), checkpointCadenceMs: 30000, limits: [{ unit: 'wallMs', value: 60000, closeoutReserve: 5000 }] }, usageReport: { sessions: [{ sessionId: 'fixture-author' }], usage: { input: 0, cachedInput: 0, output: 0, reasoning: 0 }, coverage: { complete: false, aggregate: false } }, unknownAlternative: { reason: 'No real usage in injected discovery fixture; one bounded admission', maxAdmissions: 1, deadlineMs: Date.now() + 60000 } };
+    await expect(selectTask({ tasksFile: file, taskId: '1.1', root, start: true, ...admission }, { discover: async () => { await writeFile(file, `${markdown(false)}\nchanged`); return { authentication: 'chatgpt' }; }, launch: () => { launched = true; return { pid: 1 }; } })).rejects.toThrow('source changed');
     expect(launched).toBe(false);
   });
 

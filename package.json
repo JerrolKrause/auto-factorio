@@ -47,7 +47,9 @@
     "dev:contract": "node scripts/dev/contract.mjs",
     "dev:preflight": "node scripts/dev/preflight.mjs",
     "dev:task": "node scripts/dev/task.mjs",
-    "change:ready": "node scripts/dev/change-readiness.mjs"
+    "change:ready": "node scripts/dev/change-readiness.mjs",
+    "dev:report": "node scripts/dev/events.mjs",
+    "dev:verify": "node scripts/dev/verification.mjs"
   },
   "dependencies": {
     "@autofactorio/contracts": "workspace:*",
@@ -57,6 +59,7 @@
     "react-dom": "19.3.0"
   },
   "devDependencies": {
+    "@fission-ai/openspec": "1.13.1",
     "@playwright/test": "1.63.0",
     "@types/better-sqlite3": "9.6.0",
     "@types/node": "24.13.4",

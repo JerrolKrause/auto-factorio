@@ -30,6 +30,8 @@ Evaluate findings rather than accepting them automatically. Fix verified issues;
 
 No findings is valid. Never manufacture issues, inflate severity or prolong review to reach a finding count. Report unverified risks separately from confirmed defects.
 
+Retain original reviewer JSON unchanged with hash-pinned finding/adjudication records using the [review ledger](../../../docs/DEVELOPMENT_EFFICIENCY.md). Link refinements to original finding/invariant IDs and count them once. Fix-only review names retained unaffected coverage and verifies unchanged hashes. Two unsuccessful corrections to the same invariant require a bounded diagnosis packet and an executed discriminating check before another admission, even when symptoms change. Do not reset the shared plan or force compaction to continue.
+
 ## Verify and close out
 
 After fixes, run affected checks and the required integrated gate. Reuse earlier game/provider evidence only when changed paths cannot invalidate it, and state that boundary. Preserve actual commands, results and evidence references in the handoff.

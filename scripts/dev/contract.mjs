@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { mkdir, readFile, realpath, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { checkSource, validateContract } from '../check-agent-contract.mjs';
+import { checkSource, checkResultEvidence, validateContract } from '../check-agent-contract.mjs';
 import { boundedJson, createEvidenceDirectory, safeRuntimePath, sha256, workspaceRoot, writeNewJson } from './safe-artifacts.mjs';
 
 const relative = value => typeof value === 'string' && value.length > 0 && !value.includes('\\') && !value.includes(':') && !value.startsWith('/') && value.split('/').every(part => part && part !== '.' && part !== '..');
@@ -23,7 +23,7 @@ async function fingerprint(root, filename) {
 
 export async function prepareContract(input, root = process.cwd()) {
   const base = await workspaceRoot(root);
-  const allowed = ['role', 'objective', 'criteria', 'revision', 'sourcePaths', 'scope', 'checks', 'allowedActions', 'additionalChecks', 'resources', 'budget', 'stopConditions', 'returnConditions', 'outputRoot'];
+  const allowed = ['version', 'execution', 'role', 'objective', 'criteria', 'revision', 'sourcePaths', 'scope', 'checks', 'allowedActions', 'additionalChecks', 'resources', 'budget', 'stopConditions', 'returnConditions', 'outputRoot'];
   for (const key of Object.keys(input)) if (!allowed.includes(key)) throw new Error(`unknown input field: ${key}`);
   if (!['verification', 'review'].includes(input.role)) throw new Error('role must be verification or review');
   if (!Array.isArray(input.sourcePaths) || input.sourcePaths.length === 0) throw new Error('sourcePaths must not be empty');
@@ -37,7 +37,8 @@ export async function prepareContract(input, root = process.cwd()) {
     snapshots.push({ path: file.path, snapshot: path.relative(base, target).split(path.sep).join('/'), sha256: file.sha256 });
   }
   const assignment = {
-    version: 1,
+    version: input.version ?? 1,
+    ...(input.version === 2 ? { execution: input.execution ?? null } : {}),
     assignmentId: `${input.role}-${randomUUID()}`,
     role: input.role,
     objective: input.objective,
@@ -66,14 +67,15 @@ export async function prepareContract(input, root = process.cwd()) {
 export async function summarizeContract(assignment, result, root = process.cwd()) {
   const validation = validateContract(assignment, result);
   const sourceErrors = validation.valid ? await checkSource(assignment, root) : [];
+  const evidenceErrors = validation.valid ? await checkResultEvidence(assignment, result, root) : [];
   return {
     version: 1,
     assignmentId: assignment.assignmentId ?? null,
     role: assignment.role ?? null,
     structurallyValid: validation.valid,
-    ready: validation.ready === true && sourceErrors.length === 0,
+    ready: validation.ready === true && sourceErrors.length === 0 && evidenceErrors.length === 0,
     errors: validation.errors,
-    readinessGaps: [...validation.readinessErrors, ...sourceErrors],
+    readinessGaps: [...validation.readinessErrors, ...sourceErrors, ...evidenceErrors],
     findings: Array.isArray(result?.findings) ? result.findings : [],
     criteria: Array.isArray(result?.criteria) ? result.criteria : [],
     sourceStable: result?.source?.stable ?? null,

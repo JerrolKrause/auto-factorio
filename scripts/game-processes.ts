@@ -1,9 +1,17 @@
 ﻿import path from 'node:path';
-import { readFile } from 'node:fs/promises';
-import { listProjectProcesses, stopProfile, ownedPath, readProfile } from './dev/game-processes.js';
+import { readFile, writeFile } from 'node:fs/promises';
+import { listProjectProcesses, stopProfile, stopOwnedRoot, ownedPath, readProfile, runtimeOutputPath } from './dev/game-processes.js';
+const resultIndex=process.argv.indexOf('--result-file');
+const resultFile=resultIndex>=0?await runtimeOutputPath(process.argv[resultIndex+1]!):undefined;
 try {
   const stop = process.argv.indexOf('--stop-profile'); const file = process.argv.indexOf('--stop-profile-file'); const observerFile=process.argv.indexOf('--stop-observer-profile-file');
-  if (stop >= 0 || file >= 0 || observerFile >= 0) {
+  const ownedRoot=process.argv.indexOf('--stop-owned-root');
+  if(ownedRoot>=0){
+    // The runner supplies one unique assignment-owned profile root, including any
+    // restore children. This never grants authority over the whole runtime tree.
+    const stopped=await stopOwnedRoot(process.argv[ownedRoot+1]!);
+    console.log(JSON.stringify({stopped}));
+  } else if (stop >= 0 || file >= 0 || observerFile >= 0) {
     let config: string;
     if(observerFile>=0){
       const descriptor=JSON.parse(await readFile(await ownedPath(process.argv[observerFile+1]!),'utf8')) as {dir?:string};
@@ -20,4 +28,5 @@ try {
       console.log(JSON.stringify({ stopped: await stopProfile(path.resolve(config)) }));
     }
   } else console.log(JSON.stringify(await listProjectProcesses(), null, 2));
+  if(resultFile)await writeFile(resultFile,JSON.stringify({completed:true}));
 } catch (error) { console.error(error instanceof Error ? error.message : 'Process command failed'); process.exitCode = 1; }

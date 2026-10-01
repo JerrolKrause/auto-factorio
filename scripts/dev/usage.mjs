@@ -38,8 +38,9 @@ function meta(record, fallback) {
   if (record.type !== 'session_meta' && payload.type !== 'session_meta' && !payload.sessionId && !payload.threadId) return null;
   return {
     id: first(payload.id, payload.sessionId, payload.threadId, record.sessionId, fallback),
-    parentId: first(payload.parentId, payload.parent_id, payload.parentThreadId, payload.parent_thread_id, null),
+    parentId: first(payload.parentId, payload.parent_id, payload.parentThreadId, payload.parent_thread_id, payload.source?.subagent?.thread_spawn?.parent_thread_id, null),
     model: first(payload.model, record.model, null),
+    effort: first(payload.effort, payload.reasoning_effort, null),
   };
 }
 
@@ -66,98 +67,162 @@ function usageSample(record, sessionId, line) {
   };
 }
 
+/** Never follow rollout symlinks into another operator's session tree. */
+async function rolloutFiles(directory) {
+  const files = [];
+  for (const entry of (await readdir(directory, { withFileTypes: true })).sort((a, b) => a.name.localeCompare(b.name))) {
+    const file = path.join(directory, entry.name);
+    if (entry.isDirectory()) files.push(...await rolloutFiles(file));
+    else if (entry.isFile() && entry.name.endsWith('.jsonl')) files.push(file);
+  }
+  return files;
+}
+
 export async function reportUsage({ rolloutDirectory, rootSessionId, start, cutoff, mappings = [], rates, account, plan }) {
-  const entries = (await readdir(rolloutDirectory, { withFileTypes: true })).filter(entry => entry.isFile() && entry.name.endsWith('.jsonl'));
-  const sessions = new Map(); const allSamples = []; const gaps = [];
-  for (const entry of entries) {
-    const file = path.join(rolloutDirectory, entry.name);
-    const parsed = await jsonl(file); gaps.push(...parsed.gaps);
-    const fallback = path.basename(entry.name, '.jsonl');
-    let sessionId = fallback;
+  const sessions = new Map(); const fileGaps = new Map(); const allSamples = [];
+  for (const file of await rolloutFiles(rolloutDirectory)) {
+    const parsed = await jsonl(file); const fallback = path.basename(file, '.jsonl');
+    let sessionId = fallback; let context = {}; let changedModel = false;
     for (const row of parsed.records) {
       const found = meta(row.value, fallback);
-      if (found?.id) { sessionId = found.id; sessions.set(found.id, { ...found, file: entry.name }); }
+      if (found?.id) {
+        sessionId = found.id;
+        const old = sessions.get(sessionId);
+        if (old && old.parentId !== found.parentId) throw new Error('conflicting session ancestry');
+        sessions.set(sessionId, { ...found, file: path.relative(rolloutDirectory, file) });
+        context = { model: found.model, effort: found.effort };
+      }
+      if (row.value.type === 'turn_context') {
+        const value = row.value.payload ?? row.value;
+        const nextModel = value.model ?? context.model;
+        changedModel ||= !!context.model && nextModel !== context.model;
+        context = { model: nextModel, effort: value.effort ?? value.reasoning_effort ?? null };
+      }
       const sample = usageSample(row.value, sessionId, row.line);
-      if (sample) allSamples.push(sample);
+      if (sample) {
+        allSamples.push({ ...sample, model: sample.model ?? context.model ?? null, effort: context.effort ?? null, changedModel });
+        changedModel = false;
+      }
     }
-    if (!sessions.has(sessionId)) sessions.set(sessionId, { id: sessionId, parentId: null, model: null, file: entry.name });
+    if (!sessions.has(sessionId)) sessions.set(sessionId, { id: sessionId, parentId: null, model: null });
+    fileGaps.set(sessionId, [...(fileGaps.get(sessionId) ?? []), ...parsed.gaps]);
   }
-  const selected = new Set([rootSessionId]);
+  const selected = new Set([rootSessionId]); const gaps = []; const attributionGaps = [];
+  for (const mapping of mappings) {
+    if (!mapping.runId || !mapping.sessionId) gaps.push({ code: 'invalid-run-mapping' });
+    else selected.add(mapping.sessionId);
+  }
+  // Expand only proven ancestry, including descendants of explicitly mapped runs.
   let changed = true;
   while (changed) {
     changed = false;
     for (const session of sessions.values()) if (selected.has(session.parentId) && !selected.has(session.id)) { selected.add(session.id); changed = true; }
   }
-  for (const mapping of mappings) {
-    if (!mapping.runId || !mapping.sessionId) { gaps.push({ code: 'invalid-run-mapping' }); continue; }
-    selected.add(mapping.sessionId);
-  }
   if (!sessions.has(rootSessionId)) gaps.push({ code: 'missing-root-session', sessionId: rootSessionId });
-  for (const id of selected) if (!sessions.has(id)) gaps.push({ code: 'missing-mapped-session', sessionId: id });
   const from = start ? Date.parse(start) : -Infinity; const to = cutoff ? Date.parse(cutoff) : Infinity;
   if (Number.isNaN(from) || Number.isNaN(to) || from > to) throw new Error('invalid usage interval');
-  let total = zero(); const responseKeys = new Set(); const sessionReports = [];
+  let total = zero(); const sessionReports = [];
   for (const id of selected) {
-    const samples = allSamples.filter(sample => sample.sessionId === id).sort((a, b) => Date.parse(a.at ?? 0) - Date.parse(b.at ?? 0) || a.line - b.line);
-    let perTotal = zero(); let compaction = zero(); let hasPer = false; let lastCumulative = null; let baseline = null; let reset = false; const compactionFlags = new Set();
+    const localGaps = [...(fileGaps.get(id) ?? [])]; const localAttribution = [];
+    const gap = (code, detail = {}) => { if (!localGaps.some(row => row.code === code)) localGaps.push({ code, sessionId: id, ...detail }); };
+    const allocationGap = code => { if (!localAttribution.some(row => row.code === code)) localAttribution.push({ code, sessionId: id }); };
+    if (!sessions.has(id)) gap('missing-mapped-session');
+    const samples = allSamples.filter(sample => sample.sessionId === id).sort((a, b) => (Date.parse(a.at ?? 0) || 0) - (Date.parse(b.at ?? 0) || 0) || a.line - b.line);
+    let perTotal = zero(); let compaction = zero(); let lastCumulative = null; let baseline = null; let reset = false; let missingId = false;
+    const responses = new Map(); const compactKeys = new Map(); const allocations = new Map(); const cumulativeAllocations = new Map();
+    const allocate = (sample, value, bucket = allocations) => {
+      const key = JSON.stringify([sample.model ?? null, sample.effort ?? null, sample.tier ?? null]);
+      const old = bucket.get(key);
+      bucket.set(key, { model: sample.model ?? null, effort: sample.effort ?? null, tier: sample.tier ?? null, usage: add(old?.usage ?? zero(), value) });
+    };
     for (const sample of samples) {
       const at = sample.at ? Date.parse(sample.at) : NaN;
+      if ((Number.isFinite(from) || Number.isFinite(to)) && (!sample.at || Number.isNaN(at))) { if (sample.cumulative) gap('missing-cumulative-timestamp'); if (sample.per) gap('missing-response-timestamp'); if (sample.compact) gap('missing-compaction-timestamp'); continue; }
+      if (at > to) continue;
       if (sample.cumulative) {
-        if ((Number.isFinite(from) || Number.isFinite(to)) && (!sample.at || Number.isNaN(at))) gaps.push({ code: 'missing-cumulative-timestamp', sessionId: id, line: sample.line });
+        if (!validTokens(sample.cumulative)) gap('invalid-token-subsets');
         else {
-          if (!sample.at || at <= from) baseline = sample.cumulative;
-          if (!sample.at || at <= to) {
-            if (lastCumulative && Object.keys(lastCumulative).some(key => sample.cumulative[key] < lastCumulative[key])) reset = true;
-            lastCumulative = sample.cumulative;
-          }
+          if (lastCumulative && Object.keys(lastCumulative).some(key => sample.cumulative[key] < lastCumulative[key])) reset = true;
+          const delta = subtract(sample.cumulative, lastCumulative ?? zero());
+          if (!(at <= from) && validTokens(delta)) allocate(sample.changedModel ? { ...sample, model: null, effort: null, tier: null } : sample, delta, cumulativeAllocations);
+          lastCumulative = sample.cumulative;
+          if (at <= from) baseline = sample.cumulative;
         }
       }
-      if (sample.at && (at < from || at > to)) continue;
+      if (at < from) continue;
       if (sample.per) {
-        if ((Number.isFinite(from) || Number.isFinite(to)) && (!sample.at || Number.isNaN(at))) { gaps.push({ code: 'missing-response-timestamp', sessionId: id, line: sample.line }); continue; }
-        if (!validTokens(sample.per)) { gaps.push({ code: 'invalid-token-subsets', sessionId: id, line: sample.line }); continue; }
-        if (!sample.responseId) { gaps.push({ code: 'missing-response-identity', sessionId: id, line: sample.line }); continue; }
-        const key = `${id}:${sample.responseId}`;
-        if (responseKeys.has(key)) continue;
-        responseKeys.add(key); perTotal = add(perTotal, sample.per); hasPer = true;
+        if ((Number.isFinite(from) || Number.isFinite(to)) && (!sample.at || Number.isNaN(at))) { gap('missing-response-timestamp'); continue; }
+        if (!validTokens(sample.per)) { gap('invalid-token-subsets'); continue; }
+        if (!sample.responseId) { missingId = true; allocationGap('missing-response-identity'); }
+        else {
+          const prior = responses.get(sample.responseId);
+          if (prior && JSON.stringify(prior) !== JSON.stringify(sample.per)) gap('conflicting-response-usage');
+          if (!prior) { responses.set(sample.responseId, sample.per); perTotal = add(perTotal, sample.per); allocate(sample, sample.per); }
+        }
       }
       if (sample.compact) {
-        if ((Number.isFinite(from) || Number.isFinite(to)) && (!sample.at || Number.isNaN(at))) { gaps.push({ code: 'missing-compaction-timestamp', sessionId: id, line: sample.line }); continue; }
-        if (validTokens(sample.compact)) compaction = add(compaction, sample.compact);
-        else gaps.push({ code: 'invalid-compaction-usage', sessionId: id, line: sample.line });
-        if (typeof sample.compactInCumulative === 'boolean') compactionFlags.add(sample.compactInCumulative);
+        if (!validTokens(sample.compact)) gap('invalid-compaction-usage');
+        else {
+          const key = sample.responseId ?? sample.at ?? `line-${sample.line}`;
+          if (!sample.responseId && !sample.at) gap('missing-compaction-identity');
+          const value = { usage: sample.compact, included: sample.compactInCumulative };
+          const prior = compactKeys.get(key);
+          if (prior && JSON.stringify(prior) !== JSON.stringify(value)) gap('conflicting-compaction-usage');
+          if (!prior) { compactKeys.set(key, value); compaction = add(compaction, sample.compact); }
+          if (prior && prior.included !== value.included) gap('conflicting-compaction-inclusion');
+        }
       }
     }
-    if (reset) gaps.push({ code: 'cumulative-counter-reset', sessionId: id });
-    let cumulativeInterval = null;
-    if (lastCumulative && validTokens(lastCumulative)) {
-      if (Number.isFinite(from)) {
-        if (baseline && validTokens(baseline)) cumulativeInterval = subtract(lastCumulative, baseline);
-        else gaps.push({ code: 'missing-interval-baseline', sessionId: id });
-      } else cumulativeInterval = lastCumulative;
+    if (reset) gap('cumulative-counter-reset');
+    let cumulativeInterval = lastCumulative;
+    if (Number.isFinite(from)) {
+      if (baseline && lastCumulative) cumulativeInterval = subtract(lastCumulative, baseline);
+      else { cumulativeInterval = null; if (lastCumulative) gap('missing-interval-baseline'); }
     }
-    let chosen;
-    if (hasPer) {
-      chosen = add(perTotal, compaction);
-      if (cumulativeInterval && Object.keys(chosen).some(key => chosen[key] !== cumulativeInterval[key]))
-        gaps.push({ code: 'representation-disagreement', sessionId: id, response: chosen, cumulative: cumulativeInterval });
-    } else if (cumulativeInterval) {
-      chosen = cumulativeInterval;
-      const hasCompaction = Object.values(compaction).some(value => value > 0);
-      if (hasCompaction && compactionFlags.size > 1) gaps.push({ code: 'conflicting-compaction-inclusion', sessionId: id });
-      else if (hasCompaction && compactionFlags.has(false)) chosen = add(chosen, compaction);
-      else if (hasCompaction && !compactionFlags.has(true)) gaps.push({ code: 'compaction-inclusion-unknown', sessionId: id });
+    if (cumulativeInterval && !validTokens(cumulativeInterval)) { gap('invalid-cumulative-interval'); cumulativeInterval = null; }
+    const hasPer = responses.size > 0;
+    if (!hasPer && cumulativeInterval) allocationGap('missing-response-identity');
+    let chosen = zero(); let representation = 'unknown';
+    if (hasPer && !missingId) { chosen = add(perTotal, compaction); representation = 'responses'; }
+    else if (cumulativeInterval) {
+      chosen = cumulativeInterval; representation = 'cumulative';
+      if (Object.values(compaction).some(value => value > 0)) {
+        for (const item of compactKeys.values()) {
+          if (item.included === false) chosen = add(chosen, item.usage);
+          else if (item.included !== true) gap('compaction-inclusion-unknown');
+        }
+      }
+    } else if (hasPer) { chosen = add(perTotal, compaction); representation = 'responses'; gap('incomplete-response-aggregate'); }
+    else gap('missing-usage');
+    if (missingId && !cumulativeInterval) gap('missing-response-identity');
+    if (hasPer && cumulativeInterval && !missingId && Object.keys(chosen).some(key => chosen[key] !== cumulativeInterval[key])) gap('representation-disagreement', { response: chosen, cumulative: cumulativeInterval });
+    // Even incomplete response attribution can disprove an aggregate endpoint.
+    if (hasPer && cumulativeInterval && missingId && Object.keys(perTotal).some(key => perTotal[key] > cumulativeInterval[key])) gap('representation-disagreement', { responseSubset: perTotal, cumulative: cumulativeInterval });
+    const models = [...new Set(samples.map(row => row.model).filter(Boolean))];
+    const efforts = [...new Set(samples.map(row => row.effort).filter(Boolean))];
+    // Cumulative endpoints establish totals, not the location of a model switch.
+    // Preserve the aggregate and put unsupported allocation in an explicit bucket.
+    let breakdown = [...allocations.values()];
+    if (representation === 'cumulative' && !reset && !Object.values(compaction).some(value => value > 0)) {
+      breakdown = [...cumulativeAllocations.values()];
+      if (breakdown.some(row => row.model === null)) allocationGap('model-allocation-unknown');
+    } else if (Object.values(compaction).some(value => value > 0) || reset || representation === 'unknown') {
+      const model = models.length === 1 && !reset ? models[0] : null; const effort = efforts.length === 1 ? efforts[0] : null;
+      breakdown = [{ model, effort, tier: null, usage: chosen }];
+      if (!model) allocationGap('model-allocation-unknown');
     }
-    else { chosen = zero(); gaps.push({ code: 'missing-usage', sessionId: id }); }
-    total = add(total, chosen);
-    sessionReports.push({ sessionId: id, relation: id === rootSessionId ? 'root' : mappings.some(row => row.sessionId === id) ? 'mapped-run' : 'descendant', model: sessions.get(id)?.model ?? samples.find(row => row.model)?.model ?? null, tier: samples.find(row => row.tier)?.tier ?? null, usage: chosen, representation: hasPer ? 'responses' : cumulativeInterval ? 'cumulative' : 'unknown' });
+    if (models.length === 0) allocationGap('model-allocation-unknown');
+    allocationGap('phase-allocation-unavailable');
+    gaps.push(...localGaps); attributionGaps.push(...localAttribution); total = add(total, chosen);
+    sessionReports.push({ sessionId: id, relation: id === rootSessionId ? 'root' : mappings.some(row => row.sessionId === id) ? 'mapped-run' : 'descendant', model: models.length === 1 ? models[0] : null, effort: efforts.length === 1 ? efforts[0] : null, tier: samples.find(row => row.tier)?.tier ?? null, usage: chosen, representation, breakdown, aggregateComplete: localGaps.length === 0 });
   }
   const report = {
-    version: 1, interval: { start: start ?? null, cutoff: cutoff ?? null }, rootSessionId,
+    version: 2, observedAt: cutoff ?? new Date().toISOString(), interval: { start: start ?? null, cutoff: cutoff ?? null }, rootSessionId,
     sessions: sessionReports, unrelatedSessionCount: [...sessions.keys()].filter(id => !selected.has(id)).length,
-    usage: total, coverage: { complete: gaps.length === 0, gaps },
+    usage: total, uncachedInput: total.input - total.cachedInput,
+    coverage: { complete: gaps.length === 0, aggregate: gaps.length === 0, response: !attributionGaps.some(g => g.code === 'missing-response-identity'), model: !attributionGaps.some(g => g.code === 'model-allocation-unknown'), phase: false, compaction: !gaps.some(g => /compaction/.test(g.code)), gaps, attributionGaps },
   };
-  if (rates) report.estimate = estimateCost(sessionReports, rates);
+  if (rates) report.estimate = estimateCost(sessionReports.flatMap(row => row.breakdown.map(part => ({ ...part, sessionId: row.sessionId }))), rates);
   if (account) report.account = accountObservation(account, cutoff ?? new Date().toISOString());
   if (plan) report.checkpoint = evaluatePlan(plan, report);
   return report;
@@ -212,7 +277,8 @@ export function evaluatePlan(plan, report, now = Date.now()) {
     if (limit.unit === 'estimatedCost') spent = report.estimate?.complete ? report.estimate.knownSubtotal : null;
     if (limit.unit === 'allowance') {
       const observation = report.account;
-      if (!observation || observation.ageMs === null || observation.ageMs > limit.freshnessMs || (limit.windowId && observation.windowId !== limit.windowId)) spent = null;
+      const currentAge = observation?.observedAt ? now - Date.parse(observation.observedAt) : observation?.ageMs;
+      if (!observation || !Number.isFinite(currentAge) || currentAge < 0 || currentAge > limit.freshnessMs || (limit.windowId && observation.windowId !== limit.windowId)) spent = null;
       else spent = observation.allowance?.used ?? null;
     }
     if (!finite(spent)) { unknown = true; reasons.push({ unit: limit.unit, reason: 'required-telemetry-unavailable' }); continue; }

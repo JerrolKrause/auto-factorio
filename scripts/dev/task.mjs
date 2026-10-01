@@ -4,6 +4,10 @@ import { readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { boundedJson, createEvidenceDirectory, sha256, writeNewJson } from './safe-artifacts.mjs';
+import { reserveAdmission } from './admission.mjs';
+import { checkCorrectionAdmission, recordCorrectionAdmission } from './review-ledger.mjs';
+import { validatePlan } from './usage.mjs';
+import { appendEvent } from './events.mjs';
 
 const roles = new Set(['author', 'verification', 'review']);
 const efforts = new Set(['low', 'medium', 'high', 'xhigh', 'max', 'inherit-author']);
@@ -80,7 +84,24 @@ export async function discoverCodex(executable, model, effort, { cwd = process.c
   } finally { fail(new Error('Codex discovery closed')); child.kill(); }
 }
 
-export async function selectTask({ tasksFile, taskId, model, effort, reason, start = false, outputRoot = '.runtime/dev-task', executable = 'codex.exe', root = process.cwd() }, dependencies = {}) {
+/** Dedicated verification stays separate from author launching and reviewer inheritance. */
+export async function validateVerificationRoute({ model = 'gpt-6-luna', effort = 'medium', executable = 'codex.exe', root = process.cwd() } = {}, dependencies = {}) {
+  if (!((model === 'gpt-6-luna' && ['medium', 'high'].includes(effort)) || (model === 'gpt-6.1-sol' && effort === 'high'))) return { state: 'blocked', model, effort, reason: 'unsupported verification route; no fallback' };
+  try {
+    const discovery = await (dependencies.discover ?? discoverCodex)(executable, model, effort, { cwd: root });
+    return { state: 'ready', model, effort, discovery, authorizesInference: false };
+  } catch (error) { return { state: 'blocked', model, effort, reason: error.message, authorizesInference: false }; }
+}
+
+/** A bounded handoff proposes stronger work; it never launches or resets the shared plan. */
+export function escalationPacket(input) {
+  const id = value => typeof value === 'string' && /^[a-zA-Z0-9_.-]{1,128}$/.test(value);
+  if (!id(input?.assignmentId) || !id(input?.invariantId) || !Array.isArray(input.evidence) || !input.evidence.length || input.evidence.some(file => typeof file !== 'string' || !file.startsWith('.runtime/') || file.includes('..') || file.includes('\\'))) throw new Error('invalid diagnosis identity/evidence');
+  if (!id(input.nextCheckId) || !['gpt-6-luna', 'gpt-6.1-sol', 'gpt-6-astra'].includes(input.currentModel)) throw new Error('invalid diagnosis route/check');
+  return { version: 1, state: 'blocked', assignmentId: input.assignmentId, invariantId: input.invariantId, evidence: input.evidence.slice(0, 20), nextCheckId: input.nextCheckId, recommended: input.currentModel === 'gpt-6-luna' ? { model: 'gpt-6.1-sol', effort: 'high' } : { model: 'gpt-6-astra', effort: 'medium' }, admissionRequiresCapabilityCheck: true, sharedBudgetPreserved: true, automaticLaunch: false, authorizesInference: false };
+}
+
+export async function selectTask({ tasksFile, taskId, model, effort, reason, start = false, outputRoot = '.runtime/dev-task', executable = 'codex.exe', root = process.cwd(), plan, usageReport, unknownAlternative, correction }, dependencies = {}) {
   const source = await readFile(tasksFile); const table = parseRouting(source.toString('utf8')); const task = table.get(taskId);
   if (!task) throw new Error(`unknown task: ${taskId}`); if (task.done) throw new Error(`task already completed: ${taskId}`);
   if (task.role !== 'author') return { started: false, dedicatedWorkflow: task.role, task };
@@ -89,30 +110,67 @@ export async function selectTask({ tasksFile, taskId, model, effort, reason, sta
   if (!modelPattern.test(effectiveModel) || !efforts.has(effectiveEffort) || effectiveModel === 'inherit-author' || effectiveEffort === 'inherit-author') throw new Error('invalid effective model or effort');
   const preview = { task, recommendation: { model: task.model, effort: task.effort }, requested: { model: model ?? null, effort: effort ?? null, reason: reason ?? null }, effective: { model: effectiveModel, effort: effectiveEffort }, tasksFingerprint: sha256(source), started: false };
   if (!start) return preview;
+  if (!plan || !usageReport?.usage || !usageReport?.coverage) throw new Error('managed task start requires shared session plan and usage coverage');
+  validatePlan(plan);
+  let correctionProof;
+  if (correction) {
+    const decision = await recordCorrectionAdmission(correction, { root });
+    if (!decision.allowed) throw new Error(`corrective admission refused: ${decision.reason}`);
+    correctionProof = decision.admission;
+  }
   const evidence = await createEvidenceDirectory(root, outputRoot, `task-${taskId.replaceAll('.', '-')}`);
   const discovery = await (dependencies.discover ?? discoverCodex)(executable, effectiveModel, effectiveEffort, { cwd: root });
   const current = await readFile(tasksFile); if (sha256(current) !== preview.tasksFingerprint) throw new Error('task source changed before launch');
+  if (correctionProof) await checkCorrectionAdmission(correctionProof, { root });
+  const admission = await (dependencies.admit ?? reserveAdmission)(plan, usageReport, { root, owner: `task-${taskId}`, alternative: unknownAlternative });
+  const stream = path.relative(root, path.join(evidence, 'events.jsonl')).split(path.sep).join('/');
+  const runId = path.basename(evidence);
+  const event = (kind, sequence, extra = {}) => appendEvent(stream, { version: 1, eventId: `${runId}-${sequence}`, sequence, runId, workerId: `task-${taskId}`, kind, at: new Date().toISOString(), phase: 'authoring', role: 'author', checkId: taskId, requestedModel: effectiveModel, requestedEffort: effectiveEffort, provenance: 'rule', ...extra }, { root });
+  await event('budget', 1, { decision: admission.decision });
+  await writeNewJson(path.join(evidence, 'admission.json'), admission);
+  if (!admission.admitted) return { ...preview, blocked: true, admission, evidence: path.relative(root, evidence).split(path.sep).join('/') };
   const prompt = `Apply authorized OpenSpec task ${taskId}: ${task.description}\nUse ${tasksFile} and the linked change artifacts. Escalate when: ${task.escalateWhen}. Stay within this task; do not mark it complete without its acceptance evidence.`;
   const promptFile = path.join(evidence, 'prompt.txt'); await writeFile(promptFile, prompt, { encoding: 'utf8', flag: 'wx' });
-  const record = { ...preview, started: null, discovery, evidence: path.relative(root, evidence).split(path.sep).join('/'), launchOutcome: 'unknown' };
+  const record = { ...preview, ...(correctionProof ? { correctionAdmission: correctionProof } : {}), started: null, discovery, evidence: path.relative(root, evidence).split(path.sep).join('/'), launchOutcome: 'unknown' };
   await writeNewJson(path.join(evidence, 'launch.json'), record);
   const launch = dependencies.launch ?? ((script, args) => spawn('powershell.exe', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', script, ...args], { cwd: root, detached: true, windowsHide: true, stdio: 'ignore' }));
+  // Reservation and artifact writes await I/O. Bind the actual launch to the same candidate,
+  // with no awaited operation after this final successful check and before requesting launch.
+  if (correctionProof) {
+    try { await checkCorrectionAdmission(correctionProof, { root }); }
+    catch (error) {
+      record.launchOutcome = 'refused'; record.error = error.message;
+      await writeNewJson(path.join(evidence, 'launch-result.json'), record);
+      await event('failure', 2, { outcome: 'unverified', failureClass: 'stale-evidence' });
+      throw error;
+    }
+  }
   let child;
   try {
     child = launch(path.resolve(root, 'scripts/codex-terminal.ps1'), ['-Model', effectiveModel, '-Effort', effectiveEffort, '-PromptFile', promptFile]); child.unref?.();
     record.started = new Date().toISOString(); record.launchOutcome = child.pid ? 'requested' : 'unknown'; record.pid = child.pid ?? null;
   } catch (error) { record.launchOutcome = 'failed'; record.error = error.message; }
   await writeNewJson(path.join(evidence, 'launch-result.json'), record);
+  await event(record.launchOutcome === 'failed' ? 'failure' : 'start', 2, { attemptId: runId, outcome: record.launchOutcome === 'failed' ? 'fail' : 'unknown' });
   if (record.launchOutcome === 'failed') throw new Error('Codex launch failed; no retry attempted');
   return record;
 }
 
 function option(name) { const index = process.argv.indexOf(name); return index >= 0 ? process.argv[index + 1] : undefined; }
 async function main() {
+  if (option('--escalation')) {
+    console.log(boundedJson(escalationPacket(JSON.parse(await readFile(option('--escalation'), 'utf8'))))); return;
+  }
+  if (process.argv.includes('--verify-capability')) {
+    const result = await validateVerificationRoute({ model: option('--model'), effort: option('--effort'), executable: option('--codex') ?? 'codex.exe' });
+    console.log(boundedJson(result)); if (result.state !== 'ready') process.exitCode = 1; return;
+  }
   const change = option('--change'); const taskId = option('--task'); if (!change || !taskId) throw new Error('usage: dev:task --change <name> --task <id> [--start]');
   if (!/^[a-z0-9][a-z0-9-]*$/.test(change)) throw new Error('invalid change name');
   const tasksFile = path.resolve('openspec', 'changes', change, 'tasks.md');
-  const result = await selectTask({ tasksFile, taskId, model: option('--model'), effort: option('--effort'), reason: option('--reason'), start: process.argv.includes('--start'), outputRoot: option('--output-root') ?? '.runtime/dev-task', executable: option('--codex') ?? 'codex.exe' });
+  const load = async flag => option(flag) ? JSON.parse(await readFile(option(flag), 'utf8')) : undefined;
+  const result = await selectTask({ tasksFile, taskId, model: option('--model'), effort: option('--effort'), reason: option('--reason'), start: process.argv.includes('--start'), outputRoot: option('--output-root') ?? '.runtime/dev-task', executable: option('--codex') ?? 'codex.exe', plan: await load('--plan'), usageReport: await load('--usage'), unknownAlternative: await load('--unknown-alternative'), correction: await load('--correction') });
   console.log(boundedJson(result));
+  if (result.blocked) process.exitCode = 1;
 }
 if (import.meta.url === pathToFileURL(process.argv[1] ?? '').href) main().catch(error => { console.error(boundedJson({ error: error.message })); process.exitCode = 1; });

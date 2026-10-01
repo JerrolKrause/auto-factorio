@@ -2,6 +2,7 @@ import { readFile, realpath, lstat } from 'node:fs/promises';
 import { createHash } from 'node:crypto';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
+import { assessReuse, checkIdentity } from './dev/receipts.mjs';
 
 const nonempty = value => typeof value === 'string' && value.trim().length > 0;
 const relativePath = value => nonempty(value) && !value.includes('\\') && !value.includes(':') &&
@@ -60,8 +61,15 @@ export function validateContract(assignment, result) {
     return { ...state, files };
   };
   const a = object(assignment, 'assignment', ['version', 'assignmentId', 'role', 'objective', 'criteria', 'source',
-    'scope', 'checks', 'allowedActions', 'additionalChecks', 'resources', 'evidenceDirectory', 'budget', 'stopConditions', 'returnConditions']);
-  require(a.version === 1, 'assignment.version: expected 1');
+    'scope', 'checks', 'allowedActions', 'additionalChecks', 'resources', 'evidenceDirectory', 'budget', 'stopConditions', 'returnConditions', ...(assignment?.version === 2 ? ['execution'] : [])]);
+  require([1, 2].includes(a.version), 'assignment.version: expected 1 or 2');
+  if (a.version === 2) {
+    if (a.execution !== null) {
+      const execution = object(a.execution, 'assignment.execution', ['manifestSha256', 'reusePolicy']);
+      require(sha256(execution.manifestSha256), 'execution.manifestSha256: expected manifest fingerprint');
+      require(execution.reusePolicy === 'matching-receipt-only', 'execution.reusePolicy: invalid policy');
+    }
+  }
   require(nonempty(a.assignmentId), 'assignment.assignmentId: expected unique nonempty ID');
   require(['verification', 'review'].includes(a.role), 'assignment.role: expected verification or review');
   require(nonempty(a.objective), 'assignment.objective: expected nonempty string');
@@ -157,7 +165,7 @@ export function validateContract(assignment, result) {
     });
     notReady(findings.length > 0, 'review findings require author adjudication and resolution');
   } else {
-    const checks = records(r.checks, 'result.checks', ['id', 'command', 'authorization', 'status', 'exit', 'outcome', 'observation', 'evidence'], 'id');
+    const checks = records(r.checks, 'result.checks', ['id', 'command', 'authorization', 'status', 'exit', 'outcome', 'observation', 'evidence', ...(a.version === 2 ? ['reuse'] : [])], 'id');
     for (const check of prescribed) require(checks.some(row => row.id === check.id), `result.checks: missing ${check.id}`);
     checks.forEach(row => {
       const original = prescribed.find(item => item.id === row.id);
@@ -169,13 +177,25 @@ export function validateContract(assignment, result) {
         require(a.additionalChecks === 'within-scope', `check ${row.id}: additional checks forbidden`);
         require(nonempty(row.authorization) && actions.includes(row.authorization), `check ${row.id}: missing assigned action authorization`);
       }
-      require(['executed', 'skipped', 'blocked'].includes(row.status), `check ${row.id}: invalid status`);
+      require(['executed', 'skipped', 'blocked', ...(a.version === 2 ? ['reused'] : [])].includes(row.status), `check ${row.id}: invalid status`);
       require(row.exit === null || (Number.isSafeInteger(row.exit) && row.exit >= 0), `check ${row.id}: invalid exit`);
       require(['pass', 'fail', 'unverified'].includes(row.outcome), `check ${row.id}: invalid outcome`);
       require(nonempty(row.observation), `check ${row.id}: missing observation`);
       const evidence = strings(row.evidence, `check ${row.id}.evidence`);
-      if (row.status !== 'executed') require(row.exit === null && row.outcome === 'unverified', `check ${row.id}: unexecuted check must be unverified with null exit`);
-      if (row.outcome === 'pass') require(row.status === 'executed' && row.exit === 0 && evidence.length > 0, `check ${row.id}: pass requires executed zero exit and evidence`);
+      if (row.status === 'reused') {
+        const reuse = object(row.reuse, `check ${row.id}.reuse`, ['receipt', 'identity', 'criteria', 'freshRequired']);
+        const receipt = object(reuse.receipt, `check ${row.id}.reuse.receipt`, ['path', 'sha256']);
+        require(relativePath(receipt.path) && receipt.path.startsWith('.runtime/') && sha256(receipt.sha256), `check ${row.id}: invalid immutable receipt reference`);
+        require(reuse.identity && typeof reuse.identity === 'object' && Array.isArray(reuse.identity.dependencies) && reuse.identity.dependencies.length > 0 && nonempty(reuse.identity.tools?.node) && nonempty(reuse.identity.tools?.assertion), `check ${row.id}: unknown reuse dependencies/tools`);
+        require(JSON.stringify([reuse.identity?.command, ...(reuse.identity?.args ?? [])]) === row.command, `check ${row.id}: reuse command identity mismatch`);
+        strings(reuse.criteria, `check ${row.id}.reuse.criteria`, true);
+        require(reuse.freshRequired === false, `check ${row.id}: fresh check cannot be reused`);
+        require(row.exit === null && row.outcome === 'pass' && evidence.length > 0, `check ${row.id}: reuse requires original passing evidence and null current exit`);
+      } else {
+        if (a.version === 2) require(row.reuse === null, `check ${row.id}: non-reused check must have null reuse`);
+        if (row.status !== 'executed') require(row.exit === null && row.outcome === 'unverified', `check ${row.id}: unexecuted check must be unverified with null exit`);
+        if (row.outcome === 'pass') require(row.status === 'executed' && row.exit === 0 && evidence.length > 0, `check ${row.id}: pass requires executed zero exit and evidence`);
+      }
       notReady(row.outcome !== 'pass', `check not passed: ${row.id}`);
     });
     const coverage = records(r.criteria, 'result.criteria', ['id', 'status', 'observation', 'evidence', 'checks'], 'id');
@@ -190,12 +210,51 @@ export function validateContract(assignment, result) {
         const check = checks.find(item => item.id === id);
         require(Boolean(check), `criterion ${row.id}: unknown check reference ${id}`);
         if (row.status === 'pass') require(check?.outcome === 'pass', `criterion ${row.id}: pass references nonpassing check ${id}`);
+        if (row.status === 'pass' && check?.status === 'reused') require(check.reuse?.criteria?.includes(row.id), `criterion ${row.id}: reused receipt does not declare criterion coverage`);
       });
       if (row.status === 'pass') require(evidence.length > 0, `criterion ${row.id}: pass requires evidence`);
       notReady(row.status !== 'pass', `criterion not passed: ${row.id}`);
     });
   }
   return { valid: errors.length === 0, ready: errors.length === 0 && readinessErrors.length === 0, errors, readinessErrors };
+}
+
+/** Structural validity never substitutes for current receipt/evidence integrity. */
+export async function checkResultEvidence(assignment, result, root = process.cwd()) {
+  const errors = [];
+  if (assignment.version !== 2 || !result) return errors;
+  let manifest;
+  if (assignment.execution) {
+    for (const file of assignment.source.files) if (file.path.startsWith('.runtime/') && file.sha256) {
+      try {
+        const bytes = await readFile(path.resolve(root, file.path));
+        if (createHash('sha256').update(bytes).digest('hex') !== file.sha256) continue;
+        const value = JSON.parse(bytes);
+        if (createHash('sha256').update(JSON.stringify(value)).digest('hex') === assignment.execution.manifestSha256) { manifest = value; break; }
+      } catch { /* Only the explicitly pinned manifest can confer authority. */ }
+    }
+    if (!manifest) errors.push('execution manifest is not pinned in assignment source');
+  }
+  for (const check of result.checks ?? []) if (check.status === 'reused') {
+    const reuse = check.reuse;
+    if (manifest) {
+      const intended = manifest.checks.find(row => row.assignmentCheckId === check.id);
+      const declaredInputs = intended?.inputs?.map(row => [row.path, row.kind]).sort();
+      const observedInputs = reuse.identity.dependencies?.map(row => [row.path, row.kind]).sort();
+      if (!intended || intended.freshRequired || JSON.stringify(declaredInputs) !== JSON.stringify(observedInputs) || JSON.stringify(checkIdentity({ ...intended, criteria: reuse.identity.criteria, ...(intended.outputRoots ? { outputs: reuse.identity.outputs } : {}) }, reuse.identity.dependencies, intended.tools ?? manifest.tools)) !== JSON.stringify(reuse.identity) || reuse.criteria.some(id => !intended.criteria.includes(id))) {
+        errors.push(`reused evidence ${check.id}: identity outside author-approved manifest`); continue;
+      }
+    } else if (!assignment.source.files.some(file => file.path === reuse.receipt.path && file.sha256 === reuse.receipt.sha256)) {
+      errors.push(`reused evidence ${check.id}: original receipt is not pinned by author`); continue;
+    }
+    const assessed = await assessReuse(reuse.receipt, reuse.identity, { root, criteria: reuse.criteria, freshRequired: reuse.freshRequired });
+    if (!assessed.reusable) errors.push(`reused evidence ${check.id}: ${assessed.reason}`);
+    else {
+      const original = new Set(assessed.receipt.evidence.map(row => row.path));
+      if (check.evidence.some(file => !original.has(file))) errors.push(`reused evidence ${check.id}: result cites evidence outside original receipt`);
+    }
+  }
+  return errors;
 }
 
 /** Hash bytes only; realpath also confines symlinks and junctions beneath the chosen workspace. */
@@ -253,6 +312,11 @@ export async function main(args, root = process.cwd()) {
     const assignment = await readJson(filenames[0]);
     const result = filenames[1] ? await readJson(filenames[1]) : undefined;
     const report = validateContract(assignment, result);
+    if (report.valid && result !== undefined) {
+      const evidenceErrors = await checkResultEvidence(assignment, result, root);
+      report.readinessErrors.push(...evidenceErrors);
+      if (evidenceErrors.length) report.ready = false;
+    }
     if (flags.has('--check-source') && report.valid) {
       const sourceErrors = await checkSource(assignment, root);
       report.readinessErrors.push(...sourceErrors);
