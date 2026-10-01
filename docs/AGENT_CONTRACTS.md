@@ -1,6 +1,6 @@
 # Developer-agent handoff contracts
 
-The author writes a version 1 assignment before delegating verification or independent review. The worker returns a matching JSON result. These contracts constrain authority, account for coverage and preserve uncertainty; they leave investigation within the assigned boundary flexible. They are developer workflow records, separate from gameplay agents and product state.
+The author writes a version 1 or 2 assignment before delegating verification or independent review. The worker returns a matching JSON result. These contracts constrain authority, account for coverage and preserve uncertainty; they leave investigation within the assigned boundary flexible. They are developer workflow records, separate from gameplay agents and product state.
 
 Use a fresh `assignmentId` for each delegation, including reruns after source changes. The checker can correlate a pair but cannot enforce uniqueness across historical assignments. Keep assignment, result and evidence under the ignored `.runtime/` directory. Reviewers return JSON in their message; the author persists that JSON unchanged because reviewers remain read-only. Do not edit an unfavorable result into a passing one. Retain it and issue a new assignment if further work is needed.
 
@@ -19,6 +19,18 @@ The CLI prints JSON with `valid`, `ready`, `errors` and `readinessErrors`. Assig
 Exit 1 means malformed JSON, invalid arguments or an inconsistent contract. A structurally valid result exits 0 even when incomplete. `--require-ready` requires a result and exits 2 when valid but not ready. Source mismatch is a readiness failure, not malformed reporting; without `--require-ready` it does not change exit 0. The checker never executes assigned commands, writes evidence, changes source or starts providers. The exported `validateContract(assignment, result?)`, `checkSource(assignment, root?)` and `main(args, root?)` support direct tests and local callers; `main` returns `{report, exitCode}` without printing.
 
 **Validity is not proof that observations or evidence are true.** The author must inspect evidence, command coverage, source boundaries, permissions, findings and remaining limits. A ready review says its reported scope is covered and has no findings; it does not independently prove absence of defects. Findings require author adjudication, correction or documented rejection under the review workflow. Keep the original finding report; the checker does not encode adjudication or override findings into readiness.
+
+## Version 2 retained checks
+
+Contract versions are independent of readiness-manifest versions. A version 2 readiness manifest names actual verification/review pairs per slice and checks their current source, criterion/check evidence and reviewed entrypoints before prerequisite expansion or final closeout. Historical pairs remain immutable provenance; affected coverage needs a new current pair. Routine task-checkbox, handoff and acceptance-index updates may be excluded from reusable implementation fingerprints, with closeout markers checked afresh. See [readiness and review lineage](DEVELOPMENT_EFFICIENCY.md).
+
+The immutable review ledger supplements contracts with original finding hashes, author adjudications, invariant/predecessor IDs, failure and rerun reasons, diagnosis receipts and justified unaffected coverage. It never rewrites a reviewer result or turns an unresolved review into ready. Two unsuccessful corrections require a current discriminating check before managed corrective admission. Undeclared direct commands and already-running reasoning remain outside enforcement.
+
+Version 1 remains readable with its original executed/skipped/blocked rules; an old pass without complete dependency/integrity proof must rerun. Version 2 assignments add `execution`: `null` for manual worker contracts, or `{ "manifestSha256": "<sha256 of JSON.stringify(manifest)>", "reusePolicy": "matching-receipt-only" }` for a runner. Pin that manifest file in `source.files`. This binds argv, effects, resources, configuration, observation and dependency declarations to author authority.
+
+Every version 2 verification result check adds `reuse: null` for ordinary execution/skips. A `status: "reused"` check has current `exit: null`, `outcome: "pass"`, original evidence paths and `reuse: { receipt: {path, sha256}, identity, criteria, freshRequired: false }`. For manual contracts, the author must explicitly source-pin the original receipt. The immutable receipt proves its passing completed outcome, current source/build/configuration/tool/game inputs, complete criterion coverage, intact evidence and resolved cleanup. An unknown boundary, fresh-run requirement or mismatch refuses reuse; it does not relabel a previous execution as a new one.
+
+`validateContract` checks structure. `checkResultEvidence` checks reuse integrity and author authority asynchronously; the CLI, `dev:contract summary` and `change:ready` all call it before readiness. These checks do not prove semantic acceptance or independent review. Generated runner results and contracts remain mechanical observations requiring author coverage adjudication.
 
 ## Assignment example: verification
 
@@ -82,7 +94,7 @@ Every scoped path must appear in source files. Source files may additionally pin
     "stable": true
   },
   "limits": [],
-  "model": {"requested": "gpt-5.6-luna / medium", "observed": null, "usage": null},
+  "model": {"requested": "gpt-6-luna / medium", "observed": null, "usage": null},
   "cleanup": [],
   "criteria": [
     {"id": "C1", "status": "pass", "observation": "The BOM/CRLF case retained both byte conventions", "evidence": [".runtime/contracts/bytes-verification-001/test.log"], "checks": ["T1"]}

@@ -1,6 +1,6 @@
 import { spawn, spawnSync } from 'node:child_process';
 import { openSync, closeSync } from 'node:fs';
-import { realpath, readFile, writeFile, mkdir, mkdtemp, cp } from 'node:fs/promises';
+import { realpath, readFile, writeFile, mkdir, mkdtemp, cp, lstat } from 'node:fs/promises';
 import path from 'node:path';
 import { randomBytes } from 'node:crypto';
 import { setTimeout as delay } from 'node:timers/promises';
@@ -17,6 +17,24 @@ export async function ownedPath(file: string): Promise<string> {
   const root = await realpath('.runtime'); const resolved = await realpath(file); const relative = path.relative(root, resolved);
   if (!relative || relative.startsWith('..') || path.isAbsolute(relative)) throw new Error('Expected a project-owned runtime path');
   return resolved;
+}
+
+/** Validate existing ancestors before creating anything through a possible junction. */
+export async function runtimeOutputPath(file: string): Promise<string> {
+  await mkdir('.runtime', { recursive: true });
+  const workspace = await realpath('.'); const runtime = await realpath('.runtime');
+  if ((await lstat('.runtime')).isSymbolicLink() || path.relative(workspace, runtime).startsWith('..')) throw new Error('Runtime root escapes project');
+  const requested = path.resolve(file); const relative = path.relative(runtime, requested);
+  if (relative === '..' || relative.startsWith(`..${path.sep}`) || path.isAbsolute(relative)) throw new Error('Output escapes project runtime');
+  let ancestor = requested;
+  for (;;) {
+    try { await ownedPath(ancestor); break; }
+    catch (error) {
+      if (!(error instanceof Error) || !('code' in error) || error.code !== 'ENOENT') throw error;
+      ancestor = path.dirname(ancestor);
+    }
+  }
+  return requested;
 }
 /** Allowlist projection: never return a command line, environment, password, or unrecognized field. */
 export function safeProcess(value: unknown): ProjectProcess {
@@ -61,15 +79,35 @@ export async function stopProfile(config: string): Promise<number[]> {
     const result = spawnSync('powershell.exe', ['-NoProfile', '-Command', script], { windowsHide: true, encoding: 'utf8', timeout: 15000 });
     if (result.status !== 0) throw new Error('Could not stop the identified project process');
   }
+  await waitFor('Owned process cleanup', async () => (await listProjectProcesses()).some(p => path.resolve(p.config).toLowerCase() === target.toLowerCase()) ? undefined : true, 5000, 200);
   return matches.map(p => p.pid);
 }
+export function selectOwnedProcesses(root: string, processes: ProjectProcess[]): ProjectProcess[] {
+  return processes.filter(item => {
+    const relative = path.relative(root, item.config);
+    return relative !== '' && relative !== '..' && !relative.startsWith(`..${path.sep}`) && !path.isAbsolute(relative);
+  });
+}
+export async function stopOwnedRoot(directory: string, dependencies: { resolve?: typeof ownedPath; list?: typeof listProjectProcesses; stop?: typeof stopProfile } = {}): Promise<number[]> {
+  const root = await (dependencies.resolve ?? ownedPath)(directory);
+  if (root.toLowerCase() === path.resolve('.runtime').toLowerCase()) throw new Error('Cleanup must name a unique assignment root');
+  const list = dependencies.list ?? listProjectProcesses;
+  const stopped: number[] = [];
+  for (const config of [...new Set(selectOwnedProcesses(root, await list()).map(item => item.config))]) stopped.push(...await (dependencies.stop ?? stopProfile)(config));
+  if (selectOwnedProcesses(root, await list()).length) throw new Error('Assignment root cleanup unresolved');
+  return stopped;
+}
 export async function waitFor<T>(label: string, inspect: () => Promise<T | undefined>, timeoutMs = 180000, intervalMs = 500): Promise<T> {
+  if (!Number.isSafeInteger(timeoutMs) || timeoutMs <= 0 || !Number.isSafeInteger(intervalMs) || intervalMs <= 0 || intervalMs > timeoutMs || !Number.isSafeInteger(Date.now() + timeoutMs)) throw new Error(`${label} has an invalid readiness deadline`);
   const until = Date.now() + timeoutMs;
   while (Date.now() < until) { const value = await inspect(); if (value !== undefined) return value; await delay(intervalMs); }
   throw new Error(`${label} readiness unconfirmed after ${timeoutMs}ms`);
 }
-export async function waitForServer(profile: GameProfile): Promise<Rcon> {
-  return waitFor('RCON', async () => { try { return await Rcon.connect(profile.port, profile.password); } catch { return undefined; } }, 20000, 200);
+export async function waitForServer(profile: GameProfile, terminalError?: () => string | undefined): Promise<Rcon> {
+  return waitFor('RCON', async () => {
+    const failure = terminalError?.(); if (failure) throw new Error(failure);
+    try { return await Rcon.connect(profile.port, profile.password); } catch { return undefined; }
+  }, 20000, 200);
 }
 export async function readProfile(dir: string): Promise<GameProfile> {
   dir = await ownedPath(dir); const v = JSON.parse(await readFile(path.join(dir, 'launch.json'), 'utf8')) as GameProfile;
@@ -92,7 +130,9 @@ export async function configureProfile(dir: string, save: string, options: { por
   return profile;
 }
 export async function createProfile(phase04: boolean, headless: boolean): Promise<GameProfile> {
-  const base = path.resolve(phase04 ? '.runtime/phase04' : '.runtime/phase03'); await mkdir(base, { recursive: true });
+  await mkdir('.runtime', { recursive: true });
+  const base = await runtimeOutputPath(process.env.AF_GAME_PROFILE_ROOT ?? (phase04 ? '.runtime/phase04' : '.runtime/phase03'));
+  await mkdir(base, { recursive: true }); await ownedPath(base);
   const dir = await mkdtemp(path.join(base, 'game-')); const profile = await configureProfile(dir, path.join(dir, 'sandbox.zip'), { port: phase04 ? 27024 : headless ? 27019 : 27018, gamePort: phase04 ? 34204 : headless ? 34199 : 34198 });
   const gen = path.join(dir, 'map-gen.json'); await writeFile(gen, JSON.stringify({ width: 128, height: 128, seed: 42, water: 0, autoplace_controls: { 'enemy-base': { frequency: 0 }, trees: { frequency: 0 } } }));
   const result = spawnSync(profile.executable, ['--config', profile.config, '--mod-directory', profile.mods, '--create', profile.save, '--map-gen-settings', gen], { encoding: 'utf8', windowsHide: true, timeout: 120000 });
@@ -105,9 +145,11 @@ export async function startServer(profile: GameProfile): Promise<number> {
   if ((await listProjectProcesses()).some(p => p.config.toLowerCase() === profile.config.toLowerCase() || p.rconPort === profile.port || p.gamePort === profile.gamePort)) throw new Error('Project profile or port already in use; inspect game:processes');
   const fd = openSync(profile.log, 'a');
   const child = spawn(profile.executable, serverArgs(profile), { windowsHide: true, detached: true, stdio: ['ignore', fd, fd] }); closeSync(fd);
+  let terminal: string | undefined;
+  child.once('exit', code => { terminal = `Dedicated server terminated before readiness (${code ?? 'unknown'})`; });
   await new Promise<void>((resolve, reject) => { child.once('spawn', resolve); child.once('error', () => reject(new Error('Dedicated server launch failed'))); }); child.unref();
   await recordProcesses(profile, { serverPid: child.pid! });
-  try { const port = await waitForServer(profile); port.close(); } catch (error) { await stopProfile(profile.config); throw error; }
+  try { const port = await waitForServer(profile, () => terminal); port.close(); } catch (error) { await stopProfile(profile.config); throw error; }
   return child.pid!;
 }
 export async function recordProcesses(profile: GameProfile, update: Record<string, unknown>): Promise<void> {

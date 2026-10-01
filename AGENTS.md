@@ -36,6 +36,8 @@ Test important failure paths with fakes; verify legal movement, inventory accoun
 
 Work is complete only when task acceptance criteria and required checks pass on the final relevant source and independent findings are resolved. Compilation or unit tests alone do not establish working behavior; missing required verification means incomplete work. Delegate routine milestone verification using the [verification author workflow](.agents/skills/verify-change/author-workflow.md); narrow documentation-only checks may stay with the author.
 
+Follow [bounded slice/readiness and correction lineage](docs/DEVELOPMENT_EFFICIENCY.md): validate accepted prerequisites before expansion, retain the shared plan across replacements, diagnose after two unsuccessful corrections to one invariant, and reuse only dependency-matched evidence. Keep automatic compaction defaults and preserve a compact source/evidence/budget handoff at fresh-context boundaries.
+
 Use the versioned [agent handoff contracts](docs/AGENT_CONTRACTS.md) for verifier/reviewer assignments and results. Validate both; a structurally valid report alone does not establish acceptance or authorize completion.
 
 The user manages prerequisite upgrades. Recheck installed versions before treating old observations as blockers. Keep personal saves, global Codex settings, credentials, game binaries and generated run data out of source control.

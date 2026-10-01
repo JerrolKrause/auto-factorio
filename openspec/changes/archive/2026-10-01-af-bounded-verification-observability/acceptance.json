@@ -1,0 +1,807 @@
+{
+  "version": 2,
+  "change": "af-bounded-verification-observability",
+  "lifecycle": "acceptance-verified",
+  "capabilities": [
+    "development-efficiency",
+    "verification-orchestration"
+  ],
+  "integrationBoundaries": [
+    "session-telemetry",
+    "managed-capabilities",
+    "check-process",
+    "resource-ownership",
+    "evidence-contracts",
+    "slice-admission",
+    "review-lineage"
+  ],
+  "slices": [
+    {
+      "id": "A",
+      "prerequisites": [],
+      "capabilities": [
+        "development-efficiency",
+        "verification-orchestration"
+      ],
+      "integrationBoundaries": [
+        "session-telemetry",
+        "managed-capabilities"
+      ],
+      "scenarios": [
+        "S01",
+        "S02",
+        "S03",
+        "S04",
+        "S05",
+        "S09",
+        "S10",
+        "S11",
+        "S12",
+        "S23",
+        "S24"
+      ],
+      "acceptance": {
+        "verification": {
+          "assignment": ".runtime/development/af-bounded-verification-observability/final/verification-authority-repair/verification-assignment-1790879037477-3bbdca37/assignment.json",
+          "result": ".runtime/development/af-bounded-verification-observability/final/verification-authority-repair/verification-assignment-1790879037477-3bbdca37/result.json"
+        },
+        "review": {
+          "assignment": ".runtime/development/af-bounded-verification-observability/slice-C/review-archive-fixture/review-assignment-1790878672020-8bcadd50/assignment.json",
+          "result": ".runtime/development/af-bounded-verification-observability/slice-C/review-archive-fixture/review-assignment-1790878672020-8bcadd50/result.json"
+        }
+      },
+      "historicalAcceptance": ".runtime/development/af-bounded-verification-observability/slice-A/accepted.json"
+    },
+    {
+      "id": "B",
+      "prerequisites": [
+        "A"
+      ],
+      "capabilities": [
+        "development-efficiency",
+        "verification-orchestration"
+      ],
+      "integrationBoundaries": [
+        "check-process",
+        "resource-ownership",
+        "evidence-contracts"
+      ],
+      "scenarios": [
+        "S06",
+        "S07",
+        "S08",
+        "S17",
+        "S18",
+        "S19",
+        "S20",
+        "S21",
+        "S22",
+        "S25",
+        "S26",
+        "S29",
+        "S30"
+      ],
+      "acceptance": {
+        "verification": {
+          "assignment": ".runtime/development/af-bounded-verification-observability/final/verification-authority-repair/verification-assignment-1790879037477-3bbdca37/assignment.json",
+          "result": ".runtime/development/af-bounded-verification-observability/final/verification-authority-repair/verification-assignment-1790879037477-3bbdca37/result.json"
+        },
+        "review": {
+          "assignment": ".runtime/development/af-bounded-verification-observability/slice-C/review-archive-fixture/review-assignment-1790878672020-8bcadd50/assignment.json",
+          "result": ".runtime/development/af-bounded-verification-observability/slice-C/review-archive-fixture/review-assignment-1790878672020-8bcadd50/result.json"
+        }
+      },
+      "historicalAcceptance": ".runtime/development/af-bounded-verification-observability/slice-B/accepted.json"
+    },
+    {
+      "id": "C",
+      "prerequisites": [
+        "A",
+        "B"
+      ],
+      "capabilities": [
+        "development-efficiency",
+        "verification-orchestration"
+      ],
+      "integrationBoundaries": [
+        "slice-admission",
+        "review-lineage"
+      ],
+      "scenarios": [
+        "S13",
+        "S14",
+        "S15",
+        "S16",
+        "S27",
+        "S28"
+      ],
+      "acceptance": {
+        "verification": {
+          "assignment": ".runtime/development/af-bounded-verification-observability/final/verification-authority-repair/verification-assignment-1790879037477-3bbdca37/assignment.json",
+          "result": ".runtime/development/af-bounded-verification-observability/final/verification-authority-repair/verification-assignment-1790879037477-3bbdca37/result.json"
+        },
+        "review": {
+          "assignment": ".runtime/development/af-bounded-verification-observability/slice-C/review-archive-fixture/review-assignment-1790878672020-8bcadd50/assignment.json",
+          "result": ".runtime/development/af-bounded-verification-observability/slice-C/review-archive-fixture/review-assignment-1790878672020-8bcadd50/result.json"
+        }
+      },
+      "historicalAcceptance": ".runtime/development/af-bounded-verification-observability/slice-C/accepted.json"
+    }
+  ],
+  "scenarios": [
+    {
+      "id": "S01",
+      "requirement": "Attributed usage with explicit uncertainty",
+      "capability": "development-efficiency",
+      "name": "Duplicate events and compaction",
+      "entrypoint": {
+        "kind": "production",
+        "path": "scripts/dev/usage.mjs"
+      },
+      "effectful": false,
+      "checks": [
+        {
+          "command": "corepack.cmd pnpm exec vitest run tests/bounded-observability.test.mjs tests/bounded-verification.test.mjs tests/bounded-convergence.test.mjs tests/development-efficiency.test.mjs",
+          "evidence": [
+            ".runtime/development/af-bounded-verification-observability/final/acceptance.log"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "S02",
+      "requirement": "Attributed usage with explicit uncertainty",
+      "capability": "development-efficiency",
+      "name": "Incomplete telemetry or unsupported rates",
+      "entrypoint": {
+        "kind": "production",
+        "path": "scripts/dev/usage.mjs"
+      },
+      "effectful": false,
+      "checks": [
+        {
+          "command": "corepack.cmd pnpm exec vitest run tests/bounded-observability.test.mjs tests/bounded-verification.test.mjs tests/bounded-convergence.test.mjs tests/development-efficiency.test.mjs",
+          "evidence": [
+            ".runtime/development/af-bounded-verification-observability/final/acceptance.log"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "S03",
+      "requirement": "Attributed usage with explicit uncertainty",
+      "capability": "development-efficiency",
+      "name": "Unrelated sessions and private contents",
+      "entrypoint": {
+        "kind": "production",
+        "path": "scripts/dev/usage.mjs"
+      },
+      "effectful": false,
+      "checks": [
+        {
+          "command": "corepack.cmd pnpm exec vitest run tests/bounded-observability.test.mjs tests/bounded-verification.test.mjs tests/bounded-convergence.test.mjs tests/development-efficiency.test.mjs",
+          "evidence": [
+            ".runtime/development/af-bounded-verification-observability/final/acceptance.log"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "S04",
+      "requirement": "Attributed usage with explicit uncertainty",
+      "capability": "development-efficiency",
+      "name": "Current rollout format without response identities",
+      "entrypoint": {
+        "kind": "production",
+        "path": "scripts/dev/usage.mjs"
+      },
+      "effectful": false,
+      "checks": [
+        {
+          "command": "corepack.cmd pnpm exec vitest run tests/bounded-observability.test.mjs tests/bounded-verification.test.mjs tests/bounded-convergence.test.mjs tests/development-efficiency.test.mjs",
+          "evidence": [
+            ".runtime/development/af-bounded-verification-observability/final/acceptance.log"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "S05",
+      "requirement": "Attributed usage with explicit uncertainty",
+      "capability": "development-efficiency",
+      "name": "Mixed models and reset counters",
+      "entrypoint": {
+        "kind": "production",
+        "path": "scripts/dev/usage.mjs"
+      },
+      "effectful": false,
+      "checks": [
+        {
+          "command": "corepack.cmd pnpm exec vitest run tests/bounded-observability.test.mjs tests/bounded-verification.test.mjs tests/bounded-convergence.test.mjs tests/development-efficiency.test.mjs",
+          "evidence": [
+            ".runtime/development/af-bounded-verification-observability/final/acceptance.log"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "S06",
+      "requirement": "Aggregate development budget checkpoints",
+      "capability": "development-efficiency",
+      "name": "Retries exhaust the shared plan",
+      "entrypoint": {
+        "kind": "production",
+        "path": "scripts/dev/verification.mjs"
+      },
+      "effectful": true,
+      "negativeCases": [
+        "refusal before effects",
+        "interruption and cleanup"
+      ],
+      "recovery": true,
+      "checks": [
+        {
+          "command": "corepack.cmd pnpm exec vitest run tests/bounded-observability.test.mjs tests/bounded-verification.test.mjs tests/bounded-convergence.test.mjs tests/development-efficiency.test.mjs",
+          "evidence": [
+            ".runtime/development/af-bounded-verification-observability/final/acceptance.log"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "S07",
+      "requirement": "Aggregate development budget checkpoints",
+      "capability": "development-efficiency",
+      "name": "Stale allowance or invalid plan",
+      "entrypoint": {
+        "kind": "production",
+        "path": "scripts/dev/verification.mjs"
+      },
+      "effectful": true,
+      "negativeCases": [
+        "refusal before effects",
+        "interruption and cleanup"
+      ],
+      "recovery": true,
+      "checks": [
+        {
+          "command": "corepack.cmd pnpm exec vitest run tests/bounded-observability.test.mjs tests/bounded-verification.test.mjs tests/bounded-convergence.test.mjs tests/development-efficiency.test.mjs",
+          "evidence": [
+            ".runtime/development/af-bounded-verification-observability/final/acceptance.log"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "S08",
+      "requirement": "Aggregate development budget checkpoints",
+      "capability": "development-efficiency",
+      "name": "Stop or unknown at managed admission",
+      "entrypoint": {
+        "kind": "production",
+        "path": "scripts/dev/verification.mjs"
+      },
+      "effectful": true,
+      "negativeCases": [
+        "refusal before effects",
+        "interruption and cleanup"
+      ],
+      "recovery": true,
+      "checks": [
+        {
+          "command": "corepack.cmd pnpm exec vitest run tests/bounded-observability.test.mjs tests/bounded-verification.test.mjs tests/bounded-convergence.test.mjs tests/development-efficiency.test.mjs",
+          "evidence": [
+            ".runtime/development/af-bounded-verification-observability/final/acceptance.log"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "S09",
+      "requirement": "Task-appropriate developer models and bounded delegation",
+      "capability": "development-efficiency",
+      "name": "Test work is delegated",
+      "entrypoint": {
+        "kind": "production",
+        "path": "scripts/dev/task.mjs"
+      },
+      "effectful": false,
+      "checks": [
+        {
+          "command": "corepack.cmd pnpm exec vitest run tests/bounded-observability.test.mjs tests/bounded-verification.test.mjs tests/bounded-convergence.test.mjs tests/development-efficiency.test.mjs",
+          "evidence": [
+            ".runtime/development/af-bounded-verification-observability/final/acceptance.log"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "S10",
+      "requirement": "Task-appropriate developer models and bounded delegation",
+      "capability": "development-efficiency",
+      "name": "Routine work reveals an unfamiliar race",
+      "entrypoint": {
+        "kind": "production",
+        "path": "scripts/dev/task.mjs"
+      },
+      "effectful": false,
+      "checks": [
+        {
+          "command": "corepack.cmd pnpm exec vitest run tests/bounded-observability.test.mjs tests/bounded-verification.test.mjs tests/bounded-convergence.test.mjs tests/development-efficiency.test.mjs",
+          "evidence": [
+            ".runtime/development/af-bounded-verification-observability/final/acceptance.log"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "S11",
+      "requirement": "Task-appropriate developer models and bounded delegation",
+      "capability": "development-efficiency",
+      "name": "Capability-appropriate verification",
+      "entrypoint": {
+        "kind": "production",
+        "path": "scripts/dev/task.mjs"
+      },
+      "effectful": false,
+      "checks": [
+        {
+          "command": "corepack.cmd pnpm exec vitest run tests/bounded-observability.test.mjs tests/bounded-verification.test.mjs tests/bounded-convergence.test.mjs tests/development-efficiency.test.mjs",
+          "evidence": [
+            ".runtime/development/af-bounded-verification-observability/final/acceptance.log"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "S12",
+      "requirement": "Task-appropriate developer models and bounded delegation",
+      "capability": "development-efficiency",
+      "name": "Latest requested model unavailable",
+      "entrypoint": {
+        "kind": "production",
+        "path": "scripts/dev/task.mjs"
+      },
+      "effectful": false,
+      "checks": [
+        {
+          "command": "corepack.cmd pnpm exec vitest run tests/bounded-observability.test.mjs tests/bounded-verification.test.mjs tests/bounded-convergence.test.mjs tests/development-efficiency.test.mjs",
+          "evidence": [
+            ".runtime/development/af-bounded-verification-observability/final/acceptance.log"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "S13",
+      "requirement": "Stable verification and review cycles",
+      "capability": "development-efficiency",
+      "name": "Failure repeats without a source change",
+      "entrypoint": {
+        "kind": "production",
+        "path": "scripts/dev/change-readiness.mjs"
+      },
+      "effectful": false,
+      "checks": [
+        {
+          "command": "corepack.cmd pnpm exec vitest run tests/bounded-observability.test.mjs tests/bounded-verification.test.mjs tests/bounded-convergence.test.mjs tests/development-efficiency.test.mjs",
+          "evidence": [
+            ".runtime/development/af-bounded-verification-observability/final/acceptance.log"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "S14",
+      "requirement": "Stable verification and review cycles",
+      "capability": "development-efficiency",
+      "name": "Follow-up changes affect earlier evidence",
+      "entrypoint": {
+        "kind": "production",
+        "path": "scripts/dev/change-readiness.mjs"
+      },
+      "effectful": false,
+      "checks": [
+        {
+          "command": "corepack.cmd pnpm exec vitest run tests/bounded-observability.test.mjs tests/bounded-verification.test.mjs tests/bounded-convergence.test.mjs tests/development-efficiency.test.mjs",
+          "evidence": [
+            ".runtime/development/af-bounded-verification-observability/final/acceptance.log"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "S15",
+      "requirement": "Stable verification and review cycles",
+      "capability": "development-efficiency",
+      "name": "Repeated invariant failure and dependent slice",
+      "entrypoint": {
+        "kind": "production",
+        "path": "scripts/dev/change-readiness.mjs"
+      },
+      "effectful": false,
+      "checks": [
+        {
+          "command": "corepack.cmd pnpm exec vitest run tests/bounded-observability.test.mjs tests/bounded-verification.test.mjs tests/bounded-convergence.test.mjs tests/development-efficiency.test.mjs",
+          "evidence": [
+            ".runtime/development/af-bounded-verification-observability/final/acceptance.log"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "S16",
+      "requirement": "Stable verification and review cycles",
+      "capability": "development-efficiency",
+      "name": "Stable context handoff",
+      "entrypoint": {
+        "kind": "production",
+        "path": "scripts/dev/change-readiness.mjs"
+      },
+      "effectful": false,
+      "checks": [
+        {
+          "command": "corepack.cmd pnpm exec vitest run tests/bounded-observability.test.mjs tests/bounded-verification.test.mjs tests/bounded-convergence.test.mjs tests/development-efficiency.test.mjs",
+          "evidence": [
+            ".runtime/development/af-bounded-verification-observability/final/acceptance.log"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "S17",
+      "requirement": "Manifest-driven check execution",
+      "capability": "verification-orchestration",
+      "name": "Shared software prerequisites",
+      "entrypoint": {
+        "kind": "production",
+        "path": "scripts/dev/verification.mjs"
+      },
+      "effectful": true,
+      "negativeCases": [
+        "refusal before effects",
+        "interruption and cleanup"
+      ],
+      "recovery": true,
+      "checks": [
+        {
+          "command": "corepack.cmd pnpm exec vitest run tests/bounded-observability.test.mjs tests/bounded-verification.test.mjs tests/bounded-convergence.test.mjs tests/development-efficiency.test.mjs",
+          "evidence": [
+            ".runtime/development/af-bounded-verification-observability/final/acceptance.log"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "S18",
+      "requirement": "Manifest-driven check execution",
+      "capability": "verification-orchestration",
+      "name": "Invalid manifest or failed prerequisite",
+      "entrypoint": {
+        "kind": "production",
+        "path": "scripts/dev/verification.mjs"
+      },
+      "effectful": true,
+      "negativeCases": [
+        "refusal before effects",
+        "interruption and cleanup"
+      ],
+      "recovery": true,
+      "checks": [
+        {
+          "command": "corepack.cmd pnpm exec vitest run tests/bounded-observability.test.mjs tests/bounded-verification.test.mjs tests/bounded-convergence.test.mjs tests/development-efficiency.test.mjs",
+          "evidence": [
+            ".runtime/development/af-bounded-verification-observability/final/acceptance.log"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "S19",
+      "requirement": "Probe preflight and resource ownership",
+      "capability": "verification-orchestration",
+      "name": "Invalid probe setup",
+      "entrypoint": {
+        "kind": "production",
+        "path": "scripts/dev/verification.mjs"
+      },
+      "effectful": true,
+      "negativeCases": [
+        "refusal before effects",
+        "interruption and cleanup"
+      ],
+      "recovery": true,
+      "checks": [
+        {
+          "command": "corepack.cmd pnpm exec vitest run tests/bounded-observability.test.mjs tests/bounded-verification.test.mjs tests/bounded-convergence.test.mjs tests/development-efficiency.test.mjs",
+          "evidence": [
+            ".runtime/development/af-bounded-verification-observability/final/acceptance.log"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "S20",
+      "requirement": "Probe preflight and resource ownership",
+      "capability": "verification-orchestration",
+      "name": "Terminal failure while awaiting success",
+      "entrypoint": {
+        "kind": "production",
+        "path": "scripts/dev/verification.mjs"
+      },
+      "effectful": true,
+      "negativeCases": [
+        "refusal before effects",
+        "interruption and cleanup"
+      ],
+      "recovery": true,
+      "checks": [
+        {
+          "command": "corepack.cmd pnpm exec vitest run tests/bounded-observability.test.mjs tests/bounded-verification.test.mjs tests/bounded-convergence.test.mjs tests/development-efficiency.test.mjs",
+          "evidence": [
+            ".runtime/development/af-bounded-verification-observability/final/acceptance.log"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "S21",
+      "requirement": "Dependency-aware retained evidence",
+      "capability": "verification-orchestration",
+      "name": "Relevant and irrelevant changes",
+      "entrypoint": {
+        "kind": "production",
+        "path": "scripts/dev/verification.mjs"
+      },
+      "effectful": true,
+      "negativeCases": [
+        "refusal before effects",
+        "interruption and cleanup"
+      ],
+      "recovery": true,
+      "checks": [
+        {
+          "command": "corepack.cmd pnpm exec vitest run tests/bounded-observability.test.mjs tests/bounded-verification.test.mjs tests/bounded-convergence.test.mjs tests/development-efficiency.test.mjs",
+          "evidence": [
+            ".runtime/development/af-bounded-verification-observability/final/acceptance.log"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "S22",
+      "requirement": "Dependency-aware retained evidence",
+      "capability": "verification-orchestration",
+      "name": "Corrupt or interrupted evidence",
+      "entrypoint": {
+        "kind": "production",
+        "path": "scripts/dev/verification.mjs"
+      },
+      "effectful": true,
+      "negativeCases": [
+        "refusal before effects",
+        "interruption and cleanup"
+      ],
+      "recovery": true,
+      "checks": [
+        {
+          "command": "corepack.cmd pnpm exec vitest run tests/bounded-observability.test.mjs tests/bounded-verification.test.mjs tests/bounded-convergence.test.mjs tests/development-efficiency.test.mjs",
+          "evidence": [
+            ".runtime/development/af-bounded-verification-observability/final/acceptance.log"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "S23",
+      "requirement": "Correlated local execution observations",
+      "capability": "verification-orchestration",
+      "name": "Repair lineage survives replacement",
+      "entrypoint": {
+        "kind": "production",
+        "path": "scripts/dev/events.mjs"
+      },
+      "effectful": false,
+      "checks": [
+        {
+          "command": "corepack.cmd pnpm exec vitest run tests/bounded-observability.test.mjs tests/bounded-verification.test.mjs tests/bounded-convergence.test.mjs tests/development-efficiency.test.mjs",
+          "evidence": [
+            ".runtime/development/af-bounded-verification-observability/final/acceptance.log"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "S24",
+      "requirement": "Correlated local execution observations",
+      "capability": "verification-orchestration",
+      "name": "Interrupted event writer",
+      "entrypoint": {
+        "kind": "production",
+        "path": "scripts/dev/events.mjs"
+      },
+      "effectful": false,
+      "checks": [
+        {
+          "command": "corepack.cmd pnpm exec vitest run tests/bounded-observability.test.mjs tests/bounded-verification.test.mjs tests/bounded-convergence.test.mjs tests/development-efficiency.test.mjs",
+          "evidence": [
+            ".runtime/development/af-bounded-verification-observability/final/acceptance.log"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "S25",
+      "requirement": "Bounded diagnostic reports and privacy",
+      "capability": "verification-orchestration",
+      "name": "Large unchanged game state",
+      "entrypoint": {
+        "kind": "production",
+        "path": "scripts/dev/verification.mjs"
+      },
+      "effectful": true,
+      "negativeCases": [
+        "refusal before effects",
+        "interruption and cleanup"
+      ],
+      "recovery": true,
+      "checks": [
+        {
+          "command": "corepack.cmd pnpm exec vitest run tests/bounded-observability.test.mjs tests/bounded-verification.test.mjs tests/bounded-convergence.test.mjs tests/development-efficiency.test.mjs",
+          "evidence": [
+            ".runtime/development/af-bounded-verification-observability/final/acceptance.log"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "S26",
+      "requirement": "Bounded diagnostic reports and privacy",
+      "capability": "verification-orchestration",
+      "name": "Sensitive or incomplete evidence",
+      "entrypoint": {
+        "kind": "production",
+        "path": "scripts/dev/verification.mjs"
+      },
+      "effectful": true,
+      "negativeCases": [
+        "refusal before effects",
+        "interruption and cleanup"
+      ],
+      "recovery": true,
+      "checks": [
+        {
+          "command": "corepack.cmd pnpm exec vitest run tests/bounded-observability.test.mjs tests/bounded-verification.test.mjs tests/bounded-convergence.test.mjs tests/development-efficiency.test.mjs",
+          "evidence": [
+            ".runtime/development/af-bounded-verification-observability/final/acceptance.log"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "S27",
+      "requirement": "Review convergence and final acceptance",
+      "capability": "verification-orchestration",
+      "name": "Same issue refined on follow-up",
+      "entrypoint": {
+        "kind": "production",
+        "path": "scripts/dev/review-ledger.mjs"
+      },
+      "effectful": false,
+      "checks": [
+        {
+          "command": "corepack.cmd pnpm exec vitest run tests/bounded-observability.test.mjs tests/bounded-verification.test.mjs tests/bounded-convergence.test.mjs tests/development-efficiency.test.mjs",
+          "evidence": [
+            ".runtime/development/af-bounded-verification-observability/final/acceptance.log"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "S28",
+      "requirement": "Review convergence and final acceptance",
+      "capability": "verification-orchestration",
+      "name": "Budget ends with unresolved work",
+      "entrypoint": {
+        "kind": "production",
+        "path": "scripts/dev/review-ledger.mjs"
+      },
+      "effectful": false,
+      "checks": [
+        {
+          "command": "corepack.cmd pnpm exec vitest run tests/bounded-observability.test.mjs tests/bounded-verification.test.mjs tests/bounded-convergence.test.mjs tests/development-efficiency.test.mjs",
+          "evidence": [
+            ".runtime/development/af-bounded-verification-observability/final/acceptance.log"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "S29",
+      "requirement": "Measurable efficiency outcomes",
+      "capability": "verification-orchestration",
+      "name": "No-inference acceptance comparison",
+      "entrypoint": {
+        "kind": "production",
+        "path": "scripts/dev/verification.mjs"
+      },
+      "effectful": true,
+      "negativeCases": [
+        "refusal before effects",
+        "interruption and cleanup"
+      ],
+      "recovery": true,
+      "checks": [
+        {
+          "command": "corepack.cmd pnpm exec vitest run tests/bounded-observability.test.mjs tests/bounded-verification.test.mjs tests/bounded-convergence.test.mjs tests/development-efficiency.test.mjs",
+          "evidence": [
+            ".runtime/development/af-bounded-verification-observability/final/acceptance.log"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "S30",
+      "requirement": "Measurable efficiency outcomes",
+      "capability": "verification-orchestration",
+      "name": "Incomplete phase attribution",
+      "entrypoint": {
+        "kind": "production",
+        "path": "scripts/dev/verification.mjs"
+      },
+      "effectful": true,
+      "negativeCases": [
+        "refusal before effects",
+        "interruption and cleanup"
+      ],
+      "recovery": true,
+      "checks": [
+        {
+          "command": "corepack.cmd pnpm exec vitest run tests/bounded-observability.test.mjs tests/bounded-verification.test.mjs tests/bounded-convergence.test.mjs tests/development-efficiency.test.mjs",
+          "evidence": [
+            ".runtime/development/af-bounded-verification-observability/final/acceptance.log"
+          ]
+        }
+      ]
+    }
+  ],
+  "sessionPlan": {
+    "version": 1,
+    "objective": "af-bounded-verification-observability",
+    "sessions": {
+      "author": "current-author",
+      "workers": [],
+      "runs": []
+    },
+    "startTime": "2026-10-01T15:05:00.384Z",
+    "checkpointCadenceMs": 900000,
+    "limits": [
+      {
+        "unit": "wallMs",
+        "value": 14400000,
+        "closeoutReserve": 600000
+      }
+    ],
+    "live": {
+      "maxLaunches": 2,
+      "maxWallMs": 900000,
+      "cleanupReserveMs": 120000
+    },
+    "unknownUsageDecision": "No inferred token total; authoring is outside managed admission enforcement. Bound managed admissions by wall time and two live launches; no provider tests."
+  },
+  "evidenceRoot": ".runtime/development/af-bounded-verification-observability",
+  "contracts": {},
+  "closeout": {
+    "taskFile": "openspec/changes/af-bounded-verification-observability/tasks.md",
+    "handoffFile": "docs/IMPLEMENTATION_HANDOFF.md",
+    "requiredHandoffMarkers": [
+      "af-bounded-verification-observability",
+      "acceptance-verified"
+    ],
+    "archivedTaskFile": "openspec/changes/archive/2026-10-01-af-bounded-verification-observability/tasks.md"
+  },
+  "definition": {
+    "path": ".runtime/development/af-bounded-verification-observability/final/acceptance-definition-archive-location.json",
+    "sha256": "3c935f9eb4f0a919d754895410bdf1fabf5e6e87051a03e12ff30afcb2bff518"
+  }
+}

@@ -68,7 +68,15 @@ export async function ensureOrdinaryFile(file) {
 }
 
 export function boundedJson(value, maxBytes = 4096) {
+  if (!Number.isInteger(maxBytes) || maxBytes < 128) throw new Error('invalid output cap');
   const json = JSON.stringify(value);
   if (Buffer.byteLength(json) <= maxBytes) return json;
-  return JSON.stringify({ truncated: true, originalBytes: Buffer.byteLength(json), preview: json.slice(0, Math.max(0, maxBytes - 100)) });
+  let low = 0; let high = json.length; let result;
+  while (low <= high) {
+    const middle = Math.floor((low + high) / 2);
+    const candidate = JSON.stringify({ truncated: true, originalBytes: Buffer.byteLength(json), preview: json.slice(0, middle) });
+    if (Buffer.byteLength(candidate) <= maxBytes) { result = candidate; low = middle + 1; }
+    else high = middle - 1;
+  }
+  return result;
 }

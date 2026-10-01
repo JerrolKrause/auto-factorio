@@ -67,6 +67,7 @@ corepack pnpm check:docs
 corepack pnpm dev:preflight --input docs/examples/development-preflight.example.json
 corepack pnpm dev:task --change <change-name> --task <task-id> # preview only unless --start is explicit
 corepack pnpm change:ready --input <change-readiness.json>
+corepack pnpm change:ready --input <v2-change-readiness.json> --start-slice <slice-id>
 corepack pnpm diagnose --data-dir 'C:/@Projects/AutoFactorio/.runtime/local' --factorio-dir 'C:/Program Files (x86)/Steam/steamapps/common/Factorio'
 ```
 

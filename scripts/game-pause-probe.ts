@@ -2,7 +2,7 @@ import { diagnosticGrants } from '@autofactorio/contracts';
 import assert from 'node:assert/strict';
 import { readFile, writeFile, mkdtemp } from 'node:fs/promises';
 import { appendFileSync } from 'node:fs';
-import { configureProfile, readProfile, startServer, waitForServer, startObserver, identifyObserver, waitFor } from './dev/game-processes.js';
+import { configureProfile, readProfile, startServer, waitForServer, startObserver, identifyObserver, waitFor, stopProfile, runtimeOutputPath } from './dev/game-processes.js';
 import { ProbeStages, readResume, resumeProfile, fingerprint } from './dev/probe-stages.js';
 import type { ControlState } from '../packages/factorio/src/lifecycle.js';
 import { setTimeout as delay } from 'node:timers/promises';
@@ -16,6 +16,7 @@ import { Lifecycle, barrier, fence, captureCheckpoint, validateCheckpoint, prepa
 const continuation=process.argv.includes('--continue')?process.argv[process.argv.indexOf('--continue')+1]:undefined;
 if(process.argv.includes('--continue')&&!continuation)throw new Error('--continue requires an evidence directory');
 const profileFile=process.argv.includes('--profile-file')?process.argv[process.argv.indexOf('--profile-file')+1]!:'.runtime/phase04/current.json';
+const resultFile=process.argv.includes('--result-file')?await runtimeOutputPath(process.argv[process.argv.indexOf('--result-file')+1]!):undefined;
 const dir=continuation?await resumeProfile(continuation):(JSON.parse(await readFile(profileFile,'utf8')) as {dir:string}).dir;
 const launch=await readProfile(dir);
 const evidence=await mkdtemp(path.join(dir,'pause-probe-'));let cursor=0;const checks:string[]=[];
@@ -119,5 +120,11 @@ try {
 } catch(error){if(!stoppedAfter){failure=String(error);process.exitCode=1;sink({kind:'probe/failed',failure});console.error(failure);}}
 finally {
  try{if(life){control=await life.inspect();if(control.armed)control=await life.pause(control);}}catch(error){sink({kind:'probe/cleanupUnconfirmed',error:String(error)});}
- port?.close();await writeFile(path.join(evidence,'result.json'),JSON.stringify({passed:failure===null&&!stoppedAfter,stoppedAfter,continuation,failure,checks,manifestPath,restoredDirectory,restorePid,observerPid},null,2));console.log(JSON.stringify({evidence,failure,checks:checks.length}));
+ port?.close();let cleanup=false;
+ if(process.argv.includes('--cleanup'))try{
+  if(restoredDirectory){const restored=await readProfile(restoredDirectory);await stopProfile(restored.observerConfig);await stopProfile(restored.config);}
+  await stopProfile(launch.observerConfig);await stopProfile(launch.config);cleanup=true;
+ }catch(error){failure??=String(error);process.exitCode=1;}
+ const result={passed:failure===null&&!stoppedAfter,stoppedAfter,continuation,failure,checks,manifestPath,restoredDirectory,restorePid,observerPid,cleanup};
+ await writeFile(path.join(evidence,'result.json'),JSON.stringify(result,null,2));if(resultFile)await writeFile(resultFile,JSON.stringify(result,null,2));console.log(JSON.stringify({evidence,failure,checks:checks.length}));
 }
