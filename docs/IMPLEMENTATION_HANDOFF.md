@@ -2,7 +2,7 @@
 
 ## Current implementation - Bounded verification and observability, 1 October 2026
 
-Work is isolated on branch `af-bounded-verification-observability` in `C:/_Projects/auto-factorio-bounded-verification`, based on `4456794e4a98d0e75bb724f8cb260b6c8ac24f69`. The [change packet](../openspec/changes/archive/2026-10-01-af-bounded-verification-observability/proposal.md) is faithfully synced and archived; OpenSpec is pinned to 1.13.1. Original paused workspace edits remain preserved. No commit or PR created; frozen dependency installation passed after the user-installed Visual Studio 2026 prerequisites.
+Work is isolated on branch `af-bounded-verification-observability` in `C:/_Projects/auto-factorio-bounded-verification`, based on `4456794e4a98d0e75bb724f8cb260b6c8ac24f69`. The [change packet](../openspec/changes/archive/2026-10-01-af-bounded-verification-observability/proposal.md) is faithfully synced and archived; OpenSpec is pinned to 1.13.1. Original paused workspace edits remain preserved. The PR pipeline committed `fbf2d73e564925565ba6775f91f2380bbf4a4706` and pushed this branch to origin/main's repository; PR creation was refused by GitHub. Frozen dependency installation passed after the user-installed Visual Studio 2026 prerequisites.
 
 All three slices are **acceptance-verified**, with all **30 scenarios** passed on the final relevant source and **17/17 tasks** checked. Final delegated verification is `verification-ac48d5b4-e286-4645-b3b8-1b7a03a1582b` at `.runtime/development/af-bounded-verification-observability/final/verification-authority-repair/verification-assignment-1790879037477-3bbdca37/`: fresh **212/212 focused tests in four files**, fresh **635/635 full tests in 28 files**, build, dashboard build, lint, docs, strict selected-change validation and whitespace passed. Independent combined review `review-92d92d01-d03b-4963-85e4-8224c208499e` covers 39 scoped paths with 45 current source hashes. Both contracts are valid, ready and source-matched. Seven unique P2 findings (A three, B two, C two) are fixed; none rejected or remaining. Original findings, refinements, pre-effects authority refusal and stale candidate results remain immutable; historical A/B acceptance is provenance, with a new all-30 current pair for final readiness.
 
@@ -12,7 +12,9 @@ The original wall plans and spent history are preserved. An explicit author deci
 
 Archived `change:ready` now reports ready for all 30 scenarios and three slices against the current contract pair. The final closeout evidence is under `.runtime/development/af-bounded-verification-observability/final/closeout/`.
 
-**Next bounded action:** commit this branch and open the cohesive PR when the user requests it. No commit, push or external publication is included in this effort.
+The user authorized archive/PR publication. The repository `.claude/kit-run.mjs` launcher is absent, so the installed deterministic PR engine ran directly with `--no-llm` to preserve the provider constraint. It resolved base `main`, found it already an ancestor, committed and pushed the branch, then stopped at `CreatePullRequest`: `JerrolKrause does not have the correct permissions to execute CreatePullRequest`. Read-only checks show active GitHub authentication with `repo` scope and repository `ADMIN`; no PR exists for this branch. The pipeline has no configured gates and ran none; the preceding independent 635-test/all-30 acceptance remains the implementation proof. Its default Claude co-author trailer is generated metadata, not an observed Claude invocation.
+
+**Next bounded action:** resolve GitHub's PR-creation refusal, then rerun the installed PR pipeline with `--no-llm`. This publication-status handoff edit is local and uncommitted; no manual commit/push/PR workaround was used.
 
 ## Current implementation - Workshop runtime concurrency and visibility, 20 September 2026
 
