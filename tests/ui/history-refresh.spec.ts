@@ -139,6 +139,10 @@ test('a failed summary from a prior group cannot replace or reinstate the select
   try {
     const groupA = recordRun(env.f, env.catalog, 'summary-group-a-run', 'Summary group A').group;
     const groupB = recordRun(env.f, env.catalog, 'summary-group-b-run', 'Summary group B').group;
+    // Settle the shared initial snapshot before testing a deliberate summary failure.
+    // Otherwise its legitimate refresh can issue a second summary during fixture setup.
+    await page.goto(env.origin);
+    await expect(page.locator('.run small')).toContainText(`Event ${env.f.runtime.journal.cursor()}`);
     let summaryAFailures = 0;
     await page.route(url => url.pathname === `/api/workspace/groups/${groupA.id}/summary`, async route => {
       summaryAFailures++;
@@ -152,7 +156,7 @@ test('a failed summary from a prior group cannot replace or reinstate the select
       finally { delayedFailureSettled(); }
     });
 
-    await page.goto(`${env.origin}/history`);
+    await page.getByRole('link', { name: 'Run History' }).click();
     const groupAButton = page.getByRole('button', { name: /Summary group A/ });
     if (await groupAButton.getAttribute('aria-pressed') !== 'true') await groupAButton.click();
     await expect.poll(() => summaryAFailures).toBe(1);

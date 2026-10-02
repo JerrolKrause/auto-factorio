@@ -106,7 +106,12 @@ export function dashboard(operator: Operator, assets = path.resolve('apps/dashbo
     const value = options.workspaceCatalog.request(text(record(request.params).id)); if (!value) throw new Error('Workspace request unavailable'); return { request: value, run: options.workspaceCatalog.run(value.id) }; });
   app.post('/api/workshop/steer',request=>{const input=record(request.body);const session=workshop.steer(text(input.sessionId),Number(input.revision),text(input.text));workshopRuntime?.resume(session.id);return session;});
   app.post('/api/workshop/checkpoint',request=>{if(!workshopRuntime)throw new Error('Workshop execution host unavailable');const input=record(request.body),action=text(input.action);if(action!=='continue'&&action!=='finish')throw new Error('Unknown checkpoint action');const session=workshop.resolveCheckpoint(text(input.sessionId),Number(input.revision),action,typeof input.text==='string'?input.text:'');workshopRuntime.resume(session.id);return session;});
-  app.post('/api/workshop/stop',async request=>{const input=record(request.body);return workshopRuntime?workshopRuntime.stop(text(input.sessionId),text(input.reason)):workshop.stop(text(input.sessionId),text(input.reason));});
+  app.post('/api/workshop/stop',async request=>{
+    const input=record(request.body),id=text(input.sessionId),reason=text(input.reason);
+    const retired=options.workspaceCatalog?.stopRetiredWorkshop(id,reason,runtime.directory,runtime.run,runtime.journal);
+    if(retired)return retired;
+    return workshopRuntime?workshopRuntime.stop(id,reason):workshop.stop(id,reason);
+  });
   app.get('/api/workshop/library',request=>{const query=record(request.query);const search=typeof query.q==='string'?query.q.toLowerCase():'';const after=typeof query.after==='string'&&/^\d+$/.test(query.after)?Number(query.after):0;const rows=library.search({limit:100,offset:0}).map(value=>{const entry={...value} as Partial<typeof value>;delete entry.directory;return entry;}).filter(v=>!search||JSON.stringify(v).toLowerCase().includes(search));return{items:rows.slice(after,after+50),next:after+50<rows.length?after+50:null,total:rows.length};});
   app.get('/api/workshop/library/:id/export',request=>{const value=library.get(text(record(request.params).id));return{entry:{...value.entry,directory:undefined},blueprint:value.blueprint,portable:value.portable};});
   app.post('/api/workshop/learning',request=>{const input=record(request.body),action=text(input.action);if(action==='rollback')return learning.rollback(text(input.hash),text(input.operationId));if(action==='quarantine')return learning.quarantine(text(input.hash),text(input.reason));throw new Error('Unknown learning control');});

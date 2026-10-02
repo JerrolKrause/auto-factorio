@@ -15,11 +15,14 @@ import { prepareLiveWorkshopHost, reconcileWorkshopMeasurementFence } from '../a
 import { WorkshopControl } from '../packages/factorio/src/workshop.js';
 import { WorkspaceCatalog } from '../packages/storage/src/workspace-catalog.js';
 import { WorkspaceOwnershipConflict } from '../packages/storage/src/workspace-catalog.js';
+import { readFreshGame } from './dev/fresh-game.js';
+import type { FreshGameReceipt } from './dev/fresh-game.js';
 const value = (name: string) => { const i = process.argv.indexOf(name); return i < 0 ? undefined : process.argv[i + 1]; };
 await mkdir('.runtime/dashboard', { recursive: true });
 const directory = value('--directory') ? path.resolve(value('--directory')!) : await mkdtemp(path.resolve('.runtime/dashboard/run-'));
 if (!directory.startsWith(path.resolve('.runtime') + path.sep)) throw new Error('Dashboard data must be project scoped');
 let operator: Operator; let runtime: DurableRuntime; let closePort = () => {}; let workshopOptions:Parameters<typeof dashboard>[2]={};
+let freshGame: FreshGameReceipt | undefined;
 if (process.argv.includes('--fixture')) {
   const fixture = await dashboardFixture(directory, true); operator = fixture.operator; runtime = fixture.runtime;
 } else {
@@ -34,6 +37,8 @@ if (process.argv.includes('--fixture')) {
     const control = await waitFor('Factorio operator RPC', async () => {
       try { return await life.inspect(); } catch { return undefined; }
     }, 180000, 500);
+    const freshGameId = value('--fresh-game-id');
+    if (freshGameId) freshGame = await readFreshGame(profile, freshGameId, control);
     await reconcileWorkshopMeasurementFence(profile.dir,new WorkshopControl(port));
     runtime = new DurableRuntime(directory, path.basename(directory), control.epoch, game, life, [profile.password]);
     const c = new Coordinator(runtime, { ...PROBE_CAPS, runMs: 3600000 });
@@ -47,6 +52,7 @@ if (process.argv.includes('--fixture')) {
 }
 const workspaceCatalog = new WorkspaceCatalog(path.resolve('.runtime'));
 workspaceCatalog.importLegacy(500,directory);
+if (freshGame) workspaceCatalog.retireLegacyForFreshGame(freshGame.id, freshGame.profile);
 workspaceCatalog.syncCurrent(directory,runtime.run,runtime.journal);
 workspaceCatalog.reconcileStartup(directory,runtime.run,runtime.journal);
 operator.workspaceAdmission = action => { if(action==='resume'){const owner=workspaceCatalog.owner();if(owner)throw new WorkspaceOwnershipConflict(owner);} };

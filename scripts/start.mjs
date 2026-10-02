@@ -1,6 +1,6 @@
 import { spawn, spawnSync } from 'node:child_process';
 import { existsSync } from 'node:fs';
-import { mkdir, mkdtemp, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, writeFile } from 'node:fs/promises';
 import http from 'node:http';
 import net from 'node:net';
 import path from 'node:path';
@@ -104,7 +104,7 @@ function findCodex() {
   if (process.env.APPDATA) candidates.push(path.join(process.env.APPDATA, 'npm', 'codex.cmd'));
   for (const candidate of candidates.filter(Boolean)) {
     const version = executableVersion(candidate);
-    if (version === 'codex-cli 0.159.3') return candidate;
+    if (version === 'codex-cli 0.160.0') return candidate;
   }
   return undefined;
 }
@@ -181,11 +181,12 @@ async function prepareDependencies() {
   await run(packageManager, ['pnpm', 'build'], { label: 'application build' });
 }
 
-async function launchDashboard(mode, codex, profileFile) {
+async function launchDashboard(mode, codex, profileFile, freshGameId) {
   const directory = await mkdtemp(path.join(runtimeRoot, 'dashboard-'));
   const args = ['dist/scripts/dashboard.js', '--port', String(port), '--directory', directory];
   if (mode === 'fixture') args.push('--fixture');
   else args.push('--profile-file', profileFile, '--codex', codex);
+  if (mode === 'real' && freshGameId) args.push('--fresh-game-id', freshGameId);
   const child = spawn(process.execPath, args, { cwd: root, env: process.env, windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] });
   childProcesses.add(child);
   child.stdout.on('data', chunk => process.stdout.write(`[dashboard] ${chunk}`));
@@ -226,8 +227,9 @@ async function main() {
   const realRequested = selected.mode === 'real' || selected.headless || Boolean(requestedProfile);
   let mode = selected.mode === 'fixture' ? 'fixture' : 'real';
   let profileFile = requestedProfile ? path.resolve(requestedProfile) : undefined;
+  let freshGameId;
   if (mode === 'real' && !codex) {
-    const reason = 'Supported managed Codex 0.159.3 was not found. Set AUTOFACTORIO_CODEX to its absolute executable path.';
+    const reason = 'Supported managed Codex 0.160.0 was not found. Set AUTOFACTORIO_CODEX to its absolute executable path.';
     if (realRequested) throw new StartupError('managed Codex check', reason);
     console.warn(`\nNOTICE: ${reason}`);
     console.warn('Starting the local demonstration dashboard. It has no Factorio connection and performs no model inference.');
@@ -248,6 +250,7 @@ async function main() {
     const gameArgs = ['dist/scripts/game-launch.js', '--result-file', profileFile];
     if (selected.headless) gameArgs.push('--headless');
     await run(process.execPath, gameArgs, { label: 'Factorio launch', env: environment });
+    freshGameId = JSON.parse(await readFile(profileFile, 'utf8')).freshGameId;
   }
   if (mode === 'real' && (!profileFile || !existsSync(profileFile))) throw new StartupError('Factorio profile check', 'The requested Factorio profile file does not exist. Provide a valid project-owned profile with AUTOFACTORIO_PROFILE_FILE.');
   if (mode === 'real' && profileFile && requestedProfile && !selected.headless) {
@@ -255,7 +258,7 @@ async function main() {
     const result=await run(process.execPath, ['dist/scripts/game-observer.js', '--profile-file', profileFile], { label: 'visible Factorio launch', quiet: true });
     const observer=JSON.parse(result.stdout.trim().split(/\r?\n/).at(-1) ?? '{}');ownedObserver=observer.launched===true;
   }
-  const launched = await launchDashboard(mode, codex, profileFile);
+  const launched = await launchDashboard(mode, codex, profileFile, freshGameId);
   await writeFile(path.join(runtimeRoot, 'session.json'), JSON.stringify({ url, mode, headless: mode === 'real' && selected.headless, profileFile: profileFile ?? null, directory: launched.directory, startedAt: new Date().toISOString() }, null, 2));
   console.log(`\nAutoFactorio is ready at ${url}`);
   console.log(mode === 'fixture' ? 'Mode: local demonstration (no game or model inference).' : selected.headless ? 'Mode: connected headless Factorio session (starts paused; model inference remains user-controlled).' : 'Mode: connected visible Factorio session (starts paused; model inference remains user-controlled).');

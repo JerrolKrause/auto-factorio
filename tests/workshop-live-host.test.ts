@@ -22,6 +22,23 @@ function harness(inference:WorkshopInference,gameOverrides:Partial<WorkshopGame>
 }
 
 describe('production workshop host integration',()=>{
+  it.each([
+    {brief:'create 15 green circuits per second',product:'electronic-circuit',target:'15 per second',rate:15},
+    {brief:'create 0.5 green circuit per second',product:'electronic-circuit',target:'0.5 per second',rate:0.5},
+    {brief:'create 30 electronic circuits per minute',product:'electronic-circuit',target:'30 per minute',rate:0.5},
+  ])('resolves "$brief" to the exact product rate and preserves its units',async({brief,product,target,rate})=>{
+    const inference:WorkshopInference={async invoke(){return'{}';},async close(){}};
+    const f=harness(inference);
+    try{
+      const assignment=await f.host.resolve(request('green-circuit-default',{objective:brief}));
+      expect(assignment.objective).toBe(brief);
+      expect(assignment.source).toMatchObject({kind:'brief',numericTargetText:target});
+      const output=assignment.ports.find(port=>port.direction==='output')!;
+      expect(output.product).toMatchObject({kind:'item',name:product});
+      expect(Number(output.rate.numerator)/Number(output.rate.denominator)).toBe(rate);
+      expect(output.unit).toBe('units-per-game-second');
+    }finally{await f.close();}
+  });
   it('retains the exact host dispatch envelope and public output for a completed attempt',async()=>{
     const inference:WorkshopInference={async invoke(_session,role,_selection,observation){if(role==='workshop-designer')return JSON.stringify(document((observation as {assignment:{ports:BlueprintDocument['ports']}}).assignment.ports));
       return JSON.stringify({schema:1,summary:'No supported change',findings:[]});},async close(){}};

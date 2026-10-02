@@ -14,6 +14,8 @@ export interface Journal {
   append(context: EventContext, type: string, changes: Change[]): Event;
   get<T>(run: string, entity: Entity, id: string): T | undefined;
   list<T>(run: string, entity: Entity): T[];
+  /** Bounded identity check; absence in one run must not hide another run's effects. */
+  hasOtherRun?(run: string, entity: Entity, id: string): boolean;
   latestEventTime?(run: string, entity: Entity, id: string, types: string[]): string | null;
 }
 export interface Command {

@@ -69,6 +69,9 @@ export class SqliteJournal implements Journal {
     return row ? JSON.parse(row.json) as T : undefined;
   }
   list<T>(run: string, entity: Entity): T[] { return (this.db.prepare('SELECT json FROM projections WHERE run=? AND entity=? ORDER BY id').all(run, entity) as { json: string }[]).map(r => JSON.parse(r.json) as T); }
+  hasOtherRun(run: string, entity: Entity, id: string): boolean {
+    return Boolean(this.db.prepare('SELECT 1 FROM projections WHERE entity=? AND id=? AND run<>? LIMIT 1').get(entity, id, run));
+  }
   rows(run: string, entity: Entity): Record<string, unknown>[] {
     return (this.db.prepare('SELECT id,json FROM projections WHERE run=? AND entity=? ORDER BY id').all(run, entity) as { id: string; json: string }[]).map(r => ({ ...JSON.parse(r.json), id: r.id }));
   }

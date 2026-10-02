@@ -41,7 +41,9 @@ export class WorkspaceCatalog {
       CREATE TABLE IF NOT EXISTS owner(singleton INTEGER PRIMARY KEY CHECK(singleton=1), request_id TEXT NOT NULL);
       CREATE TABLE IF NOT EXISTS stop_intents(id TEXT PRIMARY KEY, reason TEXT NOT NULL, created_at TEXT NOT NULL);
       CREATE TABLE IF NOT EXISTS request_sources(request_id TEXT PRIMARY KEY, source_id TEXT NOT NULL);
-      CREATE TABLE IF NOT EXISTS legacy_sessions(run_id TEXT PRIMARY KEY, session_id TEXT NOT NULL);`);
+      CREATE TABLE IF NOT EXISTS legacy_sessions(run_id TEXT PRIMARY KEY, session_id TEXT NOT NULL);
+      CREATE TABLE IF NOT EXISTS fresh_game_boundaries(id TEXT PRIMARY KEY, profile TEXT NOT NULL, created_at TEXT NOT NULL);
+      CREATE TABLE IF NOT EXISTS legacy_ownership_candidates(id TEXT PRIMARY KEY);`);
   }
 
   close(): void { this.db.close(); }
@@ -58,6 +60,39 @@ export class WorkspaceCatalog {
   }
   owns(id:string):boolean {const owner=this.owner();return owner?.id===id&&owner.state==='active';}
 
+  /** Trusted startup only: a newly created sandbox cannot inherit legacy game work.
+   * This retires ownership, not unknown outcomes in the original evidence journals.
+   * Native admitted requests still require their existing exact recovery path.
+   */
+  retireLegacyForFreshGame(id: string, profile: string): number {
+    if (!/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(id)) throw new Error('Invalid fresh game boundary');
+    const resolved = realpathSync(profile);
+    if (!within(this.root, resolved) || resolved === this.root) throw new Error('Fresh game profile outside project runtime');
+    return this.db.transaction(() => {
+      const prior = this.db.prepare('SELECT profile FROM fresh_game_boundaries WHERE id=?').get(id) as {profile:string}|undefined;
+      if (prior) {
+        if (prior.profile !== resolved) throw new Error('Fresh game boundary identity collision');
+        return 0;
+      }
+      this.db.prepare('INSERT INTO fresh_game_boundaries VALUES(?,?,?)').run(id,resolved,new Date().toISOString());
+      const legacy = this.db.prepare("SELECT runs.id,source_id FROM runs JOIN legacy_ownership_candidates ON legacy_ownership_candidates.id=runs.id WHERE registration='legacy'").all() as {id:string;source_id:string}[];
+      let retired = 0;
+      for (const run of legacy) {
+        const request = this.request(run.id);
+        if (request && ['completed','cancelled','failed'].includes(request.state)) continue;
+        // Import's synthetic request IDs are scoped to immutable original sources.
+        // Preserve each retained run while preventing repeated import resurrection.
+        if (!request) {
+          const kind = this.run(run.id)!.identity.kind;
+          this.db.prepare('INSERT INTO requests VALUES(?,?,?,?,?,?)').run(run.id,kind,immutableAssignmentHash({legacy:run.id}),'failed',`historical_game_replaced:${id}`,new Date().toISOString());
+          this.db.prepare('INSERT OR IGNORE INTO request_sources VALUES(?,?)').run(run.id,run.source_id);
+        } else this.transitionRequest(run.id,'failed',`historical_game_replaced:${id}`);
+        retired++;
+      }
+      return retired;
+    })();
+  }
+
   stopIntent(id: string, reason: string): WorkspaceRequest | null {
     if (!/^[\w.-]{1,160}$/.test(id) || !reason.trim()) throw new Error('Invalid workspace stop intent');
     return this.db.transaction(() => {
@@ -71,6 +106,33 @@ export class WorkspaceCatalog {
 
   stopRequested(id: string): boolean {
     return Boolean(this.db.prepare('SELECT 1 FROM stop_intents WHERE id=?').get(id));
+  }
+
+  /** Stop an older runtime's owner without replaying it or rewriting its journal. */
+  stopRetiredWorkshop(id: string, reason: string, currentDirectory: string, currentRun: string, currentJournal: Journal): WorkspaceRequest | null {
+    const request = this.request(id);
+    if (!request) return null;
+    if (request.kind !== 'workshop') throw new Error('Workshop Stop cannot stop a scenario');
+    const source = this.db.prepare(`SELECT sources.relative_path,sources.runtime_run FROM request_sources JOIN sources ON sources.id=request_sources.source_id
+      WHERE request_sources.request_id=?`).get(id) as { relative_path: string; runtime_run: string | null } | undefined;
+    const sourcePath = source ? path.resolve(this.root, source.relative_path) : null;
+    const registeredRun = this.run(id);
+    const sourceRun = registeredRun?.identity.runtimeRun ?? source?.runtime_run;
+    const sourceSession = this.workshopSourceId(id) ?? id;
+    if (sourcePath && existsSync(sourcePath) && realpathSync(sourcePath) === realpathSync(currentDirectory) &&
+        (!sourceRun || sourceRun === currentRun) && sourceSession === id &&
+        (currentJournal.get(currentRun,'workshopSessions',id) ||
+          registeredRun?.registration !== 'journaled' && currentJournal.hasOtherRun?.(currentRun,'workshopSessions',id) === false)) return null;
+    if (['completed', 'cancelled', 'failed'].includes(request.state)) return request;
+    if (this.owner()?.id !== id) throw new Error('Workshop request does not own the managed game');
+    this.stopIntent(id, reason);
+    const reconciled = this.reconcileStartup(currentDirectory, currentRun, currentJournal)!;
+    // Only fully settled durable effects permit retirement. An empty replacement
+    // controller's cancellation receipt says nothing about an older runtime.
+    if (reconciled.state === 'held' && reconciled.reason === 'runtime_replacement_requires_reconciliation') {
+      return this.transitionRequest(id, 'cancelled', reason);
+    }
+    return reconciled;
   }
 
   /** Transactionally owns preparation before any resolver, provider or game await. */
@@ -106,23 +168,41 @@ export class WorkspaceCatalog {
     if (!owner) return null;
     if (owner.reason === 'legacy_ownership_requires_exact_reconciliation') return owner;
     if (owner.kind !== 'workshop') return owner;
-    const sourceRow = this.db.prepare(`SELECT sources.relative_path FROM request_sources JOIN sources ON sources.id=request_sources.source_id
-      WHERE request_sources.request_id=?`).get(owner.id) as { relative_path: string } | undefined;
+    const sourceRow = this.db.prepare(`SELECT sources.relative_path,sources.runtime_run FROM request_sources JOIN sources ON sources.id=request_sources.source_id
+      WHERE request_sources.request_id=?`).get(owner.id) as { relative_path: string; runtime_run: string | null } | undefined;
     if (!sourceRow) return this.transitionRequest(owner.id,'held','workspace_source_unknown');
-    const directory = realpathSync(path.join(this.root,sourceRow.relative_path));
+    const candidate = path.resolve(this.root,sourceRow.relative_path);
+    if (!existsSync(candidate)) return this.transitionRequest(owner.id,'held','workspace_journal_missing');
+    const directory = realpathSync(candidate);
     if (!within(this.root,directory)) throw new Error('Workspace source outside project runtime');
     const file = path.join(directory,'runtime.sqlite');
     if (!existsSync(file)) return this.transitionRequest(owner.id,'held','workspace_journal_missing');
     let session: Record<string, unknown> | undefined;
+    const sourceRun = this.run(owner.id)?.identity.runtimeRun ?? sourceRow.runtime_run;
+    const sessionId = this.workshopSourceId(owner.id) ?? owner.id;
     try {
-      if (realpathSync(currentDirectory) === directory) session=currentJournal.get<Record<string,unknown>>(currentRun,'workshopSessions',owner.id);
+      if (realpathSync(currentDirectory) === directory) {
+        const expectedRun = sourceRun ?? currentRun;
+        session=currentJournal.get<Record<string,unknown>>(expectedRun,'workshopSessions',sessionId);
+        if (!session && currentJournal.hasOtherRun?.(expectedRun,'workshopSessions',sessionId) !== false) {
+          return this.transitionRequest(owner.id,'held','workspace_session_identity_unconfirmed');
+        }
+      }
       else {
+        // A live SqliteJournal retains an exclusive lock. A failed historical
+        // read must hold ownership; it cannot prove the old writer has stopped.
         const journal = new Database(file,{readonly:true,fileMustExist:true});
-        try { const row=journal.prepare("SELECT json FROM projections WHERE entity='workshopSessions' AND id=?").get(owner.id) as {json:string}|undefined;session=row?parse<Record<string,unknown>>(row.json):undefined; }
+        try {
+          const rows = journal.prepare("SELECT run,json FROM projections WHERE entity='workshopSessions' AND id=?").all(sessionId) as {run:string;json:string}[];
+          const row = sourceRun ? rows.find(value => value.run === sourceRun) : rows.length === 1 ? rows[0] : undefined;
+          if (rows.length && !row) return this.transitionRequest(owner.id,'held','workspace_session_identity_unconfirmed');
+          session=row?parse<Record<string,unknown>>(row.json):undefined;
+        }
         finally {journal.close();}
       }
     } catch { return this.transitionRequest(owner.id,'held','workspace_journal_unreadable'); }
     if (!session) {
+      if (this.run(owner.id)?.registration === 'journaled') return this.transitionRequest(owner.id,'held','workspace_session_identity_unconfirmed');
       // The catalog request precedes journal configuration, and no provider/game effect
       // can dispatch until that configuration has been durably recorded.
       return this.transitionRequest(owner.id,this.stopRequested(owner.id)?'cancelled':'failed','preparation_not_admitted');
@@ -143,7 +223,7 @@ export class WorkspaceCatalog {
       const outcome=stage==='complete'?'completed':String(session.stopReason??'').includes('failed')?'failed':'cancelled';
       return this.transitionRequest(owner.id,outcome,typeof session.stopReason==='string'?session.stopReason:null);
     }
-    if (realpathSync(currentDirectory) === directory && !this.stopRequested(owner.id) && !uncertain && providerSettled) return owner;
+    if (realpathSync(currentDirectory) === directory && (!sourceRun || sourceRun === currentRun) && !this.stopRequested(owner.id) && !uncertain && providerSettled) return owner;
     return this.transitionRequest(owner.id,'held',uncertain||!providerSettled?'unresolved_effect_receipt':'runtime_replacement_requires_reconciliation');
   }
 
@@ -575,7 +655,10 @@ export class WorkspaceCatalog {
   }
 
   private adoptLegacyOwner(id:string,sourceId:string,kind:'scenario'|'workshop'='workshop'):void {
+    this.db.prepare('INSERT OR IGNORE INTO legacy_ownership_candidates VALUES(?)').run(id);
     if(this.owner())return;
+    const prior = this.request(id);
+    if (prior && ['completed','cancelled','failed'].includes(prior.state)) return; // Import cannot resurrect a retired request.
     const value:WorkspaceRequest={id,kind,requestHash:immutableAssignmentHash({legacy:id}),state:'held',reason:'legacy_ownership_requires_exact_reconciliation',createdAt:new Date().toISOString()};
     this.db.prepare('INSERT OR IGNORE INTO requests VALUES(?,?,?,?,?,?)').run(value.id,value.kind,value.requestHash,value.state,value.reason,value.createdAt);
     this.db.prepare('INSERT OR IGNORE INTO owner VALUES(1,?)').run(id);

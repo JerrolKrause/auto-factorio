@@ -32,6 +32,7 @@ export function composeWorkshop(runtime:Pick<DurableRuntime,'directory'|'run'|'j
     transition:(id:string,state:import('../../packages/storage/src/workspace-catalog.js').WorkspaceRequest['state'],reason?:string|null)=>options.workspaceCatalog!.transitionRequest(id,state,reason),
     stopIntent:(id:string,reason:string)=>options.workspaceCatalog!.stopIntent(id,reason),
     stopRequested:(id:string)=>options.workspaceCatalog!.stopRequested(id),
+    stopRetired:(id:string,reason:string)=>options.workspaceCatalog!.stopRetiredWorkshop(id,reason,runtime.directory,runtime.run,runtime.journal),
     begin:(assignment:import('@autofactorio/contracts').WorkshopAssignment,selectedGroupId:string|null)=>options.workspaceCatalog!.beginWorkshop(runtime.directory,runtime.run,assignment,selectedGroupId),
     journaled:(id:string)=>options.workspaceCatalog!.journaled(id),
   }:undefined;

@@ -42,7 +42,7 @@ export class WorkshopRuntime {
   private stops=new Map<string,Promise<WorkshopSessionState|WorkspaceRequest>>();
   private liveEffects=new Set<string>();
   private closing=false;
-  constructor(private orchestrator:WorkshopOrchestrator,private host:WorkshopRuntimeHost,private library:BlueprintLibrary,private available:()=>ModelSelection[],private bundleHash:(sessionId:string)=>string,private listSessions:()=>WorkshopSessionState[],private publish:(entry:LibraryEntry)=>void,private history?:{admit:(id:string,input:unknown)=>{request:WorkspaceRequest;newlyAdmitted:boolean};owns:(id:string)=>boolean;stopIntent:(id:string,reason:string)=>WorkspaceRequest|null;stopRequested:(id:string)=>boolean;transition:(id:string,state:WorkspaceRequest['state'],reason?:string|null)=>WorkspaceRequest;begin:(assignment:WorkshopAssignment,selectedGroupId:string|null)=>{group:WorkspaceGroupIdentity;run:WorkspaceRunIdentity};journaled:(runId:string)=>void}){}
+  constructor(private orchestrator:WorkshopOrchestrator,private host:WorkshopRuntimeHost,private library:BlueprintLibrary,private available:()=>ModelSelection[],private bundleHash:(sessionId:string)=>string,private listSessions:()=>WorkshopSessionState[],private publish:(entry:LibraryEntry)=>void,private history?:{admit:(id:string,input:unknown)=>{request:WorkspaceRequest;newlyAdmitted:boolean};owns:(id:string)=>boolean;stopIntent:(id:string,reason:string)=>WorkspaceRequest|null;stopRequested:(id:string)=>boolean;stopRetired?:(id:string,reason:string)=>WorkspaceRequest|null;transition:(id:string,state:WorkspaceRequest['state'],reason?:string|null)=>WorkspaceRequest;begin:(assignment:WorkshopAssignment,selectedGroupId:string|null)=>{group:WorkspaceGroupIdentity;run:WorkspaceRunIdentity};journaled:(runId:string)=>void}){}
   /** Fast durable admission for HTTP. Preparation continues without browser ownership. */
   accept(input:unknown,selectedGroupId:string|null=null):WorkspaceRequest {
     if(!this.history)throw new Error('Workspace coordinator unavailable');
@@ -81,6 +81,7 @@ export class WorkshopRuntime {
   recover():void{for(const session of this.sessions())if(!['complete','held','stopped'].includes(session.stage)&&!session.stopRequested&&!this.history?.stopRequested(session.id)&&(!this.history||this.history.owns(session.id)))this.track(session.id);}
   pending(id:string):Promise<void>|undefined{return this.active.get(id);}
   async stop(id:string,reason:string):Promise<WorkshopSessionState|WorkspaceRequest>{
+    const retired=this.history?.stopRetired?.(id,reason);if(retired)return retired;
     const request=this.history?.stopIntent(id,reason);
     let session:WorkshopSessionState|undefined;try{session=this.orchestrator.get(id);}catch{session=undefined;}
     if(session&&['complete','stopped'].includes(session.stage))return session;

@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test';
+import { test, expect, type Page } from '@playwright/test';
 import { mkdtempSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -12,6 +12,11 @@ import { WorkspaceCatalog } from '../../packages/storage/src/workspace-catalog.j
 import { effectReceipt } from '@autofactorio/contracts';
 import { SqliteJournal } from '../../packages/storage/src/journal.js';
 import { WorkshopInvocationRecorder } from '../../apps/runtime/workshop-invocation.js';
+
+async function waitForWorkshopOptions(page:Page){
+  // An available launch button no longer supplies Playwright's implicit wait for setup readiness.
+  await expect(page.getByLabel('Session model').getByRole('option',{name:'Astra',exact:true})).toHaveCount(1);
+}
 
 function productionWorkshopHost(directory:string,buildFailure:string|null=null){
   const inference:WorkshopInference={async invoke(_session,role,_selection,observation){if(role==='workshop-designer'){const assignment=(observation as {assignment:{ports:unknown[]}}).assignment;return JSON.stringify({schema:1,label:'Managed production host cell',description:'Production host composed with acceptance adapters',entities:[{id:'assembler',entityNumber:1,name:'assembling-machine-1',position:{x:0,y:0},direction:0,quality:'normal',recipe:'electronic-circuit'}],wires:[],ports:assignment.ports,icons:[{index:1,name:'electronic-circuit'}],tiles:[]});}return role==='workshop-scorer'?JSON.stringify({feedback:'Measured production-host candidate'}):JSON.stringify({decision:'no-change',reason:'No repeated failure',evidence:['valid-attempts']});},cancel:id=>effectReceipt(`inference:${id}`,'cancelled'),async close(){}};
@@ -67,7 +72,7 @@ test('all documented role states remain distinct in deterministic UI fixtures', 
 test('workshop surfaces asynchronous failure reasons and keeps the evidence inspector current',async({page})=>{
   const root=mkdtempSync(path.join(os.tmpdir(),'af-ui-workshop-failure-')),f=await dashboardFixture(path.join(root,'dashboard','run-fixture'),true),catalog=new WorkspaceCatalog(root),server=dashboard(f.operator,undefined,{workspaceCatalog:catalog,managedModels:[{id:'gpt-6-astra',displayName:'Astra',efforts:['low']}],workshopHost:productionWorkshopHost(f.runtime.directory,'character actor disconnected')});
   const origin=await server.listen();
-  try{await page.goto(origin+'/workshop');const panel=page.getByTestId('workshop'),response=page.waitForResponse(value=>value.url().endsWith('/api/workshop/launch'));await panel.getByRole('button',{name:'Launch workshop'}).click();expect((await response).status()).toBe(202);
+  try{await page.goto(origin+'/workshop');const panel=page.getByTestId('workshop'),response=page.waitForResponse(value=>value.url().endsWith('/api/workshop/launch'));await waitForWorkshopOptions(page);await panel.getByRole('button',{name:'Launch workshop'}).click();expect((await response).status()).toBe(202);
     await expect(page).toHaveURL(/\/history\//);await expect(page.locator('.workspace-page')).toContainText('character actor disconnected');
     const session=f.runtime.journal.list<{operationIntents:Record<string,{status:string;failure?:string}>}>(f.runtime.run,'workshopSessions')[0]!;
     expect(Object.values(session.operationIntents)).toContainEqual(expect.objectContaining({status:'failed',failure:expect.stringContaining('character actor disconnected')}));
@@ -95,7 +100,7 @@ test('workshop setup restores its draft and run detail controls checkpoints acro
     await expect(panel.getByLabel('Load preset')).toContainText('five-character-attempts');
     await page.reload();await expect(page.getByTestId('workshop').getByLabel('Construction')).toHaveValue('character');
     await expect(page.getByTestId('workshop').getByLabel('Designer effort')).toHaveValue('medium');
-    await page.getByTestId('workshop').getByRole('button',{name:'Launch workshop'}).click();
+    await waitForWorkshopOptions(page);await page.getByTestId('workshop').getByRole('button',{name:'Launch workshop'}).click();
     await expect(page).toHaveURL(/\/history\//);
     await expect(page.locator('.workspace-page')).toContainText('Waiting for you');
     const session=f.runtime.journal.list<{id:string;stage:string;assignment:Record<string,unknown>}>(f.runtime.run,'workshopSessions')[0]!;
@@ -104,7 +109,7 @@ test('workshop setup restores its draft and run detail controls checkpoints acro
     await expect.poll(()=>f.runtime.journal.get<{activeIteration:number;stage:string}>(f.runtime.run,'workshopSessions',session.id)).toMatchObject({activeIteration:2,stage:'checkpoint'});
     await page.getByRole('button',{name:'Finish after this attempt'}).click();
     await expect.poll(()=>f.runtime.journal.get<{stage:string}>(f.runtime.run,'workshopSessions',session.id)?.stage).toBe('complete');
-    await page.getByRole('link',{name:'Run History'}).click();await expect(page.locator('.history-row').first()).toContainText('Produce 60 electronic circuits');
+    await page.getByRole('link',{name:'Run History'}).click();await expect(page.locator('.history-row').first()).toContainText('create 15 green circuits per second');
     await page.locator('a.history-row').first().click();await expect(page).toHaveURL(new RegExp(`/history/${session.id}$`));
     await page.reload();await expect(page.getByRole('heading',{name:/Workshop/})).toBeVisible();
     await page.goBack();await expect(page.getByRole('heading',{name:'Briefs, scenarios and runs'})).toBeVisible();
@@ -112,10 +117,30 @@ test('workshop setup restores its draft and run detail controls checkpoints acro
     await page.getByRole('link',{name:'Run History'}).click();
     await page.getByRole('button',{name:'Run this brief again'}).click();
     await expect(page.getByTestId('workshop').getByLabel('Construction')).toHaveValue('character');
-    await page.evaluate(()=>{const key='autofactorio.workshop.draft.v1',saved=JSON.parse(localStorage.getItem(key)!) as {values:{model:string;effort:string;profile:string}};saved.values.model='retired-model';saved.values.effort='low';saved.values.profile='retired-profile';localStorage.setItem(key,JSON.stringify(saved));});
+    const existingSessionCount=f.runtime.journal.list(f.runtime.run,'workshopSessions').length;
+    await page.evaluate(()=>{const key='autofactorio.workshop.draft.v1',saved=JSON.parse(localStorage.getItem(key)!) as {values:{model:string;effort:string;profile:string}};saved.values.model='retired-model';saved.values.effort='low';saved.values.profile='starter-assembly';localStorage.setItem(key,JSON.stringify(saved));});
     await page.reload();await expect(page.getByTestId('workshop')).toContainText('retired-model/low is unavailable');
-    await expect(page.getByTestId('workshop')).toContainText('retired-profile is unavailable');
-    await expect(page.getByRole('button',{name:'Launch workshop'})).toBeDisabled();
+    const launch=page.getByRole('button',{name:'Launch workshop'});await expect(launch).toBeEnabled();await launch.click();
+    await expect(page.getByRole('alert').filter({hasText:'Choose an available session model'})).toBeVisible();
+    await expect(page.getByLabel('Session model')).toBeFocused();expect(f.runtime.journal.list(f.runtime.run,'workshopSessions')).toHaveLength(existingSessionCount);
+    await page.evaluate(()=>{const key='autofactorio.workshop.draft.v1',saved=JSON.parse(localStorage.getItem(key)!) as {values:Record<string,string>};saved.values.model='gpt-6-astra';saved.values.effort='ultra';saved.values.profile='starter-assembly';localStorage.setItem(key,JSON.stringify(saved));});
+    await page.reload();await waitForWorkshopOptions(page);await page.getByRole('button',{name:'Launch workshop'}).click();
+    await expect(page.getByRole('alert').filter({hasText:'Choose an available session effort'})).toBeVisible();await expect(page.getByLabel('Session effort')).toBeFocused();expect(f.runtime.journal.list(f.runtime.run,'workshopSessions')).toHaveLength(existingSessionCount);
+    await page.evaluate(()=>{const key='autofactorio.workshop.draft.v1',saved=JSON.parse(localStorage.getItem(key)!) as {values:Record<string,string>};saved.values.effort='medium';saved.values.profile='retired-profile';localStorage.setItem(key,JSON.stringify(saved));});
+    await page.reload();await waitForWorkshopOptions(page);await page.getByRole('button',{name:'Launch workshop'}).click();
+    await expect(page.getByRole('alert').filter({hasText:'Choose an available capability profile'})).toBeVisible();await expect(page.getByLabel('Capability profile')).toBeFocused();expect(f.runtime.journal.list(f.runtime.run,'workshopSessions')).toHaveLength(existingSessionCount);
+    await page.evaluate(()=>{const key='autofactorio.workshop.draft.v1',saved=JSON.parse(localStorage.getItem(key)!) as {values:Record<string,string>};saved.values.profile='starter-assembly';saved.values.designerModel='retired-model';saved.values.designerEffort='low';localStorage.setItem(key,JSON.stringify(saved));});
+    await page.reload();await waitForWorkshopOptions(page);await page.getByRole('button',{name:'Launch workshop'}).click();
+    await expect(page.getByRole('alert').filter({hasText:'Designer model is unavailable'})).toBeVisible();await expect(page.getByLabel('Designer model')).toBeFocused();
+    await expect(page.locator('details.advanced-options')).toHaveAttribute('open','');expect(f.runtime.journal.list(f.runtime.run,'workshopSessions')).toHaveLength(existingSessionCount);
+    await page.getByRole('button',{name:'Reset saved setup'}).click();
+    await expect(panel.locator('textarea')).toHaveValue('create 15 green circuits per second');
+    await expect(panel.getByLabel('Session model')).toHaveValue('gpt-6-astra');await expect(panel.getByLabel('Session effort')).toHaveValue('medium');
+    await expect(panel.getByRole('button',{name:'Launch workshop'})).toBeEnabled();await waitForWorkshopOptions(page);await panel.getByRole('button',{name:'Launch workshop'}).click();await expect(page).toHaveURL(/\/history\//);
+    const resetId=new URL(page.url()).pathname.split('/').at(-1)!;
+    await expect.poll(()=>f.runtime.journal.get<{id:string;assignment:Record<string,unknown>}>(f.runtime.run,'workshopSessions',resetId)).toMatchObject({id:resetId,assignment:{objective:'create 15 green circuits per second'}});
+    const resetSession=f.runtime.journal.get<{id:string;assignment:Record<string,unknown>}>(f.runtime.run,'workshopSessions',resetId)!;
+    expect(resetSession.assignment).toMatchObject({objective:'create 15 green circuits per second',source:{numericTargetText:'15 per second'},models:{sessionDefault:{modelId:'gpt-6-astra',reasoningEffort:'medium'}}});
   }finally{await context.close();await server.close();catalog.close();f.close();}
 });
 
@@ -132,10 +157,62 @@ test('a second tab cannot silently replace local setup edits',async({browser})=>
     await second.locator('textarea').fill('Second tab saved edit');
     await expect(first.getByTestId('workshop')).toContainText('Setup changed in another tab');
     await expect(first.locator('textarea')).toHaveValue('First tab local edit');
-    await expect(first.getByRole('button',{name:'Launch workshop'})).toBeDisabled();
+    const launch=first.getByRole('button',{name:'Launch workshop'});await expect(launch).toBeEnabled();await launch.click();
+    await expect(first.getByRole('alert').filter({hasText:'Reset saved setup or load the other tab settings'})).toBeVisible();
+    await expect(first.locator('[data-launch-field="setup"]')).toBeFocused();expect(f.runtime.journal.list(f.runtime.run,'workshopSessions')).toHaveLength(0);
     await first.getByRole('button',{name:'Load other tab settings'}).click();
     await expect(first.locator('textarea')).toHaveValue('Second tab saved edit');
   }finally{await context.close();await server.close();catalog.close();f.close();}
+});
+
+test('fresh setup admits the Astra preferred medium default brief',async({page})=>{
+  const root=mkdtempSync(path.join(os.tmpdir(),'af-ui-fresh-default-'));
+  const f=await dashboardFixture(path.join(root,'dashboard','run-fixture'),true),catalog=new WorkspaceCatalog(root),host=productionWorkshopHost(f.runtime.directory);
+  const server=dashboard(f.operator,undefined,{workspaceCatalog:catalog,managedModels:[{id:'gpt-5.6-sol',displayName:'Sol',efforts:['low','medium']},{id:'gpt-6-astra',displayName:'Astra',efforts:['low','medium']}],workshopHost:host,profileReader:host.profileReader}),origin=await server.listen();
+  try{await page.goto(origin+'/workshop');const panel=page.getByTestId('workshop');
+    await expect(panel.locator('textarea')).toHaveValue('create 15 green circuits per second');await expect(panel.getByLabel('Session model')).toHaveValue('gpt-6-astra');await expect(panel.getByLabel('Session effort')).toHaveValue('medium');
+    await waitForWorkshopOptions(page);await panel.getByRole('button',{name:'Launch workshop'}).click();await expect(page).toHaveURL(/\/history\//);
+    const id=new URL(page.url()).pathname.split('/').at(-1)!;
+    await expect.poll(()=>f.runtime.journal.get<{id:string;assignment:Record<string,unknown>}>(f.runtime.run,'workshopSessions',id)).toMatchObject({id,assignment:{objective:'create 15 green circuits per second'}});
+    const session=f.runtime.journal.get<{assignment:Record<string,unknown>}>(f.runtime.run,'workshopSessions',id)!;
+    expect(session.assignment).toMatchObject({objective:'create 15 green circuits per second',source:{numericTargetText:'15 per second'},models:{sessionDefault:{modelId:'gpt-6-astra',reasoningEffort:'medium'}}});
+  }finally{await server.close();catalog.close();f.close();}
+});
+
+test('brief and simulation speed validation keeps invalid launches out of admission',async({page})=>{
+  const root=mkdtempSync(path.join(os.tmpdir(),'af-ui-invalid-brief-'));
+  const f=await dashboardFixture(path.join(root,'dashboard','run-fixture'),true),catalog=new WorkspaceCatalog(root),host=productionWorkshopHost(f.runtime.directory);
+  const server=dashboard(f.operator,undefined,{workspaceCatalog:catalog,managedModels:[{id:'gpt-6-astra',displayName:'Astra',efforts:['low']}],workshopHost:host,profileReader:host.profileReader}),origin=await server.listen();
+  try{await page.setViewportSize({width:900,height:600});await page.goto(origin+'/workshop');await waitForWorkshopOptions(page);const panel=page.getByTestId('workshop'),launch=panel.getByRole('button',{name:'Launch workshop'});
+    await panel.locator('textarea').fill('   ');await launch.scrollIntoViewIfNeeded();const before=await page.evaluate(()=>scrollY);expect(before).toBeGreaterThan(0);
+    await launch.click();const briefAlert=page.getByRole('alert').filter({hasText:'Enter a product and target rate'});await expect(briefAlert).toBeVisible();await expect(panel.locator('textarea')).toBeFocused();
+    await expect(panel.locator('textarea')).toBeInViewport();await expect(briefAlert).toBeInViewport();await expect.poll(()=>page.evaluate(()=>scrollY)).toBeLessThan(before);
+    await panel.locator('textarea').fill('create 15 green circuits per second');await page.getByText('Advanced settings').click();await panel.getByLabel('Evaluation speed').fill('0');await page.getByText('Advanced settings').click();await launch.click();
+    await expect(page.getByRole('alert').filter({hasText:'Enter a positive simulation speed'})).toBeVisible();await expect(panel.getByLabel('Evaluation speed')).toBeFocused();await expect(panel.getByLabel('Evaluation speed')).toBeInViewport();await expect(page.locator('details.advanced-options')).toHaveAttribute('open','');expect(f.runtime.journal.list(f.runtime.run,'workshopSessions')).toHaveLength(0);
+  }finally{await server.close();catalog.close();f.close();}
+});
+
+test('options load failure and empty model list give actionable launch feedback',async({page})=>{
+  const root=mkdtempSync(path.join(os.tmpdir(),'af-ui-options-failure-'));
+  const f=await dashboardFixture(path.join(root,'dashboard','run-fixture'),true),catalog=new WorkspaceCatalog(root),host=productionWorkshopHost(f.runtime.directory);
+  const server=dashboard(f.operator,undefined,{workspaceCatalog:catalog,managedModels:[],workshopHost:host,profileReader:host.profileReader}),origin=await server.listen();
+  try{await page.route('**/api/workshop/options',route=>route.fulfill({status:503,json:{error:'Options unavailable'}}));await page.goto(origin+'/workshop');
+    const panel=page.getByTestId('workshop'),launch=panel.getByRole('button',{name:'Launch workshop'});await expect(launch).toBeEnabled();await launch.click();
+    await expect(page.getByRole('alert').filter({hasText:'Could not load managed options'})).toBeVisible();await expect(panel.getByLabel('Session model')).toBeFocused();
+    await page.unroute('**/api/workshop/options');await page.reload();await expect(panel.getByLabel('Session model')).toHaveValue('');await launch.click();
+    await expect(page.getByRole('alert').filter({hasText:'No managed models are available'})).toBeVisible();await expect(panel.getByLabel('Session model')).toBeFocused();expect(f.runtime.journal.list(f.runtime.run,'workshopSessions')).toHaveLength(0);
+  }finally{await server.close();catalog.close();f.close();}
+});
+
+test('an active workshop owner keeps launch available and refuses another admission',async({page})=>{
+  const root=mkdtempSync(path.join(os.tmpdir(),'af-ui-active-owner-'));
+  const f=await dashboardFixture(path.join(root,'dashboard','run-fixture'),true),catalog=new WorkspaceCatalog(root);
+  catalog.admit('already-active','workshop',{id:'already-active'},f.runtime.directory);
+  const server=dashboard(f.operator,undefined,{workspaceCatalog:catalog,managedModels:[{id:'gpt-6-astra',displayName:'Astra',efforts:['low']}],workshopHost:productionWorkshopHost(f.runtime.directory)}),origin=await server.listen();
+  try{await page.goto(origin+'/workshop');const panel=page.getByTestId('workshop'),launch=panel.getByRole('button',{name:'Launch workshop'});await expect(launch).toBeEnabled();await launch.click();
+    await expect(page.getByRole('alert').filter({hasText:'Another run owns the managed game'})).toBeVisible();await expect(panel.locator('[data-launch-field="ownership"]')).toBeFocused();
+    expect(catalog.owner()?.id).toBe('already-active');expect(f.runtime.journal.list(f.runtime.run,'workshopSessions')).toHaveLength(0);
+  }finally{await server.close();catalog.close();f.close();}
 });
 
 test('history keeps brief, run and attempt scope across direct links and refresh',async({page})=>{
@@ -244,10 +321,10 @@ test('below-fold launch gives immediate feedback and focuses once without later 
   const root=mkdtempSync(path.join(os.tmpdir(),'af-ui-launch-focus-'));
   const f=await dashboardFixture(path.join(root,'dashboard','run-fixture'),true),catalog=new WorkspaceCatalog(root);
   const server=dashboard(f.operator,undefined,{workspaceCatalog:catalog,managedModels:[{id:'gpt-6-astra',displayName:'Astra',efforts:['low']}],workshopHost:productionWorkshopHost(f.runtime.directory)});
-  const origin=await server.listen();let release!:()=>void,ready!:()=>void;
+  const origin=await server.listen();let release!:()=>void,ready!:()=>void,launchPosts=0;
   const held=new Promise<void>(resolve=>{release=resolve;}),pending=new Promise<void>(resolve=>{ready=resolve;});
   await page.setViewportSize({width:900,height:600});await page.emulateMedia({reducedMotion:'reduce'});
-  await page.route('**/api/workshop/launch',async route=>{const response=await route.fetch();ready();await held;await route.fulfill({response});});
+  await page.route('**/api/workshop/launch',async route=>{launchPosts++;const response=await route.fetch();ready();await held;await route.fulfill({response});});
   try {
     await page.goto(origin+'/workshop');const panel=page.getByTestId('workshop');
     await expect(panel).toContainText('A separate sandbox creates entities instantly');
@@ -255,7 +332,8 @@ test('below-fold launch gives immediate feedback and focuses once without later 
     await panel.getByText('Advanced settings').click();await panel.getByLabel('brief',{exact:true}).check();
     const launch=panel.getByRole('button',{name:'Launch workshop'});await expect(launch).toBeEnabled();await launch.scrollIntoViewIfNeeded();
     expect(await page.evaluate(()=>scrollY)).toBeGreaterThan(0);await launch.click();await pending;
-    await expect(panel.getByRole('button',{name:'Submitting run…'})).toBeDisabled();
+    await expect(panel.getByRole('button',{name:'Submitting run…'})).toBeEnabled();
+    await panel.getByRole('button',{name:'Submitting run…'}).click();expect(launchPosts).toBe(1);
     await expect(panel.getByRole('status').filter({hasText:'Submitting run request'})).toBeVisible();
     release();await expect(page.getByRole('heading',{name:/Workshop ·/})).toBeFocused();
     const heading=page.getByRole('heading',{name:/Workshop ·/});expect(await heading.evaluate(element=>element.getBoundingClientRect().top)).toBeGreaterThanOrEqual(0);
@@ -344,11 +422,11 @@ test('rerunning a brief pins new settings and editing its objective creates immu
   const root=mkdtempSync(path.join(os.tmpdir(),'af-ui-brief-lineage-'));
   const f=await dashboardFixture(path.join(root,'dashboard','run-fixture'),true),catalog=new WorkspaceCatalog(root);
   const server=dashboard(f.operator,undefined,{workspaceCatalog:catalog,managedModels:[{id:'gpt-6-astra',displayName:'Astra',efforts:['low','medium']}],workshopHost:productionWorkshopHost(f.runtime.directory)}),origin=await server.listen();
-  async function launchAndStop(){await page.getByRole('button',{name:'Launch workshop'}).click();await expect(page.locator('.workspace-page')).toContainText('Waiting for you');const id=page.url().split('/history/')[1]!;await page.locator('.active-run-banner').getByRole('button',{name:'Stop run',exact:true}).click();await expect.poll(()=>catalog.request(id)?.state).toBe('cancelled');return catalog.run(id)!.identity;}
-  async function rerun(groupId:string){await page.getByRole('link',{name:'Run History'}).click();await page.getByRole('button',{name:/Produce 60 electronic circuits per minute/}).click();await page.getByRole('button',{name:'Run this brief again'}).click();await expect(page).toHaveURL(new RegExp(`group=${groupId}`));}
+  async function launchAndStop(){await waitForWorkshopOptions(page);await page.getByRole('button',{name:'Launch workshop'}).click();await expect(page.locator('.workspace-page')).toContainText('Waiting for you');const id=page.url().split('/history/')[1]!;await page.locator('.active-run-banner').getByRole('button',{name:'Stop run',exact:true}).click();await expect.poll(()=>catalog.request(id)?.state).toBe('cancelled');await expect(page.locator('.active-run-banner')).toHaveCount(0);return catalog.run(id)!.identity;}
+  async function rerun(groupId:string){await page.getByRole('link',{name:'Run History'}).click();await page.getByRole('button',{name:/create 15 green circuits per second/}).click();await page.getByRole('button',{name:'Run this brief again'}).click();await expect(page).toHaveURL(new RegExp(`group=${groupId}`));}
   try {
     await page.goto(origin+'/workshop');await page.getByText('Advanced settings').click();await page.getByLabel('brief',{exact:true}).check();const first=await launchAndStop();
-    await rerun(first.groupId);await page.getByLabel('Session effort').selectOption('medium');const second=await launchAndStop();
+    await rerun(first.groupId);await page.getByLabel('Session effort').selectOption('low');const second=await launchAndStop();
     expect(second.groupId).toBe(first.groupId);expect(second.assignmentHash).not.toBe(first.assignmentHash);expect(second.comparisonSeries).not.toBe(first.comparisonSeries);
     await rerun(first.groupId);await page.locator('textarea').fill('Produce 120 electronic circuits per minute');const third=await launchAndStop();
     expect(third.groupId).not.toBe(first.groupId);expect(catalog.group(third.groupId)?.parentGroupId).toBe(first.groupId);
@@ -367,7 +445,8 @@ test('Improve preserves exact source and local edits during a cross-tab setup co
     await second.goto(origin+'/workshop');await second.locator('textarea').fill('Second tab saved objective');await expect(first.getByTestId('workshop')).toContainText('Setup changed in another tab');
     await first.getByRole('link',{name:'Blueprint Library'}).click();await first.getByRole('button',{name:'Search',exact:true}).click();await first.getByRole('button',{name:'Improve',exact:true}).click();
     await expect(first).toHaveURL(/improve=exact-source-revision/);await expect(first.locator('textarea')).toHaveValue('First tab local objective');await expect(first.getByTestId('workshop')).toContainText('Improving exact library revision exact-source-revision');
-    await expect(first.getByRole('button',{name:'Launch workshop'})).toBeDisabled();expect(catalog.owner()).toBeNull();expect(f.runtime.journal.list(f.runtime.run,'workshopSessions')).toHaveLength(0);
+    const launch=first.getByRole('button',{name:'Launch workshop'});await expect(launch).toBeEnabled();await launch.click();await expect(first.getByRole('alert').filter({hasText:'Reset saved setup or load the other tab settings'})).toBeVisible();
+    await expect(first.locator('[data-launch-field="setup"]')).toBeFocused();expect(catalog.owner()).toBeNull();expect(f.runtime.journal.list(f.runtime.run,'workshopSessions')).toHaveLength(0);
     await first.getByRole('button',{name:'Load other tab settings'}).click();await expect(first.locator('textarea')).toHaveValue('Second tab saved objective');await expect(first.getByTestId('workshop')).toContainText('Improving exact library revision exact-source-revision');
     await expect.poll(()=>first.evaluate(()=>JSON.parse(localStorage.getItem('autofactorio.workshop.draft.v1')!).values.improveRevision)).toBe('exact-source-revision');
   }finally{await context.close();await server.close();catalog.close();f.close();}
@@ -380,13 +459,13 @@ test('delayed checkpoint and history failures expose pending state and a scoped 
   let release=()=>{},fail=true,ready!:()=>void;
   let held=new Promise<void>(resolve=>{release=resolve;}),pending=new Promise<void>(resolve=>{ready=resolve;});
   try {
-    await page.goto(origin+'/workshop');await page.getByText('Advanced settings').click();await page.getByLabel('brief',{exact:true}).check();await page.getByRole('button',{name:'Launch workshop'}).click();await expect(page.locator('.workspace-page')).toContainText('Waiting for you');
+    await page.goto(origin+'/workshop');await page.getByText('Advanced settings').click();await page.getByLabel('brief',{exact:true}).check();await waitForWorkshopOptions(page);await page.getByRole('button',{name:'Launch workshop'}).click();await expect(page.locator('.workspace-page')).toContainText('Waiting for you');
     await page.route('**/api/workshop/checkpoint',async route=>{if(fail){ready();await held;await route.fulfill({status:503,json:{error:'Checkpoint temporarily unavailable'}});}else await route.continue();});
     await page.getByRole('button',{name:'Finish after this attempt',exact:true}).click();await pending;await expect(page.getByRole('button',{name:'Finish after this attempt',exact:true})).toBeDisabled();await expect(page.getByRole('status').filter({hasText:'Submitting checkpoint decision'})).toBeVisible();
-    release();await expect(page.getByRole('alert')).toContainText('Checkpoint temporarily unavailable');fail=false;await page.getByRole('button',{name:'Finish after this attempt',exact:true}).click();await expect(page.locator('.terminal-summary')).toBeVisible();
+    release();await expect(page.locator('.workspace-page').getByRole('alert').filter({hasText:'Submitting checkpoint decision failed'})).toContainText('Checkpoint temporarily unavailable');fail=false;await page.getByRole('button',{name:'Finish after this attempt',exact:true}).click();await expect(page.locator('.terminal-summary')).toBeVisible();
     fail=true;held=new Promise<void>(resolve=>{release=resolve;});pending=new Promise<void>(resolve=>{ready=resolve;});
     await page.route('**/api/workspace/groups?*',async route=>{if(fail){ready();await held;await route.fulfill({status:503,json:{error:'History temporarily unavailable'}});}else await route.continue();});
-    await page.getByRole('link',{name:'Run History'}).click();await pending;await expect(page.getByRole('status').filter({hasText:'Loading history'})).toBeVisible();release();await expect(page.getByRole('alert')).toContainText('History temporarily unavailable');fail=false;await page.getByRole('button',{name:'Retry history'}).click();await expect(page.getByRole('button',{name:/Produce 60 electronic circuits per minute/})).toBeVisible();
+    await page.getByRole('link',{name:'Run History'}).click();await pending;await expect(page.getByRole('status').filter({hasText:'Loading history'})).toBeVisible();release();await expect(page.getByRole('alert')).toContainText('History temporarily unavailable');fail=false;await page.getByRole('button',{name:'Retry history'}).click();await expect(page.getByRole('button',{name:/create 15 green circuits per second/})).toBeVisible();
   }finally{release();await server.close();catalog.close();f.close();}
 });
 
@@ -411,9 +490,9 @@ test('launch recovers the same request after a response is lost to refresh',asyn
   const held=new Promise<void>(resolve=>{releaseResponse=resolve;});
   try{
     await page.route('**/api/workshop/launch',async route=>{const response=await route.fetch();await held;await route.fulfill({response});});
-    await page.goto(origin+'/workshop');await page.getByRole('button',{name:'Launch workshop'}).click();
+    await page.goto(origin+'/workshop');await waitForWorkshopOptions(page);await page.getByRole('button',{name:'Launch workshop'}).click();
     await expect(page.getByRole('status').filter({hasText:'Submitting run request'})).toBeVisible();
-    await expect(page.getByRole('button',{name:/^Submitting run/})).toBeDisabled();
+    await expect(page.getByRole('button',{name:/^Submitting run/})).toBeEnabled();
     await expect(page.getByRole('button',{name:'Check launch status'})).toBeVisible();
     const requestId=await page.evaluate(()=>JSON.parse(localStorage.getItem('autofactorio.workshop.pending.v1')!).id as string);
     await expect.poll(()=>catalog.request(requestId)?.state).toBe('active');
@@ -434,7 +513,7 @@ test('Stop during preparation closes admission before the first attempt',async({
   const server=dashboard(f.operator,undefined,{workspaceCatalog:catalog,managedModels:[{id:'gpt-6-astra',displayName:'Astra',efforts:['low']}],workshopHost:host});
   const origin=await server.listen();
   try{
-    await page.goto(origin+'/workshop');await page.getByRole('button',{name:'Launch workshop'}).click();
+    await page.goto(origin+'/workshop');await waitForWorkshopOptions(page);await page.getByRole('button',{name:'Launch workshop'}).click();
     await expect(page).toHaveURL(/\/history\//);
     const id=new URL(page.url()).pathname.split('/').at(-1)!;
     await expect(page.getByRole('button',{name:'Stop run'})).toBeVisible();
