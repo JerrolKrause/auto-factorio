@@ -1,0 +1,2 @@
+# The upstream kit scope parser does not accept CRLF path entries.
+.claude/learnings/scopes.yaml text eol=lf

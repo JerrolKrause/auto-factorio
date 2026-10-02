@@ -6,6 +6,8 @@ Keep all future edits to this file as context-efficient as possible: concise rul
 
 ## Begin with the current task
 
+Before using agent-graph-kit skills, read the repository [kit profile](.claude/stack.md), including matching-version script resolution. Repository model routing, authorization, verification and independent-review rules remain authoritative.
+
 OpenSpec is a pinned project dev dependency. After `corepack.cmd pnpm install --frozen-lockfile`, run `corepack.cmd pnpm exec openspec <args>` on Windows (`corepack pnpm exec openspec <args>` elsewhere). Treat bare `openspec` in generated skills as shorthand for this command; do not rely on a global PATH entry.
 
 Read the current implementation entry in `docs/IMPLEMENTATION_HANDOFF.md` for progress and the next milestone; consult historical entries only when relevant. Read `docs/REQUIREMENTS.md` before changing product behavior, then only the relevant architecture/scenario sections. Do not require the planning conversation or reread every document on every turn.

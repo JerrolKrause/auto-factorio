@@ -1,0 +1,39 @@
+# Repository-owned scope map for agent-graph-kit. Empty shards are not fabricated.
+repo-name: auto-factorio
+module-root: packages/
+fallback-scope: core
+
+scopes:
+  core:
+    description: Deterministic coordination, contracts, persistence and tool boundaries.
+    paths:
+      - packages/core/**
+      - packages/contracts/**
+      - packages/storage/**
+      - packages/tools/**
+  dashboard:
+    description: Browser UI and runtime HTTP/workshop integration.
+    paths:
+      - apps/**
+      - tests/ui/**
+  game:
+    description: Structured game transport, Lua behavior and physical probes.
+    paths:
+      - packages/factorio/**
+      - mods/**
+      - scripts/game-*.ts
+  provider:
+    description: Managed Codex integration and provider probes.
+    paths:
+      - packages/codex/**
+      - scripts/provider-*.ts
+  development:
+    description: Developer workflows, regression suites and project configuration.
+    paths:
+      - scripts/**
+      - tests/**
+      - docs/**
+      - .claude/**
+      - .agents/**
+      - AGENTS.md
+      - package.json
