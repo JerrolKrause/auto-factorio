@@ -6,6 +6,8 @@ Keep all future edits to this file as context-efficient as possible: concise rul
 
 ## Begin with the current task
 
+OpenSpec is a pinned project dev dependency. After `corepack.cmd pnpm install --frozen-lockfile`, run `corepack.cmd pnpm exec openspec <args>` on Windows (`corepack pnpm exec openspec <args>` elsewhere). Treat bare `openspec` in generated skills as shorthand for this command; do not rely on a global PATH entry.
+
 Read the current implementation entry in `docs/IMPLEMENTATION_HANDOFF.md` for progress and the next milestone; consult historical entries only when relevant. Read `docs/REQUIREMENTS.md` before changing product behavior, then only the relevant architecture/scenario sections. Do not require the planning conversation or reread every document on every turn.
 
 The user's current instructions govern the work. Approved product requirements are recorded in REQUIREMENTS; ARCHITECTURE is the proposed technical baseline and contains validation gates. A user request to implement a milestone authorizes that milestone: do not ask for a second approval merely because historical documents call the architecture proposed. Resolve routine reversible engineering choices, record them, and continue. Surface material conflicts with requirements or verified blockers.
