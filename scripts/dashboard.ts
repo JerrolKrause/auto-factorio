@@ -52,7 +52,7 @@ if (process.argv.includes('--fixture')) {
 }
 const workspaceCatalog = new WorkspaceCatalog(path.resolve('.runtime'));
 workspaceCatalog.importLegacy(500,directory);
-if (freshGame) workspaceCatalog.retireLegacyForFreshGame(freshGame.id, freshGame.profile);
+if (freshGame) workspaceCatalog.retireLegacyForFreshGame(freshGame.id, freshGame.profile, directory);
 workspaceCatalog.syncCurrent(directory,runtime.run,runtime.journal);
 workspaceCatalog.reconcileStartup(directory,runtime.run,runtime.journal);
 operator.workspaceAdmission = action => { if(action==='resume'){const owner=workspaceCatalog.owner();if(owner)throw new WorkspaceOwnershipConflict(owner);} };

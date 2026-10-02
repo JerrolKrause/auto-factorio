@@ -29,7 +29,7 @@ export function validateFreshGame(receipt: FreshGameReceipt, id: string, directo
   // Fixed epoch strings are not world identities. Require the freshly created
   // profile, the exact live process and its untouched initial control barrier.
   if (!/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(id) || receipt.id !== id || receipt.profile !== directory || !Number.isFinite(age) || age < 0 || age > 180_000 ||
-      !server || server.pid !== receipt.server?.pid || server.startedAt !== receipt.server?.startedAt ||
+      !server || processes.filter(p => p.kind === 'server').length !== 1 || server.pid !== receipt.server?.pid || server.startedAt !== receipt.server?.startedAt ||
       control.revision !== 0 || control.generation !== 1 || control.armed || !control.neutral || Object.keys(control.ledger).length || Object.keys(control.intents).length) {
     throw new Error('Fresh game boundary unconfirmed; retained ownership was preserved');
   }

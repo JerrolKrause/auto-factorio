@@ -60,14 +60,16 @@ export class WorkspaceCatalog {
   }
   owns(id:string):boolean {const owner=this.owner();return owner?.id===id&&owner.state==='active';}
 
-  /** Trusted startup only: a newly created sandbox cannot inherit legacy game work.
+  /** Trusted startup only: a newly created sandbox cannot inherit historical game work.
    * This retires ownership, not unknown outcomes in the original evidence journals.
-   * Native admitted requests still require their existing exact recovery path.
+   * Native retirement additionally requires the new runtime's source identity.
    */
-  retireLegacyForFreshGame(id: string, profile: string): number {
+  retireLegacyForFreshGame(id: string, profile: string, currentDirectory?: string): number {
     if (!/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(id)) throw new Error('Invalid fresh game boundary');
     const resolved = realpathSync(profile);
     if (!within(this.root, resolved) || resolved === this.root) throw new Error('Fresh game profile outside project runtime');
+    const current = currentDirectory === undefined ? null : realpathSync(currentDirectory);
+    if (current && (!within(this.root, current) || current === this.root || current === path.join(this.root, 'workspace'))) throw new Error('Fresh game runtime outside project runtime');
     return this.db.transaction(() => {
       const prior = this.db.prepare('SELECT profile FROM fresh_game_boundaries WHERE id=?').get(id) as {profile:string}|undefined;
       if (prior) {
@@ -88,6 +90,24 @@ export class WorkspaceCatalog {
           this.db.prepare('INSERT OR IGNORE INTO request_sources VALUES(?,?)').run(run.id,run.source_id);
         } else this.transitionRequest(run.id,'failed',`historical_game_replaced:${id}`);
         retired++;
+      }
+      const owner = this.owner();
+      if (current && owner?.kind === 'workshop') {
+        const run = this.run(owner.id);
+        const source = this.db.prepare(`SELECT sources.id,sources.relative_path,sources.runtime_run FROM request_sources
+          JOIN sources ON sources.id=request_sources.source_id WHERE request_sources.request_id=?`).get(owner.id) as {id:string;relative_path:string;runtime_run:string|null}|undefined;
+        const candidate = source ? path.resolve(this.root, source.relative_path) : null;
+        // A verified new map isolates an older runtime's effects. Do not infer
+        // success or rewrite those effects, and never retire this runtime's work.
+        if (run?.registration === 'journaled' && run.identity.id === owner.id && run.identity.kind === 'workshop' &&
+            source?.id === run.sourceId && source.runtime_run === run.identity.runtimeRun &&
+            run.identity.runtimeRun !== path.basename(current) && candidate && existsSync(candidate)) {
+          const previous = realpathSync(candidate);
+          if (within(this.root, previous) && previous !== current) {
+            this.transitionRequest(owner.id, 'failed', `historical_game_replaced:${id}`);
+            retired++;
+          }
+        }
       }
       return retired;
     })();

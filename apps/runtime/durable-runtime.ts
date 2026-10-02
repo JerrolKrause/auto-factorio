@@ -2,7 +2,7 @@ import { readFileSync, mkdirSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { validateReceipt, validateRequest } from '@autofactorio/contracts';
-import type { Batch, GameRequest, RunManifest, TaskRecord } from '@autofactorio/contracts';
+import type { Batch, GameRequest, Receipt, RunManifest, TaskRecord } from '@autofactorio/contracts';
 import { Budget } from '../../packages/codex/src/budget.js';
 import type { BudgetState, Caps, StopCallback } from '../../packages/codex/src/budget.js';
 import { DurableExecution } from '../../packages/core/execution/durable.js';
@@ -162,7 +162,7 @@ export class DurableRuntime {
     });
   }
   intent(batch: Batch, visibility: Visibility = { kind: 'operator' }): void { validateRequest({ op: 'submit', batch }); if (!this.ready) throw new Error('Runtime admission closed'); this.authorize(batch); this.execution.intent(batch, visibility); }
-  async dispatch(id: string) {
+  async dispatch(id: string): Promise<Receipt> {
     return this.exclusive(async () => {
       this.checkBudget();
       if (!this.ready || !this.recovery().complete) throw new Error('Runtime admission closed');

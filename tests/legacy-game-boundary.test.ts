@@ -8,6 +8,7 @@ import { dashboardFixture } from '../scripts/dev/dashboard-fixture.js';
 import type { ControlState } from '../packages/factorio/src/lifecycle.js';
 import { SqliteJournal } from '../packages/storage/src/journal.js';
 import { WorkspaceCatalog } from '../packages/storage/src/workspace-catalog.js';
+import type { WorkshopAssignment } from '@autofactorio/contracts';
 import { validateFreshGame, type FreshGameReceipt } from '../scripts/dev/fresh-game.js';
 import type { ProjectProcess } from '../scripts/dev/game-processes.js';
 
@@ -93,6 +94,104 @@ describe('fresh game legacy boundary', () => {
     } finally { catalog?.close(); rmSync(root, { recursive: true, force: true }); }
   });
 
+  it('retires only a journaled native unknown owner from a different existing runtime at the trusted current-game boundary', () => {
+    const root = mkdtempSync(path.join(os.tmpdir(), 'af-fresh-boundary-native-retire-'));
+    const oldDirectory = path.join(root, 'startup', 'dashboard-old');
+    const currentDirectory = path.join(root, 'startup', 'dashboard-current');
+    const profile = path.join(root, 'profiles', 'fresh');
+    mkdirSync(oldDirectory, { recursive: true }); mkdirSync(currentDirectory, { recursive: true }); mkdirSync(profile, { recursive: true });
+    let originalJournal: SqliteJournal | undefined = new SqliteJournal(path.join(oldDirectory, 'runtime.sqlite'));
+    const currentJournal = new SqliteJournal(path.join(currentDirectory, 'runtime.sqlite')); currentJournal.close();
+    let catalog = new WorkspaceCatalog(root);
+    try {
+      const id = 'native-prior-owner'; const runtimeRun = 'dashboard-old';
+      // The catalog identity uses only these assignment fields in this boundary fixture.
+      const assignment = { id, objective: 'Historical workshop', comparisonSeries: 'historical-series' } as WorkshopAssignment;
+      catalog.admit(id, 'workshop', assignment, oldDirectory);
+      const nativeRun = catalog.beginWorkshop(oldDirectory, runtimeRun, assignment);
+      originalJournal.append(context(runtimeRun), 'workspace/registered', [
+        { entity: 'workspaceGroups', id: nativeRun.group.id, value: nativeRun.group },
+        { entity: 'workspaceRuns', id: nativeRun.run.id, value: nativeRun.run },
+      ]);
+      originalJournal.append(context(runtimeRun), 'workshop/configured', [{ entity: 'workshopSessions', id, value: {
+        id, stage: 'held', stopReason: 'provider outcome unknown', assignment: { id, objective: 'Historical workshop' },
+        operationIntents: { [`${id}:1:build`]: { status: 'unknown' } }, operationResults: {}, iterations: [],
+      } }]);
+      catalog.journaled(id);
+      catalog.transitionRequest(id, 'active'); catalog.transitionRequest(id, 'held', 'unresolved_effect_receipt');
+      originalJournal.close();
+      const originalBytes = readFileSync(path.join(oldDirectory, 'runtime.sqlite'));
+      const budgetFile = path.join(oldDirectory, 'workshop-live', id, 'provider-budget.json');
+      mkdirSync(path.dirname(budgetFile), { recursive: true });
+      const budgetBytes = Buffer.from('{"turns":2,"tools":5,"unknown":true}'); writeFileSync(budgetFile, budgetBytes);
+      const held = catalog.request(id)!;
+      expect(catalog.retireLegacyForFreshGame(randomUUID(), profile)).toBe(0);
+      expect(catalog.owner()?.id).toBe(id);
+      const boundary = randomUUID();
+      expect(catalog.retireLegacyForFreshGame(boundary, profile, currentDirectory)).toBe(1);
+      expect(catalog.owner()).toBeNull();
+      expect(catalog.request(id)).toMatchObject({ state: 'failed', reason: `historical_game_replaced:${boundary}`, requestHash: held.requestHash });
+      expect(readFileSync(path.join(oldDirectory, 'runtime.sqlite'))).toEqual(originalBytes);
+      expect(readFileSync(budgetFile)).toEqual(budgetBytes);
+      originalJournal = new SqliteJournal(path.join(oldDirectory, 'runtime.sqlite'));
+      expect(originalJournal!.get(runtimeRun, 'workshopSessions', id)).toMatchObject({ stage: 'held', operationIntents: { [`${id}:1:build`]: { status: 'unknown' } } });
+
+      originalJournal.close(); originalJournal = undefined; catalog.close();
+      catalog = new WorkspaceCatalog(root);
+      expect(catalog.importLegacy().registered).toBe(0);
+      expect(catalog.owner()).toBeNull();
+      expect(catalog.request(id)).toMatchObject({ state: 'failed', reason: `historical_game_replaced:${boundary}` });
+      expect(readFileSync(path.join(oldDirectory, 'runtime.sqlite'))).toEqual(originalBytes);
+      expect(readFileSync(budgetFile)).toEqual(budgetBytes);
+      originalJournal = new SqliteJournal(path.join(oldDirectory, 'runtime.sqlite'));
+      expect(originalJournal!.get(runtimeRun, 'workshopSessions', id)).toMatchObject({ stage: 'held', operationIntents: { [`${id}:1:build`]: { status: 'unknown' } } });
+      originalJournal.close(); originalJournal = undefined;
+
+      const laterDirectory = path.join(root, 'startup', 'dashboard-later-prior'); mkdirSync(laterDirectory, { recursive: true });
+      const laterAssignment = { id: 'new-native-owner', objective: 'Next owner', comparisonSeries: 'later-series' } as WorkshopAssignment;
+      catalog.admit('new-native-owner', 'workshop', laterAssignment, laterDirectory);
+      catalog.beginWorkshop(laterDirectory, path.basename(laterDirectory), laterAssignment);
+      catalog.journaled('new-native-owner');
+      catalog.transitionRequest('new-native-owner', 'active'); catalog.transitionRequest('new-native-owner', 'held', 'unresolved_effect_receipt');
+      expect(catalog.retireLegacyForFreshGame(boundary, profile, currentDirectory)).toBe(0);
+      expect(catalog.owner()?.id).toBe('new-native-owner');
+      expect(catalog.request('new-native-owner')?.state).toBe('held');
+    } finally { catalog.close(); originalJournal?.close(); rmSync(root, { recursive: true, force: true }); }
+  });
+
+  it('keeps native held owners when source identity, source availability, or registration is untrusted', () => {
+    const cases = [
+      { name: 'current runtime', source: 'dashboard-current', runSource: 'dashboard-current', run: 'dashboard-current', journaled: true, removeSource: false },
+      { name: 'missing prior source', source: 'dashboard-missing', runSource: 'dashboard-missing', run: 'dashboard-missing', journaled: true, removeSource: true },
+      { name: 'request and registered run source differ', source: 'dashboard-request-source', runSource: 'dashboard-registered-source', run: 'dashboard-registered-source', journaled: true, removeSource: false },
+      { name: 'pending registration', source: 'dashboard-pending', runSource: 'dashboard-pending', run: 'dashboard-pending', journaled: false, removeSource: false },
+    ];
+    for (const [index, item] of cases.entries()) {
+      const root = mkdtempSync(path.join(os.tmpdir(), 'af-fresh-boundary-native-protection-'));
+      const currentDirectory = path.join(root, 'startup', 'dashboard-current'); const profile = path.join(root, 'profiles', 'fresh');
+      const requestSource = path.join(root, 'startup', item.source); const registeredSource = path.join(root, 'startup', item.runSource);
+      mkdirSync(currentDirectory, { recursive: true }); mkdirSync(profile, { recursive: true });
+      mkdirSync(requestSource, { recursive: true }); mkdirSync(registeredSource, { recursive: true });
+      const catalog = new WorkspaceCatalog(root); let journal: SqliteJournal | undefined = new SqliteJournal(path.join(registeredSource, 'runtime.sqlite'));
+      const id = `protected-${index}`;
+      try {
+        const assignment = { id, objective: id, comparisonSeries: `series-${index}` } as WorkshopAssignment;
+        catalog.admit(id, 'workshop', assignment, requestSource);
+        catalog.beginWorkshop(registeredSource, item.run, assignment);
+        journal.append(context(item.run), 'workshop/configured', [{ entity: 'workshopSessions', id, value: {
+          id, stage: 'held', operationIntents: { [`${id}:1:build`]: { status: 'unknown' } }, assignment: { id, objective: id },
+        } }]);
+        if (item.journaled) catalog.journaled(id);
+        catalog.transitionRequest(id, 'active'); catalog.transitionRequest(id, 'held', 'unresolved_effect_receipt');
+        journal.close(); journal = undefined;
+        if (item.removeSource) rmSync(requestSource, { recursive: true, force: true });
+        expect(catalog.retireLegacyForFreshGame(randomUUID(), profile, currentDirectory), item.name).toBe(0);
+        expect(catalog.owner()?.id, item.name).toBe(id);
+        expect(catalog.request(id), item.name).toMatchObject({ state: 'held', reason: 'unresolved_effect_receipt' });
+      } finally { catalog.close(); journal?.close(); rmSync(root, { recursive: true, force: true }); }
+    }
+  });
+
   it('makes an identical boundary replay a no-op and rejects profile and UUID collisions', () => {
     const root = mkdtempSync(path.join(os.tmpdir(), 'af-fresh-boundary-replay-'));
     const catalog = new WorkspaceCatalog(root);
@@ -156,6 +255,7 @@ describe('fresh game legacy boundary', () => {
       ['profile mismatch', receipt, id, `${directory}-other`, initialControl(), [server], now],
       ['PID reuse', receipt, id, directory, initialControl(), [{ ...server, pid: 1235 }], now],
       ['process start mismatch', receipt, id, directory, initialControl(), [{ ...server, startedAt: '2026-10-02T12:00:01.000Z' }], now],
+      ['extra project server', receipt, id, directory, initialControl(), [server, { ...server, pid: 1235, config: path.join(directory, 'other-profile', 'config.ini') }], now],
       ['revision changed', receipt, id, directory, invalidControl({ revision: 1 }), [server], now],
       ['armed', receipt, id, directory, invalidControl({ armed: true }), [server], now],
       ['ledger populated', receipt, id, directory, invalidControl({ ledger: { command: {} as never } }), [server], now],
