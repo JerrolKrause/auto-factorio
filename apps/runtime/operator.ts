@@ -15,6 +15,8 @@ export interface OperatorState {
 }
 export class Operator {
   readonly interventions: Interventions;
+  workspaceAdmission: ((action:'pause'|'stop'|'resume')=>void)|undefined;
+  workspaceControlSettled: ((action:'pause'|'stop'|'resume',state:OperatorState)=>void)|undefined;
   private busy = false;
   private polling = false;
   private pollWork: Promise<void> = Promise.resolve();
@@ -47,6 +49,7 @@ export class Operator {
   }
   /** Synchronous durable admission closure precedes every await and late provider/game callback. */
   async control(action: 'pause' | 'stop' | 'resume'): Promise<OperatorState> {
+    this.workspaceAdmission?.(action);
     if (this.gameReservations) throw new Error('Game control reserved by workshop operation');
     if (this.busy) throw new Error('Control operation in progress');
     this.busy = true;
@@ -78,7 +81,7 @@ export class Operator {
     } catch (error) {
       this.save({ ...this.state(), admission: false, status: 'unconfirmed', error: String(error), checkpoint: 'unconfirmed' });
     } finally { this.busy = false; settleControl(); }
-    return this.state();
+    const result=this.state();this.workspaceControlSettled?.(action,result);return result;
   }
   async reprioritize(task: string, revision: number, input: TaskInput): Promise<void> {
     if (this.busy) throw new Error('Control operation in progress');

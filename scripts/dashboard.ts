@@ -13,6 +13,8 @@ import { readProfile, waitFor, waitForServer } from './dev/game-processes.js';
 import { dashboardFixture } from './dev/dashboard-fixture.js';
 import { prepareLiveWorkshopHost, reconcileWorkshopMeasurementFence } from '../apps/runtime/workshop-live-host.js';
 import { WorkshopControl } from '../packages/factorio/src/workshop.js';
+import { WorkspaceCatalog } from '../packages/storage/src/workspace-catalog.js';
+import { WorkspaceOwnershipConflict } from '../packages/storage/src/workspace-catalog.js';
 const value = (name: string) => { const i = process.argv.indexOf(name); return i < 0 ? undefined : process.argv[i + 1]; };
 await mkdir('.runtime/dashboard', { recursive: true });
 const directory = value('--directory') ? path.resolve(value('--directory')!) : await mkdtemp(path.resolve('.runtime/dashboard/run-'));
@@ -37,12 +39,18 @@ if (process.argv.includes('--fixture')) {
     const c = new Coordinator(runtime, { ...PROBE_CAPS, runMs: 3600000 });
     if (!c.agents().length) team().forEach(a => c.register(a));
     operator = new Operator(c); await operator.control('pause');
-    const prepared=await prepareLiveWorkshopHost({directory,fenceDirectory:profile.dir,codexExecutable:codex,port,game,lifecycle:life,reserveGameControl:()=>operator.reserveGameControl(),activity:value=>runtime.record(`workshop/${value.category}-${value.status}`,[{entity:'workshopOperations',id:value.id,value:{...value}}])});workshopOptions={workshopHost:prepared.host,managedModels:prepared.catalog.models};
+    const prepared=await prepareLiveWorkshopHost({directory,fenceDirectory:profile.dir,codexExecutable:codex,port,game,lifecycle:life,reserveGameControl:()=>operator.reserveGameControl(),activity:value=>runtime.record(`workshop/${value.category}-${value.status}`,[{entity:'workshopOperations',id:value.id,value:{...value}}])});workshopOptions={workshopHost:prepared.host,managedModels:prepared.catalog.models,profileReader:profileId=>new WorkshopControl(port!).installedProfile(profileId,'electronic-circuit')};
   } catch (error) {
     port?.close();
     throw new Error(`Factorio dashboard initialization failed: ${error instanceof Error ? error.message : String(error)}`);
   }
 }
+const workspaceCatalog = new WorkspaceCatalog(path.resolve('.runtime'));
+workspaceCatalog.importLegacy(500,directory);
+workspaceCatalog.syncCurrent(directory,runtime.run,runtime.journal);
+workspaceCatalog.reconcileStartup(directory,runtime.run,runtime.journal);
+operator.workspaceAdmission = action => { if(action==='resume'){const owner=workspaceCatalog.owner();if(owner)throw new WorkspaceOwnershipConflict(owner);} };
+workshopOptions={...workshopOptions,workspaceCatalog};
 const server = dashboard(operator,undefined,workshopOptions); const origin = await server.listen(Number(value('--port') ?? 3000));
 const result = { origin, url: origin, capability: server.capability, directory, synthetic: process.argv.includes('--fixture') };
 await writeFile(path.join(directory, 'dashboard.json'), JSON.stringify(result, null, 2));
@@ -50,5 +58,5 @@ if (value('--result-file')) await writeFile(value('--result-file')!, JSON.string
 console.log(JSON.stringify({ origin, directory, launchFile: path.join(directory, 'dashboard.json'), synthetic: result.synthetic }));
 const stop = operator.start();
 let closing = false;
-async function close() { if (closing) return; closing = true; await stop(); await operator.control('pause'); await server.close(); runtime.close(); closePort(); }
+async function close() { if (closing) return; closing = true; await stop(); await operator.control('pause'); await server.close(); runtime.close(); workspaceCatalog.close(); closePort(); }
 process.on('SIGINT', () => void close()); process.on('SIGTERM', () => void close());

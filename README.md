@@ -6,7 +6,7 @@ A local Factorio Space Age experimentation environment where specialized AI agen
 
 ## Current status
 
-Phases 01–13 are complete and archived. The project now also includes the implemented blueprint workshop: capability profiles, immutable blueprint families, direct and legal-character construction, exact-window evaluation, role-scoped managed inference, the dashboard workflow and bounded learning bundles. See the [handoff](docs/IMPLEMENTATION_HANDOFF.md), [workshop decision](docs/decisions/017-blueprint-workshop.md), [S2 guide](scenarios/02-some-assembly-required/README.md), [trial report](docs/FIRST_SHIFT_AGENT_TRIAL_REPORT.md), [compatibility report](docs/COMPATIBILITY_REPORT.md) and [accepted safeguards](docs/decisions/001-review-hardening.md).
+Phases 01â€“13 are complete and archived. The project now also includes the implemented blueprint workshop: capability profiles, immutable blueprint families, direct and legal-character construction, exact-window evaluation, role-scoped managed inference, the dashboard workflow and bounded learning bundles. See the [handoff](docs/IMPLEMENTATION_HANDOFF.md), [workshop decision](docs/decisions/017-blueprint-workshop.md), [S2 guide](scenarios/02-some-assembly-required/README.md), [trial report](docs/FIRST_SHIFT_AGENT_TRIAL_REPORT.md), [compatibility report](docs/COMPATIBILITY_REPORT.md) and [accepted safeguards](docs/decisions/001-review-hardening.md).
 
 ## Phased implementation
 
@@ -17,7 +17,7 @@ $openspec-apply-change af-14-ore-smelting-fuel
 Follow phase 14 of docs/IMPLEMENTATION_GUIDE.md, verify its entry gate in docs/IMPLEMENTATION_HANDOFF.md, implement only that change, and stop before phase 15.
 ```
 
-Phase 13's legal S2 reference and all required negative controls passed in Factorio without model inference. Phases 14–18 remain planned.
+Phase 13's legal S2 reference and all required negative controls passed in Factorio without model inference. Phases 14â€“18 remain planned.
 
 ## Planned first release
 
@@ -68,6 +68,7 @@ corepack pnpm dev:preflight --input docs/examples/development-preflight.example.
 corepack pnpm dev:task --change <change-name> --task <task-id> # preview only unless --start is explicit
 corepack pnpm change:ready --input <change-readiness.json>
 corepack pnpm change:ready --input <v2-change-readiness.json> --start-slice <slice-id>
+corepack pnpm exec openspec list # project-pinned CLI; no global PATH entry needed
 corepack pnpm diagnose --data-dir 'C:/@Projects/AutoFactorio/.runtime/local' --factorio-dir 'C:/Program Files (x86)/Steam/steamapps/common/Factorio'
 ```
 
@@ -89,11 +90,15 @@ The [development workflow](docs/DEVELOPMENT_WORKFLOW.md) covers contextual UTF-8
 
 ## Local control dashboard (phase 09)
 
+The console has direct links to Overview (`/`), Blueprint Workshop (`/workshop`), Scenarios (`/scenarios`), Run History (`/history`) and Blueprint Library (`/library`). Run History groups immutable briefs and scenario fixtures, then opens a run and its attempts at `/history/<run-id>`. A new startup imports supported project run journals, so an older run remains visible without reopening its original dashboard. Legacy records label missing identity or evidence instead of filling it in. The active-run banner shows who owns the managed game; Stop remains available while a workshop prepares or runs. An unconfirmed stop retains ownership until exact provider/game receipts resolve it.
+
+Workshop setup saves its fields locally in a versioned browser draft, with Reset saved setup for a deliberate fresh start. The draft is convenience only: the journal and workspace catalog own run status. A launch reserves the managed game before preparation and returns a stable request ID promptly. If a response is lost, refreshing the page checks that same request; Retry uses its original payload rather than starting another run. Run detail separates execution state, target outcome, attempts, activity and usage. Its invocation inspector shows recorded public instructions, supplied context, tool results and output with coverage labels and paging. It does not expose hidden model reasoning or unavailable legacy transcripts. Structured scorer critique is linked to measurements and supplied to the following design attempt within its context bound. [Decision 019](docs/decisions/019-workspace-navigation-history.md) records the identity and recovery boundary.
+
 For ordinary use, run `npm start`. The launcher owns dependency installation, the TypeScript/dashboard build, a dedicated server and visible Factorio client, the fixed `localhost:3000` port, browser launch, duplicate-start detection and cleanup. It waits for the visible `builder-1` connection before reporting readiness. It never buys provider access or starts model inference. If the supported managed Codex executable and Factorio installation are not discoverable, startup says exactly what is missing and opens a clearly reported demonstration dashboard instead. `npm start -- --headless` is the explicit automation alternative.
 
 The app uses a same-origin, HttpOnly local session cookie created when `localhost:3000` is opened. The old `#cap=...` fragment is no longer required; old capability links remain accepted for compatibility. Bookmark `http://localhost:3000` directly.
 
-If the port is already occupied by another program, startup stops with a readable message instead of silently moving to another port. If AutoFactorio is already running there, a second `npm start` opens the existing session instead of creating duplicate resources. For a real session, set `AUTOFACTORIO_CODEX` to the supported `codex-cli 0.155.1` executable, or set `AUTOFACTORIO_PROFILE_FILE` to an existing project-owned Factorio profile. Ordinary startup attaches or reuses that profile's project-owned observer; explicit headless startup does not. `AUTOFACTORIO_FACTORIO_DIR` can override the default Steam installation location.
+If the port is already occupied by another program, startup stops with a readable message instead of silently moving to another port. If AutoFactorio is already running there, a second `npm start` opens the existing session instead of creating duplicate resources. For a real session, set `AUTOFACTORIO_CODEX` to the supported `codex-cli 0.159.3` executable, or set `AUTOFACTORIO_PROFILE_FILE` to an existing project-owned Factorio profile. Ordinary startup attaches or reuses that profile's project-owned observer; explicit headless startup does not. `AUTOFACTORIO_FACTORIO_DIR` can override the default Steam installation location.
 
 ```powershell
 corepack.cmd pnpm build
@@ -132,7 +137,7 @@ corepack.cmd pnpm scenario:launch --scenario 02-some-assembly-required --roster 
 corepack.cmd pnpm game:plate-to-science-probe --run-file '<run-directory>/run.json'
 ```
 
-S2 uses the same loader, reset barrier and evaluator with an 80×80 plate-fed fixture and explicit gear stage. Its `s2-v6` manifest, installed-recipe component-inventory calibration, legal reference and bypass matrix are frozen in the [scenario guide](scenarios/02-some-assembly-required/README.md) and [decision 015](docs/decisions/015-plate-to-science.md).
+S2 uses the same loader, reset barrier and evaluator with an 80Ã—80 plate-fed fixture and explicit gear stage. Its `s2-v6` manifest, installed-recipe component-inventory calibration, legal reference and bypass matrix are frozen in the [scenario guide](scenarios/02-some-assembly-required/README.md) and [decision 015](docs/decisions/015-plate-to-science.md).
 
 ## Decision-focused context
 
@@ -176,7 +181,7 @@ The game probes create and clean dedicated project profiles. The provider exerci
 
 ## Provider diagnostic (phase 02)
 
-Build first, then supply the absolute installed Codex executable. The adapter currently pins the revalidated installed Codex 0.155.1; it will not upgrade prerequisites or substitute a model.
+Build first, then supply the absolute installed Codex executable. The adapter pins the installed Codex 0.159.3, revalidated through the no-inference authentication, role-isolation and tool-catalog probe; it will not upgrade prerequisites or substitute a model. The historical gameplay exercise used 0.155.1; no new gameplay inference was run for this compatibility update.
 
 ```powershell
 corepack pnpm provider:probe --codex 'C:/Users/Jerrol/AppData/Roaming/npm/node_modules/@openai/codex/node_modules/@openai/codex-win32-x64/vendor/x86_64-pc-windows-msvc/bin/codex.exe'

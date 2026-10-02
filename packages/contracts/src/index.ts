@@ -29,3 +29,6 @@ export * from './coordination.js';
 export * from './operational.js';
 export * from './workshop.js';
 export * from './effects.js';
+export * from './workspace.js';
+export * from './workspace-lifecycle.js';
+export * from './workshop-critique.js';

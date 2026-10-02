@@ -4,11 +4,17 @@ import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { ensureVisibleObserver } from '../scripts/game-observer.js';
 import type { GameProfile } from '../scripts/dev/game-processes.js';
+import { PINNED_CODEX } from '../packages/codex/src/protocol.js';
 
 const root=path.resolve('.'),script=path.join(root,'scripts','start.mjs');
 const profile:GameProfile={dir:path.join(root,'.runtime','observer-test'),executable:'factorio.exe',config:path.join(root,'.runtime','observer-test','config.ini'),observerConfig:path.join(root,'.runtime','observer-test','observer-config.ini'),observerData:path.join(root,'.runtime','observer-test','observer-data'),mods:'mods',settings:'settings.json',save:'save.zip',log:'host.log',port:27018,gamePort:34198,password:'test'};
 
 describe('supported startup modes',()=>{
+  it('keeps startup discovery and its prerequisite message aligned with the exact adapter pin',()=>{
+    const source=readFileSync(script,'utf8');
+    expect(source).toContain(`version === 'codex-cli ${PINNED_CODEX}'`);
+    expect(source).toContain(`Supported managed Codex ${PINNED_CODEX} was not found`);
+  });
   it('documents visible startup as the default and headless as explicit',()=>{
     const result=spawnSync(process.execPath,[script,'--help'],{cwd:root,encoding:'utf8',windowsHide:true});
     expect(result.status).toBe(0);expect(result.stdout).toContain('open visible Factorio');expect(result.stdout).toContain('npm start -- --headless');

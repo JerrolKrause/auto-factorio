@@ -19,6 +19,31 @@ function fixture(){const root=mkdtempSync(path.join(os.tmpdir(),'af-workshop-orc
 const selection=[{provider:'openai',modelId:'gpt-6-astra',reasoningEffort:'low'},{provider:'openai',modelId:'gpt-5.6-sol',reasoningEffort:'medium'}];
 
 describe('durable workshop orchestration and accounting',()=>{
+  it.each(['configured','preflight','designing','building','measuring','scoring','checkpoint','finalizing','library','learning','reported'] as const)(
+    'closes new effects and transitions durably when stop is requested in %s',async stage=>{const f=fixture();try{
+      const service=new WorkshopOrchestrator(f.journal,f.context),id=`stop-${stage}`;
+      service.configure(id,manifest({id}),'baseline');
+      const current=service.get(id);
+      f.journal.append(f.context(),'test/phase',[{entity:'workshopSessions',id,value:{...current,stage}}]);
+      service.requestStop(id,'operator_stop');
+      const replacement=new WorkshopOrchestrator(f.journal,f.context);
+      let invoked=false;
+      await expect(replacement.effect(id,'late-effect',async()=>{invoked=true;return{};})).rejects.toThrow('stop intent');
+      expect(invoked).toBe(false);
+      expect(()=>replacement.advance(id,'reported')).toThrow('stop intent');
+      expect(replacement.stop(id,'operator_stop')).toMatchObject({stage:'stopped',stopRequested:true});
+      expect(replacement.stop(id,'late_stop')).toMatchObject({stage:'stopped',stopReason:'operator_stop'});
+    }finally{f.close();}});
+  it('retains an effect that committed during stop without admitting its next phase',async()=>{const f=fixture();try{
+    const service=new WorkshopOrchestrator(f.journal,f.context),id='late-committed';
+    service.configure(id,manifest({id}),'baseline');
+    let release!:()=>void;const waiting=new Promise<void>(resolve=>{release=resolve;});
+    const effect=service.effect(id,'design-effect',async()=>{await waiting;return{candidate:'retained'};});
+    service.requestStop(id,'operator_stop');release();
+    await expect(effect).resolves.toEqual({candidate:'retained'});
+    expect(service.get(id).operationResults['design-effect']).toEqual({candidate:'retained'});
+    expect(()=>service.beginIteration(id)).toThrow('stop intent');
+  }finally{f.close();}});
   it('keeps blind critique and private comparison provenance separate even after paraphrase attempts',()=>{const scorer={role:'scorer' as const,session:'score-session',selection:{provider:'openai',modelId:'gpt-5.6-sol',reasoningEffort:'medium'},reportedModel:null,reportedEffort:null,contextLineage:['assignment','candidate','measurement'],libraryBlind:true,iteration:1,contextScope:'library-blind-score' as const,modelConcreteId:'gpt-5.6-sol'};expect(()=>validateInvocationProvenance(scorer,'scorer','score-session',1)).not.toThrow();expect(redactBlindCandidate({family:'hidden',libraryHistory:['layout'],suggestion:'Place four assemblers',artifactHash:'a'})).toEqual({suggestion:'Place four assemblers',artifactHash:'a'});expect(admissibleFeedback({...scorer,role:'private-comparison',session:'private',contextScope:'private-comparison',libraryBlind:false},'designer')).toBe(false);expect(admissibleFeedback(scorer,'designer')).toBe(true);expect(()=>validateInvocationProvenance({...scorer,role:'designer'},'scorer','score-session',1)).toThrow('provenance');});
   it('runs exactly five unattended attempts, preserves the best valid revision, and resumes effects without duplication',async()=>{const f=fixture();try{let effects=0;let service=new WorkshopOrchestrator(f.journal,f.context);service.configure('workshop',manifest(),'baseline');service.preflight('workshop',selection);
     for(let number=1;number<=5;number++){service.beginIteration('workshop');service.advance('workshop','building');const candidate={sessionId:'workshop',iteration:number,artifactHash:`artifact-${number}`,assignmentRevision:1,bundleHash:'baseline',evidence:[`design-${number}`]};service.artifact('workshop',candidate);service.advance('workshop','frozen');service.advance('workshop','measuring');service.evaluation('workshop',{schema:1,attemptId:`workshop:${number}`,valid:number!==4,passed:number!==4,reasons:number===4?['control_invalid']:[],ports:[],evidence:[`measure-${number}`]});service.advance('workshop','scoring');const score:WorkshopScore={schema:1,candidate,rubricVersion:'r1',eligible:number!==4,dimensions:{throughput:{value:number===3?10:number,unit:'score',evidence:[],judgment:'measured'}},feedback:'feedback',interactionFeedback:'interaction',invalidReasons:number===4?['control_invalid']:[]};service.score('workshop',score,`round ${number}`);if(number<5)expect(service.next('workshop')).toBe('iterate');}

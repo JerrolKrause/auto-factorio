@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from 'vitest';
-import { mkdtempSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, rmSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { dashboardFixture } from '../scripts/dev/dashboard-fixture.js';
@@ -11,12 +11,23 @@ import { CoordinationGateway } from '../packages/tools/src/coordination.js';
 import { Operator } from '../apps/runtime/operator.js';
 import { DurableRuntime } from '../apps/runtime/durable-runtime.js';
 import { Coordinator } from '../packages/core/orchestration/coordinator.js';
-import { diagnosticAssignment } from '@autofactorio/contracts';
+import { diagnosticAssignment, effectReceipt } from '@autofactorio/contracts';
+import type { WorkshopAssignment } from '@autofactorio/contracts';
+import { WorkspaceCatalog } from '../packages/storage/src/workspace-catalog.js';
+import type { WorkshopRuntimeHost } from '../packages/core/workshop/runtime.js';
+import { WorkshopInvocationRecorder } from '../apps/runtime/workshop-invocation.js';
 
 const cleanup: (() => void | Promise<void>)[] = [];
 afterEach(async () => { for (const close of cleanup.splice(0).reverse()) await close(); });
 async function fixture(seed = true) {
   const f = await dashboardFixture(mkdtempSync(path.join(os.tmpdir(), 'af-dashboard-')), seed); cleanup.push(() => f.close()); return f;
+}
+async function workspaceFixture() {
+  const root = mkdtempSync(path.join(os.tmpdir(), 'af-dashboard-workspace-'));
+  const directory = path.join(root, 'startup', 'dashboard-test'); mkdirSync(directory, { recursive: true });
+  cleanup.push(() => rmSync(root, { recursive: true, force: true }));
+  const f = await dashboardFixture(directory, true); cleanup.push(() => f.close());
+  return { f, root };
 }
 async function http() {
   const f = await fixture(); const server = dashboard(f.operator); const origin = await server.listen(); cleanup.push(() => server.close());
@@ -24,6 +35,84 @@ async function http() {
   return { ...f, server, origin, headers };
 }
 describe('operator boundary and durable replay', () => {
+  it('protects workspace history and rejects cross-run evidence references', async () => {
+    const { f, root } = await workspaceFixture();
+    const catalog = new WorkspaceCatalog(root); cleanup.push(() => catalog.close());
+    const first = catalog.beginWorkshop(f.runtime.directory, f.runtime.run, { id: 'workspace-a', objective: 'Make circuits', comparisonSeries: 'series-a' } as WorkshopAssignment);
+    const second = catalog.beginWorkshop(f.runtime.directory, f.runtime.run, { id: 'workspace-b', objective: 'Make belts', comparisonSeries: 'series-b' } as WorkshopAssignment);
+    for (const value of [first, second]) {
+      f.runtime.record('workspace/identity-recorded', [
+        { entity: 'workspaceGroups', id: value.group.id, value: { ...value.group } },
+        { entity: 'workspaceRuns', id: value.run.id, value: { ...value.run } },
+      ]);
+      catalog.journaled(value.run.id);
+    }
+    const sequence = f.runtime.journal.cursor();
+    const invocation=new WorkshopInvocationRecorder(f.runtime.directory,'workspace-b','workspace-b:1:designer','workshop-designer',{modelId:'managed'},'Recorded instructions','Recorded prompt',{objective:'Make belts',authorization:'Bearer private'});
+    invocation.complete('Short output');
+    const server = dashboard(f.operator, undefined, { workspaceCatalog: catalog }); cleanup.push(() => server.close());
+    const origin = await server.listen();
+    const host = new URL(origin).host;
+    expect((await server.app.inject({ url: '/api/workspace/groups', headers: { host } })).statusCode).toBe(401);
+    const headers = { host, authorization: `Bearer ${server.capability}`, origin };
+    expect((await server.app.inject({ url: '/api/workspace/groups?limit=1', headers })).json()).toMatchObject({ items: [{ schema: 1 }], next: expect.any(String) });
+    expect((await server.app.inject({ url: `/api/workspace/runs/workspace-a/evidence/${sequence}`, headers })).statusCode).toBe(404);
+    expect((await server.app.inject({ url: `/api/workspace/runs/workspace-b/evidence/${sequence}`, headers })).statusCode).toBe(200);
+    const reference='/api/workspace/runs/workspace-b/invocations/workspace-b%3A1%3Adesigner';
+    expect((await server.app.inject({url:reference,headers:{host}})).statusCode).toBe(401);
+    expect((await server.app.inject({url:reference+'?part=context',headers})).json().text).not.toContain('private');
+    expect((await server.app.inject({url:'/api/workspace/runs/workspace-a/invocations/workspace-b%3A1%3Adesigner',headers})).statusCode).toBe(404);
+  });
+  it('durably admits the first delayed workshop request and rejects racing owners without another resolver call', async () => {
+    const { f, root } = await workspaceFixture();
+    const catalog = new WorkspaceCatalog(root); cleanup.push(() => catalog.close());
+    let release!: () => void, resolves = 0;
+    const delayed = new Promise<void>(resolve => { release = resolve; });
+    const host = { async resolve() { resolves++; await delayed; throw new Error('fixture preflight ended'); } } as unknown as WorkshopRuntimeHost;
+    const server = dashboard(f.operator, undefined, { workspaceCatalog: catalog, workshopHost: host }); cleanup.push(() => server.close());
+    const origin = await server.listen();
+    const headers = { host: new URL(origin).host, origin, authorization: `Bearer ${server.capability}` };
+    const post = (id: string, objective = 'Make circuits') => server.app.inject({ method: 'POST', url: '/api/workshop/launch', headers,
+      payload: { assignment: { id, objective } } });
+    const first = await post('request-one');
+    expect(first.statusCode).toBe(202);
+    expect(first.json()).toMatchObject({ id: 'request-one', state: 'preparing' });
+    const competing = await post('request-two');
+    expect(competing.statusCode).toBe(409);
+    expect(competing.json()).toMatchObject({ owner: { id: 'request-one' }, runUrl: '/history/request-one' });
+    expect((await post('request-one')).json()).toMatchObject({ id: 'request-one', state: 'preparing' });
+    expect((await post('request-one', 'Changed')).statusCode).toBe(400);
+    expect(resolves).toBe(1);
+    release();
+    await new Promise(resolve => setTimeout(resolve, 10));
+    expect(catalog.request('request-one')?.state).toBe('failed');
+    expect(catalog.owner()).toBeNull();
+  });
+  it('keeps a pre-admission stop tombstone and cancels preparation before inference or game effects', async () => {
+    const { f, root } = await workspaceFixture();
+    const catalog = new WorkspaceCatalog(root); cleanup.push(() => catalog.close());
+    let release!: () => void, resolves = 0, effects = 0;
+    const delayed = new Promise<void>(resolve => { release = resolve; });
+    const host = { async resolve() { resolves++; await delayed; throw new Error('resolver must be fenced after stop'); },
+      async cancel(id:string) { effects++; return effectReceipt(`workshop:${id}`, 'cancelled'); } } as unknown as WorkshopRuntimeHost;
+    const server = dashboard(f.operator, undefined, { workspaceCatalog: catalog, workshopHost: host }); cleanup.push(() => server.close());
+    const origin = await server.listen();
+    const headers = { host: new URL(origin).host, origin, authorization: `Bearer ${server.capability}` };
+    const stop = (sessionId:string) => server.app.inject({ method: 'POST', url: '/api/workshop/stop', headers, payload: { sessionId, reason: 'operator_stop' } });
+    const launch = (id:string) => server.app.inject({ method: 'POST', url: '/api/workshop/launch', headers, payload: { assignment: { id, objective: 'Make circuits' } } });
+    expect((await stop('before-launch')).json()).toMatchObject({ state: 'cancelled' });
+    expect((await launch('before-launch')).json()).toMatchObject({ state: 'cancelled' });
+    expect(resolves).toBe(0);
+    expect((await launch('during-preparation')).json()).toMatchObject({ state: 'preparing' });
+    expect((await stop('during-preparation')).json()).toMatchObject({ state: 'cancelled' });
+    release();
+    await new Promise(resolve => setTimeout(resolve, 10));
+    expect(catalog.request('during-preparation')?.state).toBe('cancelled');
+    expect(catalog.owner()).toBeNull();
+    expect(resolves).toBe(1);
+    expect(effects).toBe(1);
+    expect(f.runtime.journal.list(f.runtime.run, 'workshopSessions')).toEqual([]);
+  });
   it('creates a bookmark-safe same-origin session cookie on the health/page boundary', async () => {
     const f = await http();
     expect(f.origin).toMatch(/^http:\/\/localhost:\d+$/);

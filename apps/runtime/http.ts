@@ -10,13 +10,16 @@ import type { DashboardSnapshot } from './dashboard-types.js';
 import { validateWorkshopAssignment } from '@autofactorio/contracts';
 import { composeWorkshop } from './workshop-composition.js';
 import type { WorkshopCompositionOptions } from './workshop-composition.js';
+import type { InstalledWorkshopProfile } from '../../packages/factorio/src/workshop.js';
+import { WorkspaceOwnershipConflict } from '../../packages/storage/src/workspace-catalog.js';
+import { invocationFile, readInvocationPage } from './workshop-invocation.js';
 
 function record(value: unknown): Record<string, unknown> {
   if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('Expected object');
   return value as Record<string, unknown>;
 }
 const text = (v: unknown) => { if (typeof v !== 'string') throw new Error('Expected string'); return v; };
-export type DashboardOptions=WorkshopCompositionOptions;
+export type DashboardOptions=WorkshopCompositionOptions & { profileReader?:(profileId:string)=>Promise<InstalledWorkshopProfile> };
 export function dashboard(operator: Operator, assets = path.resolve('apps/dashboard/dist'), options:DashboardOptions = {}) {
   const app = Fastify({ logger: false, bodyLimit: 4*1024*1024 });
   const capability = randomBytes(32).toString('hex');
@@ -41,7 +44,9 @@ export function dashboard(operator: Operator, assets = path.resolve('apps/dashbo
     if (!validCapability(request)) return reply.code(401).send({ error: 'Local session missing; reload http://localhost:3000 to start a new local session' });
     if (request.method !== 'GET' && suppliedOrigin !== origin) return reply.code(403).send({ error: 'Local origin required' });
   });
-  app.setErrorHandler((error, _request, reply) => reply.code(400).send({ error: error instanceof Error ? error.message : 'Request failed' }));
+  app.setErrorHandler((error, _request, reply) => error instanceof WorkspaceOwnershipConflict
+    ? reply.code(409).send({ error: error.message, owner: error.owner, runUrl: `/history/${encodeURIComponent(error.owner.id)}` })
+    : reply.code(400).send({ error: error instanceof Error ? error.message : 'Request failed' }));
   app.get('/health', (_request, reply) => reply.header('X-AutoFactorio-Service', 'dashboard').send({ status: 'ok', service: 'autofactorio-dashboard' }));
   app.get('/api/snapshot', () => {
     // No await between projections and cursor: one Node writer gives an atomic read boundary.
@@ -56,9 +61,49 @@ export function dashboard(operator: Operator, assets = path.resolve('apps/dashbo
     const n = Number(raw); if (!Number.isSafeInteger(n) || n > runtime.journal.cursor()) throw new Error('Cursor outside journal'); return n;
   };
   app.get('/api/history', request => runtime.journal.page(runtime.run, cursor(request.query)));
+  const workspacePage = (query: unknown) => { const value = record(query); const raw = value.limit ?? '50';
+    const limit = Number(raw); if (!Number.isSafeInteger(limit) || limit < 1 || limit > 100) throw new Error('Invalid workspace page size');
+    return { limit, cursor: typeof value.cursor === 'string' ? value.cursor : undefined }; };
+  app.get('/api/workspace/groups', request => { if (!options.workspaceCatalog) throw new Error('Workspace history unavailable');
+      const page = workspacePage(request.query); return options.workspaceCatalog.pageGroups(page.limit, page.cursor); });
+  app.get('/api/workspace/groups/:id', request => { if (!options.workspaceCatalog) throw new Error('Workspace history unavailable');
+      const value=options.workspaceCatalog.group(text(record(request.params).id));if(!value)throw new Error('Workspace group unavailable');return value; });
+  app.get('/api/workspace/groups/:id/summary', request => {if(!options.workspaceCatalog)throw new Error('Workspace history unavailable');
+      return options.workspaceCatalog.groupSummary(text(record(request.params).id),{directory:runtime.directory,journal:runtime.journal});});
+  app.get('/api/workspace/groups/:id/runs', request => { if (!options.workspaceCatalog) throw new Error('Workspace history unavailable');
+    const page = workspacePage(request.query); return options.workspaceCatalog.pageRuns(text(record(request.params).id), page.limit, page.cursor); });
+  app.get('/api/workspace/runs/:id', request => { if (!options.workspaceCatalog) throw new Error('Workspace history unavailable');
+      const value = options.workspaceCatalog.run(text(record(request.params).id)); if (!value) throw new Error('Workspace run unavailable'); return value; });
+  app.get('/api/workspace/runs/:id/detail', request => { if (!options.workspaceCatalog) throw new Error('Workspace history unavailable');
+      return options.workspaceCatalog.detail(text(record(request.params).id), { directory: runtime.directory, journal: runtime.journal }); });
+  app.get('/api/workspace/runs/:id/attempts', request => { if (!options.workspaceCatalog) throw new Error('Workspace history unavailable');
+    const page = workspacePage(request.query); return options.workspaceCatalog.pageAttempts(text(record(request.params).id), page.limit, page.cursor); });
+  app.get('/api/workspace/runs/:id/events', request => { if (!options.workspaceCatalog) throw new Error('Workspace history unavailable');
+    const page = workspacePage(request.query); return options.workspaceCatalog.pageEvents(text(record(request.params).id), page.limit, page.cursor, { directory: runtime.directory, journal: runtime.journal }); });
+  app.get('/api/workspace/runs/:id/evidence/:sequence', (request, reply) => { if (!options.workspaceCatalog) throw new Error('Workspace history unavailable');
+    const params = record(request.params), sequence = Number(params.sequence); if (!Number.isSafeInteger(sequence) || sequence < 1) throw new Error('Invalid evidence reference');
+    const page = options.workspaceCatalog.pageEvents(text(params.id), 1,
+      Buffer.from(JSON.stringify({ v: 1, kind: 'events', scope: params.id, after: sequence - 1 })).toString('base64url'),
+      { directory: runtime.directory, journal: runtime.journal });
+    const value = page.items.find(event => event.sequence === sequence);
+    return value ? value : reply.code(404).send({ unavailable: page.unavailable ?? 'evidence-not-retained' });
+  });
+  app.get('/api/workspace/runs/:id/invocations/:invocationId', (request,reply) => {if(!options.workspaceCatalog)throw new Error('Workspace history unavailable');
+    const params=record(request.params),runId=text(params.id),invocationId=text(params.invocationId),query=record(request.query);
+    const sourceId=options.workspaceCatalog.workshopSourceId(runId);if(!sourceId||!invocationId.startsWith(`${sourceId}:`))return reply.code(404).send({unavailable:'invocation-outside-run'});
+    const directory=options.workspaceCatalog.sourceDirectory(runId);if(!directory)return reply.code(404).send({unavailable:'journal-missing'});
+    const part=typeof query.part==='string'?query.part:'instructions';if(!['instructions','context','messages','output'].includes(part))throw new Error('Invalid invocation part');
+    try{return readInvocationPage(invocationFile(directory,sourceId,invocationId),invocationId,part as 'instructions'|'context'|'messages'|'output',Number(query.offset??0),Number(query.limit??16000));}
+    catch(error){if((error as NodeJS.ErrnoException).code==='ENOENT')return reply.code(404).send({unavailable:'not-retained'});throw error;}
+  });
   app.get('/api/workshop/options', () => ({ provider:'openai', models:options.managedModels ?? [], profiles:['starter-assembly','advanced-assembly','electromagnetic-production'], presets:runtime.journal.list<Record<string,unknown>>(runtime.run,'workshopProfiles').filter(v=>v.kind==='preset'), defaults:{construction:'direct',attempts:5,earlyStop:true,requestedSpeed:'10',settlingTicks:600,windowTicks:3600,windows:5,checkpoints:{brief:false,afterScore:false,libraryAdmission:false,learningActivation:false},learning:{cadence:'after-session',candidateCap:3,attemptCap:2}} }));
+  app.get('/api/workshop/profile', async (request,reply) => {if(!options.profileReader)return reply.code(503).send({unavailable:'installed-game-profile-unavailable'});const profileId=text(record(request.query).profileId);if(!['starter-assembly','advanced-assembly','electromagnetic-production'].includes(profileId))throw new Error('Unknown workshop profile');const installed=await options.profileReader(profileId);return{profileId:installed.profileId,profileRevision:installed.profileRevision,gameVersion:installed.gameVersion,allowedEquipment:installed.allowedEquipment,technologies:installed.technologies,modules:installed.modules,beacons:installed.beacons};});
   app.post('/api/workshop/preset',async request=>{if(!options.workshopHost)throw new Error('Workshop execution host unavailable');const input=record(request.body);const id=text(input.id);const assignment=validateWorkshopAssignment(await options.workshopHost.resolve(input.assignment));runtime.record('workshop/preset-saved',[{entity:'workshopProfiles',id:'preset-'+id,value:{id,kind:'preset',assignment}}]);return{id,assignment};});
-  app.post('/api/workshop/launch', async (request,reply) => {if(!workshopRuntime)throw new Error('Workshop execution host unavailable');const input=record(request.body),raw=record(input.assignment);const supplied=raw.learning&&typeof raw.learning==='object'?record(raw.learning):{};const session=await workshopRuntime.launch({...raw,learning:{cadence:supplied.cadence??'after-session',batchSessions:supplied.batchSessions??5,candidateCap:supplied.candidateCap??3,attemptsPerCandidate:supplied.attemptsPerCandidate??2,autoActivate:supplied.autoActivate??true}});return reply.code(202).send(session);});
+  app.post('/api/workshop/launch', async (request,reply) => {if(!workshopRuntime)throw new Error('Workshop execution host unavailable');const input=record(request.body),raw=record(input.assignment);const supplied=raw.learning&&typeof raw.learning==='object'?record(raw.learning):{};const assignment={...raw,learning:{cadence:supplied.cadence??'after-session',batchSessions:supplied.batchSessions??5,candidateCap:supplied.candidateCap??3,attemptsPerCandidate:supplied.attemptsPerCandidate??2,autoActivate:supplied.autoActivate??true}},selectedGroupId=typeof input.selectedGroupId==='string'?input.selectedGroupId:null;
+    const accepted=options.workspaceCatalog?workshopRuntime.accept(assignment,selectedGroupId):await workshopRuntime.launch(assignment,selectedGroupId);return reply.code(202).send(accepted);});
+  app.get('/api/workspace/owner', () => { if (!options.workspaceCatalog) throw new Error('Workspace coordinator unavailable'); return { owner: options.workspaceCatalog.owner() }; });
+  app.get('/api/workspace/requests/:id', request => { if (!options.workspaceCatalog) throw new Error('Workspace coordinator unavailable');
+    const value = options.workspaceCatalog.request(text(record(request.params).id)); if (!value) throw new Error('Workspace request unavailable'); return { request: value, run: options.workspaceCatalog.run(value.id) }; });
   app.post('/api/workshop/steer',request=>{const input=record(request.body);const session=workshop.steer(text(input.sessionId),Number(input.revision),text(input.text));workshopRuntime?.resume(session.id);return session;});
   app.post('/api/workshop/checkpoint',request=>{if(!workshopRuntime)throw new Error('Workshop execution host unavailable');const input=record(request.body),action=text(input.action);if(action!=='continue'&&action!=='finish')throw new Error('Unknown checkpoint action');const session=workshop.resolveCheckpoint(text(input.sessionId),Number(input.revision),action,typeof input.text==='string'?input.text:'');workshopRuntime.resume(session.id);return session;});
   app.post('/api/workshop/stop',async request=>{const input=record(request.body);return workshopRuntime?workshopRuntime.stop(text(input.sessionId),text(input.reason)):workshop.stop(text(input.sessionId),text(input.reason));});
@@ -115,7 +160,8 @@ export function dashboard(operator: Operator, assets = path.resolve('apps/dashbo
   });
   app.get('/*', async (request, reply) => {
     const pathname = new URL(request.url, origin).pathname;
-    const file = path.resolve(assets, '.' + (pathname === '/' ? '/index.html' : pathname));
+    const route = /^\/(?:workshop|scenarios|history(?:\/[\w.-]+)?|library)\/?$/.test(pathname);
+    const file = path.resolve(assets, '.' + (pathname === '/' || route ? '/index.html' : pathname));
     if (!file.startsWith(path.resolve(assets) + path.sep)) return reply.code(404).send();
     const mime = { '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css', '.svg': 'image/svg+xml' }[path.extname(file)];
     if (!mime) return reply.code(404).send();

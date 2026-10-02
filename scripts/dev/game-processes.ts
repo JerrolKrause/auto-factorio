@@ -129,11 +129,12 @@ export async function configureProfile(dir: string, save: string, options: { por
   await writeFile(path.join(dir, 'launch.json'), JSON.stringify(profile, null, 2));
   return profile;
 }
-export async function createProfile(phase04: boolean, headless: boolean): Promise<GameProfile> {
+export async function createProfile(phase04: boolean, headless: boolean, ports?: { port: number; gamePort: number }): Promise<GameProfile> {
+  if (ports && (!Number.isInteger(ports.port) || !Number.isInteger(ports.gamePort) || ports.port < 1 || ports.port > 65535 || ports.gamePort < 1 || ports.gamePort > 65535 || ports.port === ports.gamePort)) throw new Error('Invalid dedicated game ports');
   await mkdir('.runtime', { recursive: true });
   const base = await runtimeOutputPath(process.env.AF_GAME_PROFILE_ROOT ?? (phase04 ? '.runtime/phase04' : '.runtime/phase03'));
   await mkdir(base, { recursive: true }); await ownedPath(base);
-  const dir = await mkdtemp(path.join(base, 'game-')); const profile = await configureProfile(dir, path.join(dir, 'sandbox.zip'), { port: phase04 ? 27024 : headless ? 27019 : 27018, gamePort: phase04 ? 34204 : headless ? 34199 : 34198 });
+  const dir = await mkdtemp(path.join(base, 'game-')); const profile = await configureProfile(dir, path.join(dir, 'sandbox.zip'), ports ?? { port: phase04 ? 27024 : headless ? 27019 : 27018, gamePort: phase04 ? 34204 : headless ? 34199 : 34198 });
   const gen = path.join(dir, 'map-gen.json'); await writeFile(gen, JSON.stringify({ width: 128, height: 128, seed: 42, water: 0, autoplace_controls: { 'enemy-base': { frequency: 0 }, trees: { frequency: 0 } } }));
   const result = spawnSync(profile.executable, ['--config', profile.config, '--mod-directory', profile.mods, '--create', profile.save, '--map-gen-settings', gen], { encoding: 'utf8', windowsHide: true, timeout: 120000 });
   await writeFile(path.join(dir, 'create.log'), (result.stdout ?? '') + (result.stderr ?? ''));

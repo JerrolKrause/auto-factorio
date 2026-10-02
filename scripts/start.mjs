@@ -104,7 +104,7 @@ function findCodex() {
   if (process.env.APPDATA) candidates.push(path.join(process.env.APPDATA, 'npm', 'codex.cmd'));
   for (const candidate of candidates.filter(Boolean)) {
     const version = executableVersion(candidate);
-    if (version === 'codex-cli 0.155.1') return candidate;
+    if (version === 'codex-cli 0.159.3') return candidate;
   }
   return undefined;
 }
@@ -227,7 +227,7 @@ async function main() {
   let mode = selected.mode === 'fixture' ? 'fixture' : 'real';
   let profileFile = requestedProfile ? path.resolve(requestedProfile) : undefined;
   if (mode === 'real' && !codex) {
-    const reason = 'Supported managed Codex 0.155.1 was not found. Set AUTOFACTORIO_CODEX to its absolute executable path.';
+    const reason = 'Supported managed Codex 0.159.3 was not found. Set AUTOFACTORIO_CODEX to its absolute executable path.';
     if (realRequested) throw new StartupError('managed Codex check', reason);
     console.warn(`\nNOTICE: ${reason}`);
     console.warn('Starting the local demonstration dashboard. It has no Factorio connection and performs no model inference.');

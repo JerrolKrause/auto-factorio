@@ -16,13 +16,14 @@ export interface ScenarioRun {
   run: string; directory: string; profile: string; checkpoint: string; modHash: string;
   fixtureHash: string; manifest: FirstShiftManifest; roster: 'solo' | 'team';
   epoch: string; session: string; originTick: number; originWallMs: number; previous: string | null;
+  workspaceRequestId?: string;
 }
 export async function currentModHash(directory = 'mods/autofactorio') {
   const entries = await readdir(directory);
   return fingerprint(Object.fromEntries(await Promise.all(entries.map(async f => [f, fingerprint((await readFile(path.join(directory, f))).toString('base64'))]))));
 }
 /** A reset validates the original disarmed cache before touching the previous run. */
-export async function prepareFirstShift(roster: 'solo' | 'team', previousFile?: string, scenarioId: FirstShiftManifest['id'] = '01-first-shift') {
+export async function prepareFirstShift(roster: 'solo' | 'team', previousFile?: string, scenarioId: FirstShiftManifest['id'] = '01-first-shift', workspace?: {requestId:string; afterPreviousStopped?:(previous:ScenarioRun)=>void}) {
   const modHash = await currentModHash(); let previous: ScenarioRun | undefined;
   let profile: GameProfile;
   await mkdir('.runtime/scenarios/runs', { recursive: true });
@@ -30,6 +31,7 @@ export async function prepareFirstShift(roster: 'solo' | 'team', previousFile?: 
   if (previousFile) {
     previousFile = await ownedPath(previousFile);
     previous = JSON.parse(await readFile(previousFile, 'utf8')) as ScenarioRun;
+    if (workspace?.afterPreviousStopped && !previous.workspaceRequestId) throw new Error('Prior scenario lacks workspace ownership identity; exact recovery required');
     if (previous.manifest.id !== scenarioId) throw new Error('Reset scenario does not match the selected scenario');
     await ownedPath(previous.checkpoint); await ownedPath(previous.directory);
     if (previous.modHash !== modHash) throw new Error('Scenario mod fingerprint changed; generate a new fixture before reset');
@@ -38,6 +40,11 @@ export async function prepareFirstShift(roster: 'solo' | 'team', previousFile?: 
     if (await currentModHash(path.join(old.mods, 'autofactorio_0.1.0')) !== modHash) throw new Error('Cached profile mod bytes differ from the validated source');
     const priorJournal = new SqliteJournal(await ownedPath(path.join(previous.directory, 'runtime.sqlite')));
     try {
+      if (workspace?.afterPreviousStopped) {
+        const control = priorJournal.get<{status:string;cancellation:string;inference:string}>(previous.run,'runs','operator-control');
+        if (!control || !['paused','stopped'].includes(control.status) || control.cancellation !== 'confirmed' || control.inference !== 'confirmed')
+          throw new Error('Prior scenario control is not conclusively held');
+      }
       const port = await waitForServer(old);
       try {
         const client = new GameClient(port, () => {}); const lifecycle = new Lifecycle(port, client, () => {});
@@ -48,9 +55,10 @@ export async function prepareFirstShift(roster: 'solo' | 'team', previousFile?: 
         await writeFile(path.join(previous.directory, 'reset-out.json'), JSON.stringify({ at: new Date().toISOString(), state, successor: directory }));
       } finally { port.close(); }
       await stopProfile(old.observerConfig); await stopProfile(old.config);
-    } finally { priorJournal.close(); }
-    const load = path.join(directory, 'load'); await prepareManagedLoad(previous.checkpoint, modHash, load);
+      } finally { priorJournal.close(); }
+      const load = path.join(directory, 'load'); await prepareManagedLoad(previous.checkpoint, modHash, load);
     const gameDirectory = path.join(directory, 'game'); await mkdir(gameDirectory);
+    workspace?.afterPreviousStopped?.(previous);
     profile = await configureProfile(gameDirectory, path.join(load, checkpoint.save), { port: old.port, gamePort: old.gamePort, source: old });
   } else profile = await createProfile(true, false);
   await writeFile(path.join(directory, 'profile.json'), JSON.stringify({ dir: profile.dir }));
@@ -75,7 +83,8 @@ export async function prepareFirstShift(roster: 'solo' | 'team', previousFile?: 
       const cache = path.resolve('.runtime/scenarios/cache', fixtureHash);
       const checkpoint = previous?.checkpoint ?? await captureCheckpoint({ lifecycle: life, paused: held, saveDirectory: path.join(profile.dir, 'data/saves'), outputDirectory: cache, logFile: profile.log, eventCursor: () => 0, world: () => game.request(observeRequest), modHash });
       held = await life.reconcile(await life.inspect(), []);
-      const run: ScenarioRun = { run: randomUUID(), directory, profile: profile.dir, checkpoint, modHash, fixtureHash, manifest, roster, epoch: held.epoch, session: held.session, originTick: held.tick, originWallMs: Date.now(), previous: previousFile ?? null };
+      const run: ScenarioRun = { run: randomUUID(), directory, profile: profile.dir, checkpoint, modHash, fixtureHash, manifest, roster, epoch: held.epoch, session: held.session, originTick: held.tick, originWallMs: Date.now(), previous: previousFile ?? null,
+        ...(workspace ? { workspaceRequestId: workspace.requestId } : {}) };
       await writeFile(path.join(directory, 'run.json'), JSON.stringify(run, null, 2));
       await writeFile(path.join(directory, 'briefing.json'), JSON.stringify(briefing(manifest, roster), null, 2));
       return { run, profile, port, game, life, held };

@@ -1,0 +1,15 @@
+.main-navigation{display:flex;flex-wrap:wrap;gap:6px;padding:12px 0;border-bottom:1px solid #d6dcd3}
+.main-navigation a{display:inline-flex;align-items:center;padding:10px 14px;color:#365541;text-decoration:none;font-size:12px;font-weight:700;border-radius:5px}
+.main-navigation a:hover,.main-navigation a[aria-current="page"]{background:#dfebdf;color:#20382d}
+.main-navigation a:focus-visible,.history-row:focus-visible{outline:3px solid #b76536;outline-offset:2px}
+.active-run-banner{display:flex;align-items:center;justify-content:space-between;gap:16px;background:#233d33;color:#fff;border-radius:6px;padding:15px 20px;margin-bottom:20px}
+.active-run-banner strong,.active-run-banner span{display:block}.active-run-banner span{color:#c3d7c8;font-size:12px;margin-top:4px}
+.active-run-banner button{border-color:#94b49c}.active-run-banner .inline{align-items:center}
+.workspace-page{min-height:400px}.history-layout{display:grid;grid-template-columns:minmax(190px,1fr) minmax(320px,2fr);gap:24px}
+.history-row{display:block;text-align:left;width:100%;padding:13px 16px;margin:6px 0;border:1px solid #dce1d7;border-radius:5px;color:inherit;background:#fff;text-decoration:none}
+.history-row:hover,.history-row[aria-pressed="true"]{background:#edf3e9}.history-row strong,.history-row span,.history-row small{display:block;margin:4px 0;overflow-wrap:anywhere}
+.history-row button{font-size:12px}.evidence-inspector{background:#f7f8f4;border:1px solid #dce1d7;border-radius:5px;padding:16px;margin-top:20px}
+.history-filters{display:grid;grid-template-columns:2fr 1fr 1fr 1fr;gap:10px}.history-filters label{margin:8px 0}
+.workspace-page details{margin:20px 0}.workspace-page details summary{cursor:pointer;font-size:12px;font-weight:700}.workspace-page pre{background:#f7f8f4;padding:12px}
+@media(max-width:750px){.history-layout{display:block}.history-filters{grid-template-columns:1fr 1fr}.active-run-banner{align-items:flex-start;flex-direction:column}.main-navigation a{padding:9px}}
+@media(prefers-reduced-motion:reduce){*,*::before,*::after{scroll-behavior:auto!important;animation-duration:.01ms!important;transition-duration:.01ms!important}}

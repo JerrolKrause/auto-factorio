@@ -48,6 +48,8 @@ Three authorities remain separate:
 
 The browser observes and sends commands. It does not hold the run alive or own authoritative state. A dashboard reconnect must reload from a durable event cursor. Runs can continue if its tab closes; the user can reopen and inspect them.
 
+The operator shell mounts direct local routes for Overview, Workshop, Scenarios, Run History and Library above one live event connection. A project-scoped SQLite workspace catalog indexes immutable brief/scenario groups, runs, attempts, source journals and request ownership across startup directories; original journals remain the evidence authority. Capability-protected, source-scoped cursors retrieve bounded history and artifact pages. Unsupported legacy evidence is marked unavailable. The runtime admits one game-owning request transactionally before asynchronous preparation, persists Stop intent before cancellation awaits, and releases ownership only after terminal or exact absence receipts. Unknown provider/game effects and profile measurement fences retain a recovery-required owner across replacement. Browser localStorage holds versioned setup and an immutable pending launch request for response-loss recovery, never authoritative execution state. [Decision 019](decisions/019-workspace-navigation-history.md) describes the delivered boundaries.
+
 ## 3. Codex integration and subscription boundary
 
 Official guidance recommends app-server for custom clients handling authentication, history, approvals and streamed agent events. [Codex SDK guidance](https://learn.chatgpt.com/docs/codex-sdk).

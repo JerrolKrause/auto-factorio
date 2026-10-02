@@ -3,7 +3,18 @@ import path from 'node:path';
 import { mkdirSync } from 'node:fs';
 import type { Change, Entity, Event, EventContext, Journal, Visibility } from '../../core/execution/durable.js';
 
-export const entities: Entity[] = ['runs', 'agents', 'tasks', 'messages', 'observations', 'commands', 'measurements', 'interventions', 'checkpoints', 'budgets', 'artifacts', 'reservations', 'agentHistory', 'operationalScopes', 'operationalSamples', 'operationalWatches', 'watchTransitions', 'watchAcknowledgements', 'contextDeliveries', 'sessionLifecycle', 'workshopSessions', 'workshopIterations', 'workshopArtifacts', 'workshopOperations', 'workshopProfiles', 'libraryEntries', 'learningCandidates', 'learningOutcomes', 'learningBundles', 'activations', 'usage'];
+/** Bounded metadata read shared by live and read-only historical connections. */
+export function latestEventTime(db: Database.Database, run: string, entity: Entity, id: string, types: string[]): string | null {
+  const row = db.prepare(`SELECT json_extract(events.json,'$.wallTime') AS wall_time FROM events
+    WHERE json_extract(events.json,'$.run')=?
+      AND json_extract(events.json,'$.type') IN (SELECT value FROM json_each(?))
+      AND EXISTS (SELECT 1 FROM json_each(events.json,'$.changes') AS change
+        WHERE json_extract(change.value,'$.entity')=? AND json_extract(change.value,'$.id')=?)
+    ORDER BY sequence DESC LIMIT 1`).get(run, JSON.stringify(types), entity, id) as { wall_time: string } | undefined;
+  return row?.wall_time ?? null;
+}
+
+export const entities: Entity[] = ['runs', 'agents', 'tasks', 'messages', 'observations', 'commands', 'measurements', 'interventions', 'checkpoints', 'budgets', 'artifacts', 'reservations', 'agentHistory', 'operationalScopes', 'operationalSamples', 'operationalWatches', 'watchTransitions', 'watchAcknowledgements', 'contextDeliveries', 'sessionLifecycle', 'workspaceGroups', 'workspaceRuns', 'workspaceAttempts', 'workshopSessions', 'workshopIterations', 'workshopArtifacts', 'workshopOperations', 'workshopProfiles', 'libraryEntries', 'learningCandidates', 'learningOutcomes', 'learningBundles', 'activations', 'usage'];
 export function visibility(v: Visibility): void {
   if (!v || !['operator', 'shared', 'restricted'].includes(v.kind)) throw new Error('Explicit visibility required');
   if (v.kind === 'restricted' && (!['agents', 'roles', 'tasks'].every(k => Array.isArray(v[k as 'agents'])) || [...v.agents, ...v.roles, ...v.tasks].some(x => typeof x !== 'string' || !x))) throw new Error('Invalid restricted scope');
@@ -62,6 +73,9 @@ export class SqliteJournal implements Journal {
     return (this.db.prepare('SELECT id,json FROM projections WHERE run=? AND entity=? ORDER BY id').all(run, entity) as { id: string; json: string }[]).map(r => ({ ...JSON.parse(r.json), id: r.id }));
   }
   events(): Event[] { return (this.db.prepare('SELECT sequence,json FROM events ORDER BY sequence').all() as { sequence: number; json: string }[]).map(r => ({ ...JSON.parse(r.json), sequence: r.sequence } as Event)); }
+  latestEventTime(run: string, entity: Entity, id: string, types: string[]): string | null {
+    return latestEventTime(this.db, run, entity, id, types);
+  }
   cursor(): number { return Number((this.db.prepare('SELECT COALESCE(MAX(sequence),0) AS n FROM events').get() as { n: number }).n); }
   /** Bounded durable replay; sequence identities survive browser and runtime replacement. */
   page(run: string, after: number, limit = 100): Event[] {

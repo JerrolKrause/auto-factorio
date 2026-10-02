@@ -27,10 +27,10 @@ One context window is the sizing target, not a guarantee about external debuggin
 These commands inspect planning state; they do not implement the product:
 
 ```powershell
-Set-Location -LiteralPath 'C:\@Projects\AutoFactorio'
-openspec list
-openspec validate --all --strict --no-interactive
-openspec status --change af-02-subscription-provider
+# Run from the repository root after installing the pinned dependencies.
+corepack.cmd pnpm exec openspec list
+corepack.cmd pnpm exec openspec validate --all --strict --no-interactive
+corepack.cmd pnpm exec openspec status --change af-14-ore-smelting-fuel
 ```
 
 To inspect another phase, replace the final change name with its exact name below. OpenSpec checks artifact/task state. It does not enforce the inter-change dependency chain or verify game evidence for you.

@@ -36,7 +36,7 @@ export interface WorkshopInvocationProvenance {
   reportedModel: string | null; reportedEffort: string | null; contextLineage: string[]; libraryBlind: boolean;
   iteration: number | null; contextScope: 'designer-private'|'library-blind-score'|'private-comparison'|'learning-review'; modelConcreteId: string | null;
 }
-export interface WorkshopCandidateRef { sessionId: string; iteration: number; artifactHash: string; assignmentRevision: number; bundleHash: string; evidence: string[] }
+export interface WorkshopCandidateRef { sessionId: string; iteration: number; artifactHash: string; assignmentRevision: number; bundleHash: string; evidence: string[]; changePlan?: import('./workshop-critique.js').WorkshopChangePlan | null }
 export interface BlueprintEntity {
   id: string; entityNumber: number; name: string; position: Position; direction: number; quality: 'normal';
   recipe?: string; modules?: Record<string,number>; filters?: { index:number; name:string; quality:'normal' }[];

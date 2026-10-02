@@ -48,6 +48,8 @@ Show the provider's available public activity and reasoning summaries, plus conc
 
 The UI distinguishes reasoning, executing, waiting for a dependency, waiting for the game, awaiting user input, blocked by usage, disconnected, completed, and failed. An idle model while a batch runs is normal and must be understandable.
 
+The local operator workspace has dedicated Overview, Workshop, Scenarios, Run History and Library destinations. A brief or versioned scenario groups durable runs; an attempt belongs to exactly one run. Execution state, target evaluation and independent scenario verdict remain distinct, including cancelled runs with earlier passing attempts. The managed game has one admitted experiment owner across preparation, checkpoints and recovery. Stop closes new work immediately, while uncertain external effects retain ownership until their exact receipts resolve. Operator-only invocation records contain the available public instructions, supplied context, tool delivery and output; missing or redacted parts are labeled rather than reconstructed. Browser setup drafts cannot establish run status or grant model access.
+
 ## Scenario suite
 
 1. First Shift: gears and copper plates to red science.

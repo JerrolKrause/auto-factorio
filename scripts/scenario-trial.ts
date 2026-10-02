@@ -5,7 +5,8 @@ import { spawnSync } from 'node:child_process';
 import { setTimeout as delay } from 'node:timers/promises';
 import { randomUUID } from 'node:crypto';
 import { prepareFirstShift } from './dev/first-shift-session.js';
-import { stopProfile } from './dev/game-processes.js';
+import { ownedPath, stopProfile } from './dev/game-processes.js';
+import { WorkspaceCatalog, WorkspaceOwnershipConflict } from '../packages/storage/src/workspace-catalog.js';
 import { briefing, fingerprint, FirstShiftAttempt, FirstShiftControl, evaluatorManifest } from '../packages/factorio/src/first-shift.js';
 import { VerificationControl } from '../packages/factorio/src/verification.js';
 import { DurableRuntime } from '../apps/runtime/durable-runtime.js';
@@ -36,10 +37,24 @@ const hint = value('--hint-file') ? await readFile(value('--hint-file')!, 'utf8'
 if (kind === 'assisted-team' && (!hint?.trim() || hint.length > 8000) || kind !== 'assisted-team' && hint !== null) throw new Error('Exactly the assisted trial requires an operator hint file');
 await referencePreflight(reference);
 await mkdir('.runtime/phase12', { recursive: true });
+const workspaceCatalog = new WorkspaceCatalog(path.resolve('.runtime'));
+const requestId = value('--request-id') ?? randomUUID();
+const requestPayload = { kind, reference: path.resolve(reference), hintHash: hint === null ? null : fingerprint(hint) };
+const resetFile = value('--reset');
+if (resetFile) {
+  const previous = JSON.parse(await readFile(await ownedPath(resetFile), 'utf8')) as {workspaceRequestId?:string};
+  if (!previous.workspaceRequestId || workspaceCatalog.owner()?.id !== previous.workspaceRequestId) throw new Error('Trial reset requires the exact owned prior run');
+} else {
+  const admitted = workspaceCatalog.admit(requestId, 'scenario', requestPayload);
+  if (!admitted.newlyAdmitted) { console.log(JSON.stringify({ request: admitted.request, duplicate: true })); workspaceCatalog.close(); process.exit(0); }
+}
 const inherited = await GameplayProvider.inherited(executable, path.resolve('.runtime/phase12'));
-const preparedGame = await prepareFirstShift('team', value('--reset'));
+const preparedGame = await prepareFirstShift('team', resetFile, '01-first-shift', {
+  requestId, afterPreviousStopped: previous => { workspaceCatalog.transferScenario(previous.workspaceRequestId!, requestId, requestPayload); },
+});
 const resources = new TrialResources();
 let cleanupLife: Lifecycle | null = null;
+let safeTerminal = false;
 async function executeTrial() {
 const { run, profile } = preparedGame;
 const port = new SerialPort(preparedGame.port);
@@ -53,8 +68,13 @@ resources.register('runtime', () => runtime.close());
 const agents = team().map(a => ({ ...a, definition: { ...a.definition, limits: { tools: TRIAL_CAPS.tools } } }));
 const revision = spawnSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf8', windowsHide: true });
 const instructions = Object.fromEntries(agents.map(a => [a.id, fingerprint(gameplayInstructions + '\n' + a.definition.instructions)]));
-runtime.initialize({ objective: 'Sustain 30 automatic red science/minute for five scored minutes', scenario: run.manifest.id, scenarioVersion: run.manifest.version, seed: run.manifest.seed,
-  codeCommit: revision.stdout.trim() + '+phase12-working-tree', gameVersion: run.manifest.mods.base!, mods: run.manifest.mods, roster: agents.map(a => a.id), model: ASTRA, effort: 'low', instructionHashes: instructions, assisted: hint !== null, status: 'ready', operationalLimits: DEFAULT_OPERATIONAL_LIMITS, contextLifecycle: { schema: 1, maxTurns: DEFAULT_OPERATIONAL_LIMITS.rotationTurns, maxDeliveredBytes: DEFAULT_OPERATIONAL_LIMITS.rotationBytes } });
+const runManifest = { objective: 'Sustain 30 automatic red science/minute for five scored minutes', scenario: run.manifest.id, scenarioVersion: run.manifest.version, seed: run.manifest.seed,
+  codeCommit: revision.stdout.trim() + '+phase12-working-tree', gameVersion: run.manifest.mods.base!, mods: run.manifest.mods, roster: agents.map(a => a.id), model: ASTRA, effort: 'low', instructionHashes: instructions, assisted: hint !== null, status: 'ready', operationalLimits: DEFAULT_OPERATIONAL_LIMITS, contextLifecycle: { schema: 1 as const, maxTurns: DEFAULT_OPERATIONAL_LIMITS.rotationTurns, maxDeliveredBytes: DEFAULT_OPERATIONAL_LIMITS.rotationBytes } };
+runtime.initialize(runManifest);
+const history = workspaceCatalog.beginScenario(run.directory, run.run, requestId, runManifest);
+runtime.record('workspace/identity-recorded', [{entity:'workspaceGroups',id:history.group.id,value:{...history.group}},{entity:'workspaceRuns',id:history.run.id,value:{...history.run}}]);
+workspaceCatalog.journaled(requestId);
+workspaceCatalog.transitionRequest(requestId,'active');
 // Hold the first unsent batch across the controlled context replacement. Provider
 // startup latency must not race a short construction batch out of the exercise.
 let holdForReplacement = kind === 'unassisted-team-replacement';
@@ -65,6 +85,7 @@ const manifest = { schema: 1, kind, plan: TRIAL_PLAN, run: run.run, fixtureHash:
 await writeFile(path.join(run.directory, 'trial-manifest.json'), JSON.stringify(manifest, null, 2));
 runtime.record('trial/manifest', [{ entity: 'runs', id: 'trial', value: manifest }]);
 const operator = new Operator(c); await operator.control('pause');
+operator.workspaceAdmission = action => { if(action==='resume'){const owner=workspaceCatalog.owner();if(owner?.id!==requestId){if(owner)throw new WorkspaceOwnershipConflict(owner);throw new Error('Trial ownership unavailable for resume');}} };
 let verifyRequested = false; let attempt: FirstShiftAttempt | null = null;
 const gateway = new CoordinationGateway(c, undefined, { briefing: briefing(run.manifest, 'team'), verify: () => {
   if (verifyRequested || attempt) throw new Error('One verification attempt per trial');
@@ -93,7 +114,7 @@ const sink = (e: Parameters<ConstructorParameters<typeof GameplayProvider>[6]>[0
 const providers = new GameplayProvider(codexExecutable, run.directory, c, mcp, transport.url, inherited, sink);
 resources.register('providers', () => providers.close());
 const workshopComposition=await prepareLiveWorkshopHost({directory:run.directory,codexExecutable,port,game,lifecycle:life});
-const server = dashboard(operator,undefined,{workshopHost:workshopComposition.host,managedModels:workshopComposition.catalog.models});
+const server = dashboard(operator,undefined,{workshopHost:workshopComposition.host,managedModels:workshopComposition.catalog.models,workspaceCatalog});
 resources.register('dashboard', () => server.close());
 const origin = await server.listen(0);
 await writeFile(path.join(run.directory, 'dashboard.json'), JSON.stringify({ origin, url: origin, capability: server.capability }));
@@ -206,6 +227,7 @@ finally {
   c.stop(reason); await operator.poll();
   for (const provider of providers.active.values()) await provider.interrupt();
   const held = await operator.control('stop');
+  safeTerminal = held.cancellation === 'confirmed' && held.inference === 'confirmed';
   if (held.cancellation !== 'confirmed' || held.inference !== 'confirmed') { failure ??= 'Shutdown cancellation or inference unconfirmed'; process.exitCode = 1; }
   if (attempt && !['passed', 'failed', 'invalid', 'aborted'].includes(attempt.engine.report().state)) attempt.stop(reason);
   const budget = c.budget.snapshot();
@@ -234,9 +256,13 @@ finally {
       record: result => writeFile(path.join(run.directory, 'trial-setup-failure.json'), JSON.stringify({ schema: 1, run: run.run, reason: 'setup_failure', failure: String(setupError), cleanup: result }, null, 2)),
     });
     if (cleanup.errors.length) console.error(JSON.stringify({ run: run.run, setupFailure: String(setupError), cleanupErrors: cleanup.errors }));
+    workspaceCatalog.transitionRequest(requestId,'held',`trial_setup_failed:${String(setupError)}`);
   } else {
     const cleanup = await resources.close();
     await writeFile(path.join(run.directory, 'trial-resource-cleanup.json'), JSON.stringify({ schema: 1, run: run.run, cleanup }, null, 2));
+    workspaceCatalog.transitionRequest(requestId, safeTerminal && cleanup.every(entry => entry.status === 'closed') ? process.exitCode ? 'failed' : 'completed' : 'held',
+      safeTerminal ? null : 'Trial shutdown effects unconfirmed');
   }
 }
+workspaceCatalog.close();
 if (setupError) throw setupError;
