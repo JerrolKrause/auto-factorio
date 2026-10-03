@@ -17,6 +17,7 @@ import { WorkspaceCatalog } from '../packages/storage/src/workspace-catalog.js';
 import { WorkspaceOwnershipConflict } from '../packages/storage/src/workspace-catalog.js';
 import { readFreshGame } from './dev/fresh-game.js';
 import type { FreshGameReceipt } from './dev/fresh-game.js';
+import { reconcileWorkspaceStartup } from '../apps/runtime/workspace-startup.js';
 const value = (name: string) => { const i = process.argv.indexOf(name); return i < 0 ? undefined : process.argv[i + 1]; };
 await mkdir('.runtime/dashboard', { recursive: true });
 const directory = value('--directory') ? path.resolve(value('--directory')!) : await mkdtemp(path.resolve('.runtime/dashboard/run-'));
@@ -51,10 +52,7 @@ if (process.argv.includes('--fixture')) {
   }
 }
 const workspaceCatalog = new WorkspaceCatalog(path.resolve('.runtime'));
-workspaceCatalog.importLegacy(500,directory);
-if (freshGame) workspaceCatalog.retireLegacyForFreshGame(freshGame.id, freshGame.profile, directory);
-workspaceCatalog.syncCurrent(directory,runtime.run,runtime.journal);
-workspaceCatalog.reconcileStartup(directory,runtime.run,runtime.journal);
+reconcileWorkspaceStartup(workspaceCatalog, runtime, freshGame);
 operator.workspaceAdmission = action => { if(action==='resume'){const owner=workspaceCatalog.owner();if(owner)throw new WorkspaceOwnershipConflict(owner);} };
 workshopOptions={...workshopOptions,workspaceCatalog};
 const server = dashboard(operator,undefined,workshopOptions); const origin = await server.listen(Number(value('--port') ?? 3000));

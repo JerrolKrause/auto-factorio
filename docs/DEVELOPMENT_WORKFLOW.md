@@ -27,6 +27,8 @@ In this checkout, `pnpm test -- <test paths>` forwarded an extra `--` and ran th
 
 ## Review and closeout
 
+Use the executable [workflow diagnostics](WORKFLOW_DIAGNOSTICS.md) for operator recovery smoke, assignment-derived result drafts, source-safe mutation proof, consumer/telemetry readiness and bounded default-brief validation. They supplement the existing acceptance and independent-review gates.
+
 Before completion, map the task's acceptance criteria to executed checks and observed outcomes on the final relevant source. Select software, browser and real-game checks according to the changed behavior; the standard runner does not cover every phase criterion. For documentation-only changes, documentation/skill validation can be sufficient. Mark missing required coverage as unverified and keep the task incomplete.
 
 Use the [verification author workflow](../.agents/skills/verify-change/author-workflow.md) to delegate routine milestone checks with a small fresh-context packet. The verifier executes checks and reports evidence; the main author chooses coverage, fixes failures and owns completion. This is separate from independent code review.

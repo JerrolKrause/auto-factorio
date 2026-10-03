@@ -4,6 +4,7 @@ import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { checkSource, checkResultEvidence, validateContract } from '../check-agent-contract.mjs';
 import { boundedJson, createEvidenceDirectory, safeRuntimePath, sha256, workspaceRoot, writeNewJson } from './safe-artifacts.mjs';
+import { appendEvent, readEvents } from './events.mjs';
 
 const relative = value => typeof value === 'string' && value.length > 0 && !value.includes('\\') && !value.includes(':') && !value.startsWith('/') && value.split('/').every(part => part && part !== '.' && part !== '..');
 
@@ -83,9 +84,108 @@ export async function summarizeContract(assignment, result, root = process.cwd()
   };
 }
 
+/** A transferable draft, deliberately unable to establish acceptance. */
+export async function scaffoldResult(assignment, root = process.cwd()) {
+  const validation = validateContract(assignment);
+  if (!validation.valid) throw new Error(`invalid assignment: ${validation.errors.join('; ')}`);
+  const errors = await checkSource(assignment, root);
+  if (errors.length) throw new Error(`source check failed: ${errors.join('; ')}`);
+  const result = {
+    version: assignment.version, assignmentId: assignment.assignmentId, role: assignment.role,
+    summary: 'Draft: assigned work has not been performed', disposition: 'blocked',
+    source: { ...structuredClone(assignment.source), stable: false },
+    limits: [{ description: 'Draft requires worker observations and final source validation', affectsCoverage: true }],
+    model: { requested: 'Record the assigned model and effort', observed: null, usage: null },
+    cleanup: assignment.resources.map(resource => ({ id: resource.id, status: 'unresolved', observation: 'Not inspected', evidence: [] })),
+    ...(assignment.role === 'review' ? {
+      scope: assignment.scope.map(item => ({ path: item.path, status: 'unreviewed', observation: 'Not reviewed' })), findings: [],
+    } : {
+      criteria: assignment.criteria.map(item => ({ id: item.id, status: 'unverified', observation: 'Not executed', evidence: [], checks: [] })),
+      checks: assignment.checks.map(item => ({ id: item.id, command: item.command, authorization: null, status: 'blocked', exit: null,
+        outcome: 'unverified', observation: 'Not executed', evidence: [], ...(assignment.version === 2 ? { reuse: null } : {}) })),
+    }),
+  };
+  const draft = validateContract(assignment, result);
+  if (!draft.valid) throw new Error(`invalid result scaffold: ${draft.errors.join('; ')}`);
+  return result;
+}
+
+/** Validate without rewriting worker-authored observations, limits or findings. */
+export async function validateReturn(assignment, result, root = process.cwd()) {
+  const summary = await summarizeContract(assignment, result, root);
+  if (!summary.structurallyValid) throw new Error(`invalid result: ${summary.errors.join('; ')}`);
+  const errors = await checkSource(assignment, root);
+  if (errors.length) throw new Error(`source check failed: ${errors.join('; ')}`);
+  return summary;
+}
+
+/** Actual validation attempts are local events, never invented graph worker records. */
+export async function recordReturnAttempt(assignment, result, eventsFile, root = process.cwd()) {
+  const summary = await summarizeContract(assignment, result, root);
+  return recordValidationAttempt(assignment, summary, sha256(JSON.stringify(result)), eventsFile, root);
+}
+
+async function recordValidationAttempt(assignment, summary, resultSha256, eventsFile, root) {
+  const validation = validateContract(assignment);
+  if (!validation.valid) throw new Error(`invalid assignment: ${validation.errors.join('; ')}`);
+  let previous = [];
+  try {
+    const parsed = await readEvents([eventsFile], { root });
+    if (parsed.gaps.length) throw new Error('Existing return stream is corrupt; preserve and reconcile before appending');
+    previous = parsed.events;
+  }
+  catch (error) { if (error.code !== 'ENOENT') throw error; }
+  const directory = await createEvidenceDirectory(root, '.runtime/contracts', 'return-attempt');
+  const evidence = path.relative(root, path.join(directory, 'validation.json')).split(path.sep).join('/');
+  const record = { assignmentId: assignment.assignmentId, source: assignment.source, resultSha256,
+    guard: 'scripts/check-agent-contract.mjs', verificationLayer: 'agent-contract', defect: 'malformed-or-stale-handoff',
+    summary, observedAt: new Date().toISOString() };
+  await writeNewJson(path.resolve(root, evidence), record);
+  const sourceErrors = summary.structurallyValid ? await checkSource(assignment, root) : [];
+  await appendEvent(eventsFile, { version: 1, eventId: randomUUID(), runId: 'contract-return',
+    sequence: Math.max(-1, ...previous.filter(event => event.runId === 'contract-return').map(event => event.sequence)) + 1, at: record.observedAt,
+    kind: !summary.structurallyValid || sourceErrors.length ? 'failure' : 'handoff', phase: assignment.role, role: assignment.role,
+    assignmentId: assignment.assignmentId, checkId: 'agent-contract', invariantId: 'handoff-integrity',
+    sourceId: sha256(JSON.stringify(assignment.source)), candidate: sha256(assignment.source.revision),
+    failureClass: !summary.structurallyValid ? 'report-format' : sourceErrors.length ? 'stale-evidence' : undefined,
+    outcome: !summary.structurallyValid || sourceErrors.length ? 'fail' : summary.ready ? 'pass' : 'unverified',
+    evidence: [evidence], provenance: 'rule' }, { root });
+  return summary;
+}
+
+export async function validateReturnFile(assignment, resultFile, eventsFile, root = process.cwd()) {
+  const bytes = await readFile(path.resolve(root, resultFile));
+  let result;
+  try { result = JSON.parse(bytes.toString('utf8')); }
+  catch {
+    if (eventsFile) await recordValidationAttempt(assignment, { structurallyValid: false, ready: false,
+      errors: ['Worker return is not valid JSON'], readinessGaps: [], findings: [], criteria: [], sourceStable: null,
+      semanticAcceptanceByAuthorRequired: true }, sha256(bytes), eventsFile, root);
+    throw new Error('Worker return is not valid JSON; original bytes preserved');
+  }
+  if (eventsFile) await recordValidationAttempt(assignment, await summarizeContract(assignment, result, root), sha256(bytes), eventsFile, root);
+  return validateReturn(assignment, result, root);
+}
+
 function option(name) { const index = process.argv.indexOf(name); return index >= 0 ? process.argv[index + 1] : undefined; }
 async function main() {
   const mode = process.argv[2];
+  if (mode === 'scaffold' || mode === 'validate-return') {
+    const assignmentFile = option('--assignment');
+    if (!assignmentFile) throw new Error(`${mode} requires --assignment`);
+    const assignment = JSON.parse(await readFile(assignmentFile, 'utf8'));
+    if (mode === 'scaffold') {
+      const output = option('--output'); if (!output) throw new Error('scaffold requires --output');
+      const result = await scaffoldResult(assignment);
+      await writeNewJson(await safeRuntimePath(process.cwd(), output), result);
+      console.log(boundedJson({ output, assignmentId: result.assignmentId, ready: false }));
+    } else {
+      const resultFile = option('--result'); if (!resultFile) throw new Error('validate-return requires --result');
+      const summary = await validateReturnFile(assignment, resultFile, option('--events'));
+      console.log(boundedJson(summary));
+    }
+    return;
+  }
   if (mode === 'prepare') {
     const inputFile = option('--input'); if (!inputFile) throw new Error('prepare requires --input');
     const { output, assignment } = await prepareContract(JSON.parse(await readFile(inputFile, 'utf8')));
@@ -98,6 +198,6 @@ async function main() {
     const safeOutput = await safeRuntimePath(process.cwd(), output);
     await writeNewJson(safeOutput, summary); console.log(boundedJson({ output: safeOutput, ready: summary.ready, readinessGaps: summary.readinessGaps, findingCount: summary.findings.length })); return;
   }
-  throw new Error('usage: dev:contract prepare|summary ...');
+  throw new Error('usage: dev:contract prepare|scaffold|validate-return|summary ...');
 }
 if (import.meta.url === pathToFileURL(process.argv[1] ?? '').href) main().catch(error => { console.error(boundedJson({ error: error.message })); process.exitCode = 1; });
