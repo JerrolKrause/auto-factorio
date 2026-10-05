@@ -102,7 +102,7 @@ When startup creates a verified fresh sandbox, unfinished legacy history and sou
 
 The app uses a same-origin, HttpOnly local session cookie created when `localhost:3000` is opened. The old `#cap=...` fragment is no longer required; old capability links remain accepted for compatibility. Bookmark `http://localhost:3000` directly.
 
-If the port is already occupied by another program, startup stops with a readable message instead of silently moving to another port. If AutoFactorio is already running there, a second `npm start` opens the existing session instead of creating duplicate resources. For a real session, set `AUTOFACTORIO_CODEX` to the supported `codex-cli 0.160.0` executable, or set `AUTOFACTORIO_PROFILE_FILE` to an existing project-owned Factorio profile. Ordinary startup attaches or reuses that profile's project-owned observer; explicit headless startup does not. `AUTOFACTORIO_FACTORIO_DIR` can override the default Steam installation location.
+If the port is already occupied by another program, startup stops with a readable message instead of silently moving to another port. If AutoFactorio is already running there, a second `npm start` opens the existing session instead of creating duplicate resources. For a real session, set `AUTOFACTORIO_CODEX` to the supported `codex-cli 0.160.1` executable, or set `AUTOFACTORIO_PROFILE_FILE` to an existing project-owned Factorio profile. Ordinary startup attaches or reuses that profile's project-owned observer; explicit headless startup does not. `AUTOFACTORIO_FACTORIO_DIR` can override the default Steam installation location.
 
 ```powershell
 corepack.cmd pnpm build
@@ -183,11 +183,15 @@ corepack pnpm game:blueprint-native-probe
 corepack pnpm provider:workshop-exercise --live --codex '<absolute installed codex.exe>'
 ```
 
+Run reports show a live **Build progression** gallery: each measured attempt adds a clickable final-build screenshot beside its score. Screenshots require the connected project Factorio client; headless runs and older records show why an image is unavailable. Images are retained for later comparisons.
+
+After the last measured attempt (including an early plateau), an ordinary workshop stays **Running for evaluation** at the selected game speed. Fixed-window results stay unchanged while you inspect bottlenecks and stock accumulation. Use **Stop run** to pause the game and finish the run before starting another. A final rejected/unmeasured attempt cannot enter this mode. Bounded diagnostic trials still stop automatically.
+
 The game probes create and clean dedicated project profiles. The provider exercise uses managed ChatGPT access only, writes a fixed manifest before inference, and has explicit turn/token limits. The production host accounts designer, scorer and learnings calls under one durable session owner, reserves an owner-specific share of turns, tools, elapsed provider time and finite reported tokens for maintenance, and holds unresolved external outcomes instead of replaying them. Stop succeeds only after provider and game adapters return confirmed completion or cancellation receipts; an uncertain cancellation leaves the session held. Learning cadence records visible no-change, proposal or deferred-maintenance outcomes before any optional activation checkpoint, so an admitted maintenance failure does not discard completed blueprint work. Activation is limited to exact attested cumulative bundles in registered instruction, lesson and helper scopes. Follow-on bundles retain the incumbent files and control obligations, and every nonempty bundle, including lesson-only changes, requires representative behavior evidence. Future sessions consume pinned instructions and lessons and run a pinned helper once through the confined worker with trusted plan authorization; active sessions keep their pinned bundle, while rollback or quarantine affects future sessions. See [decision 017](docs/decisions/017-blueprint-workshop.md) for supported mechanics and confinement limits.
 
 ## Provider diagnostic (phase 02)
 
-Build first, then supply the absolute installed Codex executable. The adapter pins the installed Codex 0.160.0, revalidated through the no-inference authentication, role-isolation and tool-catalog probe; it will not upgrade prerequisites or substitute a model. The historical gameplay exercise used 0.155.1; no new gameplay inference was run for this compatibility update.
+Build first, then supply the absolute installed Codex executable. The adapter pins the installed Codex 0.160.1, revalidated through the no-inference authentication, role-isolation and tool-catalog probe; it will not upgrade prerequisites or substitute a model. The historical gameplay exercise used 0.155.1; no new gameplay inference was run for this compatibility update.
 
 ```powershell
 corepack pnpm provider:probe --codex 'C:/Users/Jerrol/AppData/Roaming/npm/node_modules/@openai/codex/node_modules/@openai/codex-win32-x64/vendor/x86_64-pc-windows-msvc/bin/codex.exe'

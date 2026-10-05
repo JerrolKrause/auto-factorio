@@ -21,6 +21,7 @@
     "game:operational-probe": "node dist/scripts/game-operational-probe.js",
     "game:workshop-probe": "node dist/scripts/game-workshop-probe.js",
     "game:workshop-measure-probe": "node dist/scripts/game-workshop-measure-probe.js",
+    "game:workshop-observation-probe": "node dist/scripts/game-workshop-observation-probe.js",
     "game:blueprint-native-probe": "node dist/scripts/game-blueprint-native-probe.js",
     "game:workshop-spaceage-probe": "node dist/scripts/game-workshop-spaceage-probe.js",
     "game:workshop-character-probe": "node dist/scripts/game-workshop-character-probe.js",

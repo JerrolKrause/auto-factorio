@@ -4,3 +4,4 @@
 .workshop[data-mode="library"] .workshop-grid form,.workshop[data-mode="library"] .workshop-recorded,.workshop[data-mode="library"] .workshop-learning{display:none}
 .workshop[data-mode="library"] .workshop-grid{display:block}
 .advanced-options{border:1px solid #dce1d7;border-radius:5px;padding:12px;margin:12px 0}.advanced-options summary{cursor:pointer;font-size:13px;font-weight:700}.workshop label small{display:block;font-weight:400;line-height:1.45;margin:5px 0;color:#69776d}.workshop fieldset{margin:12px 0}.workshop fieldset .hint{flex-basis:100%}
+.build-gallery{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:16px}.build-gallery figure{margin:0;padding:12px;border:1px solid #dce1d7;border-radius:5px}.build-gallery img{display:block;width:100%;aspect-ratio:3/2;object-fit:contain;background:#20251f}.build-gallery figcaption{margin-top:8px;font-size:13px}.build-gallery a:focus-visible{outline:3px solid #b76536}

@@ -1,7 +1,9 @@
 import { appendFileSync } from 'node:fs';
 import { appendFile, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import path from 'node:path';
-import { createHash } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
+import { preserveSnapshot, snapshotFile, snapshotHash } from './workshop-snapshot.js';
+import type { WorkshopSnapshot } from '../../packages/core/workshop/orchestrator.js';
 import { performance } from 'node:perf_hooks';
 import { setTimeout as delay } from 'node:timers/promises';
 import { combineEffectReceipts, effectReceipt, normalizeEffectReceipt, parseWorkshopChangePlan, parseWorkshopCritique, rationalFromDecimal, validateWorkshopAssignment } from '@autofactorio/contracts';
@@ -55,6 +57,9 @@ export interface WorkshopGame {
   build(session:WorkshopSessionState,document:BlueprintDocument,profile:CapabilityProfile):Promise<BuiltData>;
   measure(session:WorkshopSessionState,built:BuiltData,onSample?:(sample:WorkshopWindowMeasurement)=>Promise<void>):Promise<WorkshopEvaluationReport>;
   diagnose?(built:BuiltData):Promise<unknown>;
+  screenshot?(built:BuiltData,token:string):Promise<{path:string;tick:number}|null>;
+  observe?(session:WorkshopSessionState,built:BuiltData):Promise<boolean>;
+  stopObservation?(session:WorkshopSessionState,built:BuiltData):Promise<void>;
   reconcileCancellation?(session:WorkshopSessionState,built:BuiltData,operationId:string):Promise<EffectReceipt>;
   cancel?(sessionId:string):EffectReceipt|Promise<EffectReceipt>;
 }
@@ -92,7 +97,7 @@ const designerDocument=(value:Record<string,unknown>,assignment:WorkshopAssignme
 /** Production workshop host. Provider and game adapters are explicit so the composition root can be acceptance-tested without synthetic dashboard behavior. */
 export class LiveWorkshopHost implements WorkshopRuntimeHost {
   private services:WorkshopRuntimeServices|null=null;
-  constructor(readonly directory:string,private inference:WorkshopInference,private game:WorkshopGame,private activity:ActivitySink=()=>{}){}
+  constructor(readonly directory:string,private inference:WorkshopInference,private game:WorkshopGame,private activity:ActivitySink=()=>{},private keepFinalRunning=true){}
   bindServices(services:WorkshopRuntimeServices){this.services=services;}
   private sessionDirectory(id:string){return path.join(this.directory,'workshop-live',id);}
   private async persist(id:string,name:string,value:unknown){const directory=this.sessionDirectory(id);await mkdir(directory,{recursive:true});await writeFile(path.join(directory,name),JSON.stringify(value,null,2));}
@@ -169,7 +174,15 @@ export class LiveWorkshopHost implements WorkshopRuntimeHost {
     const activationHash=bundleHash&&session.assignment.learning.autoActivate&&learning.activationReady(bundleHash)?bundleHash:null,outcome:LearningOutcome={schema:1,id,decision,scope,evidence,candidateHash,incumbentHash:pin.hash,expectedGeneration:pin.generation,bundleHash,activatedGeneration:null,reason,revisitCondition:null};learning.recordOutcome(outcome);await this.persist(session.id,'learning-plan.json',{outcome,activationHash});return{activationRequired:activationHash!==null};
   }
   async activateLearning(session:WorkshopSessionState):Promise<void>{const learning=this.services?.learning;if(!learning)throw new Error('Learning service unavailable');const plan=JSON.parse(await readFile(path.join(this.sessionDirectory(session.id),'learning-plan.json'),'utf8'))as{outcome:LearningOutcome;activationHash:string|null};if(!plan.activationHash)throw new Error('No verified learning activation prepared');const catalog=learning.activate(plan.activationHash,`${session.id}:learning-activate`);learning.recordOutcome({...plan.outcome,activatedGeneration:catalog.generation});}
+  async snapshot(session:WorkshopSessionState,candidate:WorkshopCandidateRef):Promise<WorkshopSnapshot>{
+    try{const capture=await this.game.screenshot?.(await this.built(candidate),randomUUID());if(!capture)return{status:'unavailable',reason:'Connect the project Factorio client to capture build screenshots.'};
+      const sha256=await preserveSnapshot(capture.path,snapshotFile(this.directory,session.id,candidate.iteration));return{status:'available',sha256,tick:capture.tick,capturedAt:new Date().toISOString()};
+    }catch{return{status:'unavailable',reason:'The Factorio client did not finish rendering this build screenshot.'};}
+  }
+  async observe(session:WorkshopSessionState):Promise<boolean>{const last=session.iterations.at(-1);if(!this.keepFinalRunning||!last?.artifact||!last.evaluation||!this.game.observe)return false;return this.game.observe(session,await this.built(last.artifact));}
+  private async stopObservation(sessionId:string):Promise<void>{const session=this.services?.sessions().find(value=>value.id===sessionId),last=session?.iterations.at(-1);if(session&&last?.artifact&&last.evaluation)await this.game.stopObservation?.(session,await this.built(last.artifact));}
   async reconcile<T>(session:WorkshopSessionState,operationId:string):Promise<{resolved:true;value:T}|{resolved:false}>{
+    if(operationId===`${session.id}:observe`)return{resolved:true,value:await this.observe(session) as T};
     if(operationId===`${session.id}:finalization`)return{resolved:true,value:await this.finalization(session) as T};
     if(operationId.endsWith(':build')){const artifact=session.activeIteration===null?null:session.iterations[session.activeIteration-1]?.artifact;if(artifact)try{await this.built(artifact);return{resolved:true,value:{completed:true} as T};}catch{/* no durable host receipt */}}
     if(operationId===`${session.id}:learning-prepare`)try{const plan=JSON.parse(await readFile(path.join(this.sessionDirectory(session.id),'learning-plan.json'),'utf8'))as{activationHash:string|null};return{resolved:true,value:{activationRequired:plan.activationHash!==null} as T};}catch{/* no durable plan */}
@@ -183,9 +196,10 @@ export class LiveWorkshopHost implements WorkshopRuntimeHost {
     }catch{/* no exact durable activation and outcome receipts */}
     return{resolved:false};
   }
-  async cancel(sessionId:string):Promise<EffectReceipt>{const adapters=[['inference',this.inference.cancel?.bind(this.inference)],['game',this.game.cancel?.bind(this.game)]] as const,results=await Promise.allSettled(adapters.map(([,cancel])=>Promise.resolve().then(()=>cancel?.(sessionId)))),receipts=results.map((value,index)=>{const source=`${adapters[index]![0]}_cancellation`,effectId=`${adapters[index]![0]}:${sessionId}`;return value.status==='rejected'?{schema:1 as const,effectId,outcome:'unknown' as const,failures:[`${source}:${String(value.reason)}`]}:normalizeEffectReceipt(value.value,effectId,source);});return combineEffectReceipts(`workshop:${sessionId}`,receipts);}
-  async close(){await this.inference.close();}
+  async cancel(sessionId:string):Promise<EffectReceipt>{const adapters=[['inference',this.inference.cancel?.bind(this.inference)],['game',this.game.cancel?.bind(this.game)]] as const,results=await Promise.allSettled(adapters.map(([,cancel])=>Promise.resolve().then(()=>cancel?.(sessionId)))),receipts=results.map((value,index)=>{const source=`${adapters[index]![0]}_cancellation`,effectId=`${adapters[index]![0]}:${sessionId}`;return value.status==='rejected'?{schema:1 as const,effectId,outcome:'unknown' as const,failures:[`${source}:${String(value.reason)}`]}:normalizeEffectReceipt(value.value,effectId,source);});await this.stopObservation(sessionId);return combineEffectReceipts(`workshop:${sessionId}`,receipts);}
+  async close(){for(const session of this.services?.sessions()??[])if(session.stage==='observing'||session.stage==='held'&&session.operationIntents[`${session.id}:observe`])await this.stopObservation(session.id);await this.inference.close();}
   async reconcileCancellation(session:WorkshopSessionState,operationId:string):Promise<EffectReceipt>{
+    if(operationId===`${session.id}:observe`){try{await this.stopObservation(session.id);return effectReceipt(operationId,'cancelled');}catch(error){return{schema:1,effectId:operationId,outcome:'unknown',failures:[String(error)]};}}
     const iteration=session.activeIteration;
     const candidate=iteration===null?null:session.iterations[iteration-1]?.artifact;
     if(iteration===null||operationId!==`${session.id}:${iteration}:measure`||!candidate||candidate.sessionId!==session.id||candidate.iteration!==iteration||!this.game.reconcileCancellation){
@@ -201,9 +215,38 @@ export class LiveWorkshopGame implements WorkshopGame {
   private active=new Set<string>();
   private settlements=new Map<string,Promise<EffectReceipt>>();
   private measurementFences=new Map<string,{id:string;attemptId:string;release:()=>void}>();
-  constructor(port:CommandPort,private client:GameClient,private lifecycle:Lifecycle,private activity:ActivitySink=()=>{},private reserveGameControl:()=>Promise<()=>void>=async()=>()=>{},private fenceDirectory:string|null=null){this.control=new WorkshopControl(port);}
+  private observationReleases=new Map<string,()=>void>();
+  constructor(port:CommandPort,private client:GameClient,private lifecycle:Lifecycle,private activity:ActivitySink=()=>{},private reserveGameControl:()=>Promise<()=>void>=async()=>()=>{},private fenceDirectory:string|null=null,private observerData:string|null=null){this.control=new WorkshopControl(port);}
   resolveProfile(profileId:string,product:string){return this.control.installedProfile(profileId,product);}
   async diagnose(built:BuiltData){const data=await this.control.inspect(built.id);return{diagnostics:data.diagnostics,fixtures:data.fixtures};}
+  async screenshot(built:BuiltData,token:string):Promise<{path:string;tick:number}|null>{
+    if(!this.observerData)return null;
+    const capture=await this.control.screenshot(built.id,built.generation,token);if(capture.available!==true)return null;
+    const file=path.join(this.observerData,'script-output','autofactorio',`${token}.png`),deadline=Date.now()+10_000;
+    while(Date.now()<deadline){try{const bytes=await readFile(file);try{snapshotHash(bytes);return{path:file,tick:Number(capture.tick)};}catch{/* A renderer can still be writing this file. */}}catch(error){if((error as NodeJS.ErrnoException).code!=='ENOENT')throw error;}await delay(100);}
+    throw new Error('Screenshot rendering timed out');
+  }
+  async observe(session:WorkshopSessionState,built:BuiltData):Promise<boolean>{
+    if(this.cancelled.has(session.id))return false;
+    const attemptId=`attempt-${digest(`${session.id}:${session.activeIteration}`).slice(0,20)}`,status=await this.control.measureStatus(built.id,attemptId);
+    // Invalid/aborted measurements cannot enter observation. Check before taking
+    // operator control so a known terminal rejection cannot strand a reservation.
+    if(status.present&&status.finished&&['invalid','aborted'].includes(status.state))return false;
+    if(!status.present||!status.finished||status.state!=='finished')throw new WorkshopEffectOutcomeError('unknown',new Error('Observation measurement is not confirmed finished'));
+    if(!this.observationReleases.has(session.id))this.observationReleases.set(session.id,await this.reserveGameControl());
+    try{const running=await this.control.observe(built.id,built.generation);if(!running){this.observationReleases.get(session.id)?.();this.observationReleases.delete(session.id);}return running;}
+    catch(error){throw new WorkshopEffectOutcomeError('unknown',error);}
+  }
+  async stopObservation(session:WorkshopSessionState,built:BuiltData):Promise<void>{
+    // Read terminal measurement state before touching a cancelled unfinished attempt.
+    const attemptId=`attempt-${digest(`${session.id}:${session.activeIteration}`).slice(0,20)}`,status=await this.control.measureStatus(built.id,attemptId);
+    if(!status.present||!status.finished||!['finished','invalid','aborted'].includes(status.state)){
+      if(this.observationReleases.has(session.id))throw new WorkshopEffectOutcomeError('unknown',new Error('Observation Stop measurement is not confirmed terminal'));
+      return;
+    }
+    await this.control.observe(built.id,built.generation,true);
+    this.observationReleases.get(session.id)?.();this.observationReleases.delete(session.id);
+  }
   /** Read the original attempt; never configure or replay it during recovery. */
   async reconcileCancellation(session:WorkshopSessionState,built:BuiltData,operationId:string):Promise<EffectReceipt>{
     try{
@@ -278,6 +321,6 @@ export class ManagedWorkshopInference implements WorkshopInference {
   async close(){await Promise.allSettled([...this.active.values()].map(value=>{value.gateway.revoke(value.token);return value.provider.interruptStatus();}));}
 }
 
-export async function prepareLiveWorkshopHost(options:{directory:string;fenceDirectory?:string;codexExecutable:string;port:CommandPort;game:GameClient;lifecycle:Lifecycle;events?:(event:Activity)=>void;activity?:ActivitySink;reserveGameControl?:()=>Promise<()=>void>}):Promise<{host:LiveWorkshopHost;catalog:ManagedCatalog}>{
-  if(!path.isAbsolute(options.codexExecutable))throw new Error('Workshop Codex executable must be absolute');await mkdir(options.directory,{recursive:true});const bootstrap=new AppServerRpc(options.codexExecutable,options.directory,{forced_login_method:'chatgpt',model_provider:'openai','features.apps':false,'features.plugins':false});try{await bootstrap.call('initialize',{clientInfo:{name:'autofactorio_workshop',version:'0.1.0'},capabilities:{experimentalApi:true}});const catalog=await managedCatalog(bootstrap),config=object(object(await bootstrap.call('config/read',{cwd:options.directory})).config),mcpNames=Object.keys(object(config.mcp_servers??{})),sink:Sink=event=>{appendFileSync(path.join(options.directory,'workshop-provider-events.jsonl'),JSON.stringify(event)+'\n');options.events?.(event);};return{host:new LiveWorkshopHost(options.directory,new ManagedWorkshopInference(options.codexExecutable,options.directory,mcpNames,sink),new LiveWorkshopGame(options.port,options.game,options.lifecycle,options.activity,options.reserveGameControl,options.fenceDirectory??options.directory),options.activity),catalog};}finally{bootstrap.close();}
+export async function prepareLiveWorkshopHost(options:{directory:string;fenceDirectory?:string;observerData?:string;keepFinalRunning?:boolean;codexExecutable:string;port:CommandPort;game:GameClient;lifecycle:Lifecycle;events?:(event:Activity)=>void;activity?:ActivitySink;reserveGameControl?:()=>Promise<()=>void>}):Promise<{host:LiveWorkshopHost;catalog:ManagedCatalog}>{
+  if(!path.isAbsolute(options.codexExecutable))throw new Error('Workshop Codex executable must be absolute');await mkdir(options.directory,{recursive:true});const bootstrap=new AppServerRpc(options.codexExecutable,options.directory,{forced_login_method:'chatgpt',model_provider:'openai','features.apps':false,'features.plugins':false});try{await bootstrap.call('initialize',{clientInfo:{name:'autofactorio_workshop',version:'0.1.0'},capabilities:{experimentalApi:true}});const catalog=await managedCatalog(bootstrap),config=object(object(await bootstrap.call('config/read',{cwd:options.directory})).config),mcpNames=Object.keys(object(config.mcp_servers??{})),sink:Sink=event=>{appendFileSync(path.join(options.directory,'workshop-provider-events.jsonl'),JSON.stringify(event)+'\n');options.events?.(event);};return{host:new LiveWorkshopHost(options.directory,new ManagedWorkshopInference(options.codexExecutable,options.directory,mcpNames,sink),new LiveWorkshopGame(options.port,options.game,options.lifecycle,options.activity,options.reserveGameControl,options.fenceDirectory??options.directory,options.observerData??null),options.activity,options.keepFinalRunning??false),catalog};}finally{bootstrap.close();}
 }

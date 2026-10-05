@@ -45,7 +45,7 @@ if (process.argv.includes('--fixture')) {
     const c = new Coordinator(runtime, { ...PROBE_CAPS, runMs: 3600000 });
     if (!c.agents().length) team().forEach(a => c.register(a));
     operator = new Operator(c); await operator.control('pause');
-    const prepared=await prepareLiveWorkshopHost({directory,fenceDirectory:profile.dir,codexExecutable:codex,port,game,lifecycle:life,reserveGameControl:()=>operator.reserveGameControl(),activity:value=>runtime.record(`workshop/${value.category}-${value.status}`,[{entity:'workshopOperations',id:value.id,value:{...value}}])});workshopOptions={workshopHost:prepared.host,managedModels:prepared.catalog.models,profileReader:profileId=>new WorkshopControl(port!).installedProfile(profileId,'electronic-circuit')};
+    const prepared=await prepareLiveWorkshopHost({directory,fenceDirectory:profile.dir,observerData:profile.observerData,keepFinalRunning:true,codexExecutable:codex,port,game,lifecycle:life,reserveGameControl:()=>operator.reserveGameControl(),activity:value=>runtime.record(`workshop/${value.category}-${value.status}`,[{entity:'workshopOperations',id:value.id,value:{...value}}])});workshopOptions={workshopHost:prepared.host,managedModels:prepared.catalog.models,profileReader:profileId=>new WorkshopControl(port!).installedProfile(profileId,'electronic-circuit')};
   } catch (error) {
     port?.close();
     throw new Error(`Factorio dashboard initialization failed: ${error instanceof Error ? error.message : String(error)}`);
@@ -62,5 +62,7 @@ if (value('--result-file')) await writeFile(value('--result-file')!, JSON.string
 console.log(JSON.stringify({ origin, directory, launchFile: path.join(directory, 'dashboard.json'), synthetic: result.synthetic }));
 const stop = operator.start();
 let closing = false;
-async function close() { if (closing) return; closing = true; await stop(); await operator.control('pause'); await server.close(); runtime.close(); workspaceCatalog.close(); closePort(); }
+// Workshop shutdown confirms observation Stop and releases its control reservation
+// before the operator can request its ordinary neutral pause.
+async function close() { if (closing) return; closing = true; await stop(); await server.close(); await operator.control('pause'); runtime.close(); workspaceCatalog.close(); closePort(); }
 process.on('SIGINT', () => void close()); process.on('SIGTERM', () => void close());

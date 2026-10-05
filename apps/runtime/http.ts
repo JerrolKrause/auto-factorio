@@ -13,6 +13,7 @@ import type { WorkshopCompositionOptions } from './workshop-composition.js';
 import type { InstalledWorkshopProfile } from '../../packages/factorio/src/workshop.js';
 import { WorkspaceOwnershipConflict } from '../../packages/storage/src/workspace-catalog.js';
 import { invocationFile, readInvocationPage } from './workshop-invocation.js';
+import { snapshotFile, snapshotHash } from './workshop-snapshot.js';
 
 function record(value: unknown): Record<string, unknown> {
   if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('Expected object');
@@ -76,6 +77,17 @@ export function dashboard(operator: Operator, assets = path.resolve('apps/dashbo
       const value = options.workspaceCatalog.run(text(record(request.params).id)); if (!value) throw new Error('Workspace run unavailable'); return value; });
   app.get('/api/workspace/runs/:id/detail', request => { if (!options.workspaceCatalog) throw new Error('Workspace history unavailable');
       return options.workspaceCatalog.detail(text(record(request.params).id), { directory: runtime.directory, journal: runtime.journal }); });
+  app.get('/api/workspace/runs/:id/snapshots/:iteration',async(request,reply)=>{
+    const params=record(request.params),id=text(params.id),iteration=Number(params.iteration),catalog=options.workspaceCatalog;
+    if(!catalog||!Number.isSafeInteger(iteration)||iteration<1)return reply.code(404).send({unavailable:'snapshot-not-retained'});
+    const directory=catalog.sourceDirectory(id),sourceId=catalog.workshopSourceId(id);
+    if(!directory||!sourceId)return reply.code(404).send({unavailable:'snapshot-not-retained'});
+    const detail=catalog.detail(id,{directory:runtime.directory,journal:runtime.journal}),session=detail.session as {iterations?:{number:number;snapshot?:{status:string;sha256?:string}}[]}|null;
+    const snapshot=session?.iterations?.find(value=>value.number===iteration)?.snapshot;
+    if(snapshot?.status!=='available')return reply.code(404).send({unavailable:'snapshot-not-retained'});
+    try{const bytes=await readFile(snapshotFile(directory,sourceId,iteration));if(snapshotHash(bytes)!==snapshot.sha256)throw new Error('Snapshot changed');return reply.type('image/png').send(bytes);}
+    catch{return reply.code(404).send({unavailable:'snapshot-missing-or-changed'});}
+  });
   app.get('/api/workspace/runs/:id/attempts', request => { if (!options.workspaceCatalog) throw new Error('Workspace history unavailable');
     const page = workspacePage(request.query); return options.workspaceCatalog.pageAttempts(text(record(request.params).id), page.limit, page.cursor); });
   app.get('/api/workspace/runs/:id/events', request => { if (!options.workspaceCatalog) throw new Error('Workspace history unavailable');

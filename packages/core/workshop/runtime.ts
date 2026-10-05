@@ -4,6 +4,7 @@ import type { LibraryAdmission, LibraryEntry } from './library.js';
 import { BlueprintLibrary } from './library.js';
 import type { LearningService } from './learning.js';
 import type { WorkshopSessionState } from './orchestrator.js';
+import type { WorkshopSnapshot } from './orchestrator.js';
 import { WorkshopOrchestrator } from './orchestrator.js';
 import type { WorkshopUsageLedger } from './usage.js';
 import type { WorkspaceGroupIdentity, WorkspaceRunIdentity } from '@autofactorio/contracts';
@@ -24,6 +25,8 @@ export interface WorkshopRuntimeHost {
   design(session:WorkshopSessionState,iteration:number):Promise<WorkshopCandidateRef>;
   build(session:WorkshopSessionState,candidate:WorkshopCandidateRef):Promise<void>;
   measure(session:WorkshopSessionState,candidate:WorkshopCandidateRef):Promise<WorkshopEvaluationReport>;
+  snapshot?(session:WorkshopSessionState,candidate:WorkshopCandidateRef):Promise<WorkshopSnapshot>;
+  observe?(session:WorkshopSessionState):Promise<boolean>;
   score(session:WorkshopSessionState,candidate:WorkshopCandidateRef,evaluation:WorkshopEvaluationReport):Promise<{score:WorkshopScore;feedback:string;critique?:WorkshopCritique}>;
   finalization(session:WorkshopSessionState):Promise<{admission:LibraryAdmission|null;learningRequired:boolean}>;
   prepareLearning(session:WorkshopSessionState):Promise<{activationRequired:boolean}>;
@@ -125,8 +128,12 @@ export class WorkshopRuntime {
       if(intents.some(operationId=>!/:\d+:(design|score|build|measure)$/.test(operationId))){const detail='stop_effect_requires_exact_receipt';const session=this.orchestrator.holdInFlight(id,detail),state=this.history?.transition(id,'held',detail);return session??state!;}
       this.orchestrator.settleCancelledEffects(id,intents);
     }
-    const session=hasSession?this.orchestrator.stop(id,reason):null;
-    const state=this.history?.transition(id,'cancelled',reason);
+    // A lost start acknowledgment still follows a fully reported run. An exact
+    // observation Stop closes that phase successfully without cancelling its score.
+    const stoppedSession=hasSession?this.orchestrator.get(id):null;
+    const observing=Boolean(stoppedSession?.operationIntents[`${id}:observe`]&&stoppedSession.finalOutcome&&stoppedSession.iterations.at(-1)?.evaluation);
+    const session=hasSession?(observing?this.orchestrator.finishObservation(id,reason):this.orchestrator.stop(id,reason)):null;
+    const state=this.history?.transition(id,observing?'completed':'cancelled',reason);
     return session??state!;
   }
   async close():Promise<void>{this.closing=true;for(const timer of this.timers.values())clearTimeout(timer);this.timers.clear();await Promise.allSettled(this.launches.values());const active=[...this.active.keys()],cancellations=active.map(async id=>{try{return{id,result:this.cancellation(await this.host.cancel(id),id)};}catch(error){return{id,result:{schema:1 as const,effectId:`workshop:${id}`,outcome:'unknown' as const,failures:[String(error)]}};}});const results=await Promise.all(cancellations);for(const {id,result}of results){const session=this.orchestrator.get(id);if(!['complete','held','stopped'].includes(session.stage))this.orchestrator.holdInFlight(id,result.outcome!=='unknown'?'runtime_closed_with_inflight_effect':`close_cancellation_unconfirmed:${result.failures.join('|')}`);}await Promise.allSettled(this.active.values());await this.host.close?.();}
@@ -156,6 +163,7 @@ export class WorkshopRuntime {
         this.orchestrator.advance(id,'building');this.orchestrator.artifact(id,candidate);continue;
       }
       const state=session.iterations[iteration-1]!;
+      if(session.stage==='scoring'&&state.evaluation&&!state.snapshot&&this.host.snapshot){const snapshot=await this.host.snapshot(session,state.artifact!);this.guard(id);this.orchestrator.snapshot(id,snapshot);continue;}
       if(session.stage==='scoring'&&state.valid===false&&!state.evaluation){const next=this.orchestrator.next(id);if(next==='iterate'){this.orchestrator.beginIteration(id);continue;}if(next==='checkpoint'){this.track(id);return;}this.orchestrator.finalize(id);continue;}
       if(!state.artifact&&['building','frozen','measuring','scoring'].includes(session.stage))throw new Error('Workshop artifact missing');
       if(session.stage==='building'){try{await this.effect(id,op('build'),async()=>{await this.host.build(session,state.artifact!);return{completed:true};},()=>this.reconcile(session,op('build')));}catch(error){if(!(error instanceof WorkshopEffectOutcomeError)||error.outcome!=='failed')throw error;this.orchestrator.rejectIteration(id,op('build'),String(error));continue;}this.guard(id);this.orchestrator.advance(id,'frozen');continue;}
@@ -178,7 +186,8 @@ export class WorkshopRuntime {
       }
       if(session.stage==='library'){const finalization=await this.effect(id,`${id}:finalization`,()=>this.host.finalization(session),()=>this.reconcile(session,`${id}:finalization`));this.guard(id);if(finalization.learningRequired)this.orchestrator.advance(id,'learning');else this.orchestrator.advance(id,'reported');continue;}
       if(session.stage==='learning'){this.orchestrator.recheckAvailability(id,this.available());const preparation=await this.effect(id,`${id}:learning-prepare`,()=>this.host.prepareLearning(session),()=>this.reconcile(session,`${id}:learning-prepare`));this.guard(id);if(preparation.activationRequired&&session.assignment.checkpoints.learningActivation&&this.orchestrator.requestCheckpoint(id,'learningActivation','learning')){this.track(id);return;}if(preparation.activationRequired){await this.effect(id,`${id}:learning-activate`,async()=>{await this.host.activateLearning(session);return{completed:true};},()=>this.reconcile(session,`${id}:learning-activate`));this.guard(id);}this.orchestrator.advance(id,'reported');continue;}
-      if(session.stage==='reported'){this.orchestrator.advance(id,'complete');continue;}
+      if(session.stage==='reported'){const observing=this.host.observe?await this.effect(id,`${id}:observe`,()=>this.host.observe!(session),()=>this.reconcile(session,`${id}:observe`)):false;this.guard(id);this.orchestrator.advance(id,observing?'observing':'complete');if(observing)return;continue;}
+      if(session.stage==='observing'){const running=await this.host.observe?.(session);this.guard(id);if(running===false)this.orchestrator.finishObservation(id,'evaluation_stopped');return;}
       throw new Error(`Unsupported workshop recovery stage: ${session.stage}`);
     }
   }

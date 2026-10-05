@@ -6,13 +6,15 @@ import type { EffectReceipt, WorkspaceAttemptIdentity, WorkspaceGroupIdentity, W
 import { normalizeEffectReceipt } from '@autofactorio/contracts';
 import { compareWorkshopScores } from './scoring.js';
 
-export type WorkshopStage = 'configured'|'preflight'|'designing'|'building'|'frozen'|'measuring'|'scoring'|'checkpoint'|'finalizing'|'library'|'learning'|'reported'|'complete'|'held'|'stopped';
+export type WorkshopStage = 'configured'|'preflight'|'designing'|'building'|'frozen'|'measuring'|'scoring'|'checkpoint'|'finalizing'|'library'|'learning'|'reported'|'observing'|'complete'|'held'|'stopped';
+export type WorkshopSnapshot = {status:'available';sha256:string;capturedAt:string;tick:number}|{status:'unavailable';reason:string};
 export type WorkshopCheckpointKind = 'brief'|'afterScore'|'libraryAdmission'|'learningActivation';
 export interface WorkshopCheckpointState { kind:WorkshopCheckpointKind; key:string; resumeStage:WorkshopStage; deadline:string }
 export interface WorkshopIterationState {
   id: string; sessionId: string; number: number; stage: WorkshopStage; artifact: WorkshopCandidateRef|null;
   evaluation: WorkshopEvaluationReport|null; score: WorkshopScore|null; feedback: string|null; operationIds: string[]; valid: boolean|null;
   critique?: WorkshopCritique|null;
+  snapshot?: WorkshopSnapshot;
 }
 export interface WorkshopSessionState {
   id: string; assignment: WorkshopAssignment; stage: WorkshopStage; selections: Record<'designer'|'scorer'|'learnings', ModelSelection>;
@@ -28,7 +30,7 @@ const allowed: Record<WorkshopStage, WorkshopStage[]> = {
   configured:['preflight','stopped'], preflight:['designing','checkpoint','stopped'], designing:['building','stopped'], building:['frozen','stopped'],
   frozen:['measuring','stopped'], measuring:['scoring','stopped'], scoring:['checkpoint','designing','finalizing','stopped'],
   checkpoint:['designing','finalizing','stopped'], finalizing:['library','learning','reported','checkpoint','stopped'], library:['learning','reported','checkpoint','stopped'],
-  learning:['checkpoint','reported','held','stopped'], reported:['complete','stopped'], complete:[], held:['stopped'], stopped:[],
+  learning:['checkpoint','reported','held','stopped'], reported:['observing','complete','stopped'], observing:['complete','stopped'], complete:[], held:['stopped'], stopped:[],
 };
 const hash = (value: unknown) => createHash('sha256').update(JSON.stringify(value)).digest('hex');
 
@@ -94,6 +96,8 @@ export class WorkshopOrchestrator {
     i.score=structuredClone(score); i.feedback=feedback; i.critique=critique?structuredClone(critique):null; i.valid=i.evaluation?.valid === true&&i.evaluation.passed===true&&score.eligible===true; if (i.valid&&!s.validIterations.includes(i.number)) s.validIterations.push(i.number);
     s.bestIteration=this.best(s); this.saveBoth(s,i,'workshop/scored');
   }
+  snapshot(id:string,value:WorkshopSnapshot):void {const s=this.get(id);this.requireOpen(s);const i=s.iterations[s.activeIteration!-1]!;i.snapshot=structuredClone(value);this.saveBoth(s,i,'workshop/snapshot');}
+  finishObservation(id:string,reason:string):WorkshopSessionState {const s=this.get(id);s.stage='complete';s.stopRequested=true;s.stopReason=reason;this.save(s,'workshop/complete');return s;}
   next(id: string): 'iterate'|'checkpoint'|'finalize' {
     const s=this.get(id);this.requireOpen(s); if (s.stage !== 'scoring') throw new Error('Iteration is not scored');
     const complete=s.iterations.length >= s.assignment.iterations.attempts;

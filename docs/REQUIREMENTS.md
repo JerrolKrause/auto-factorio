@@ -48,6 +48,8 @@ Show the provider's available public activity and reasoning summaries, plus conc
 
 The UI distinguishes reasoning, executing, waiting for a dependency, waiting for the game, awaiting user input, blocked by usage, disconnected, completed, and failed. An idle model while a batch runs is normal and must be understandable.
 
+Workshop run reports retain a clickable screenshot of each measured final build when the project graphical client can render it, with explicit unavailable status otherwise; images appear as attempts finish and remain available in history. The last measured attempt of an ordinary workshop keeps running at the selected speed for operator evaluation until Stop pauses it and releases game ownership. Fixed-window measurements and scores remain immutable during this observation phase; bounded diagnostics still finish and clean up automatically. See [decision 023](decisions/023-workshop-final-build-evidence.md).
+
 The local operator workspace has dedicated Overview, Workshop, Scenarios, Run History and Library destinations. A brief or versioned scenario groups durable runs; an attempt belongs to exactly one run. Execution state, target evaluation and independent scenario verdict remain distinct, including cancelled runs with earlier passing attempts. The managed game has one admitted experiment owner across preparation, checkpoints and recovery. Stop closes new work immediately, while uncertain external effects retain ownership until their exact receipts resolve. Operator-only invocation records contain the available public instructions, supplied context, tool delivery and output; missing or redacted parts are labeled rather than reconstructed. Browser setup drafts cannot establish run status or grant model access.
 
 ## Scenario suite

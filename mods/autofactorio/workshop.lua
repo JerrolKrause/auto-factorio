@@ -136,6 +136,7 @@ local function production(w)
 end
 local function snapshot(w) local snap=production(w);snap.delivery={};for id,fixture in pairs(w.fixtures) do snap.delivery[id]=fixture.delivered end;snap.tick=game.tick;return snap end
 local function measurement_configure(r)
+ C.check(not storage.af.workshopObservationOwner,"workshop_observation_active")
  C.keys(r,{"op","id","generation","attemptId","settlingTicks","windowTicks","windows","requestedSpeed","ports"});local w=state(r.id);C.integer(r.generation,1,2147483647);C.check(r.generation==w.generation,"stale_workshop_generation");C.id(r.attemptId);C.integer(r.settlingTicks,0,216000);C.integer(r.windowTicks,1,216000);C.integer(r.windows,1,100);C.check(type(r.requestedSpeed)=="number" and r.requestedSpeed>=0.1 and r.requestedSpeed<=100,"invalid_workshop_speed");local seen={};for _,port in ipairs(r.ports) do C.keys(port,{"id","fixtureId","product"});C.id(port.id);C.id(port.fixtureId);C.check(not seen[port.id] and w.fixtures[port.fixtureId] and w.fixtures[port.fixtureId].kind=="sink","invalid_measurement_port");seen[port.id]=true;C.keys(port.product,{"kind","name","quality"});C.check(port.product.quality=="normal","unsupported_measurement_quality") end
  if w.measurement then C.check(w.measurement.attemptId==r.attemptId,"workshop_measurement_collision");return {ok=true,attemptId=r.attemptId,admittedTick=w.measurement.admitted,requestedSpeed=w.measurement.requestedSpeed,achievedSpeed=game.speed,reconciled=true} end
  w.measurement={attemptId=r.attemptId,settlingTicks=r.settlingTicks,windowTicks=r.windowTicks,windows=r.windows,requestedSpeed=r.requestedSpeed,previousSpeed=game.speed,previousPaused=game.tick_paused,ports=r.ports,state="settling",admitted=game.tick,nextTick=game.tick+r.settlingTicks,samples={},sequence=0,baseline=snapshot(w),finished=false};game.speed=r.requestedSpeed;game.tick_paused=false;return {ok=true,attemptId=r.attemptId,admittedTick=game.tick,requestedSpeed=r.requestedSpeed,achievedSpeed=game.speed}
@@ -148,7 +149,33 @@ end
 local function measurement_read(r) C.keys(r,{"op","id","attemptId","after"});local w=state(r.id);local m=w.measurement;C.check(m and m.attemptId==r.attemptId,"unknown_workshop_measurement");C.integer(r.after,-1,1000);local samples={};for _,sample in ipairs(m.samples) do if sample.index>r.after then samples[#samples+1]=sample end end;return {ok=true,tick=game.tick,state=m.state,finished=m.finished,samples=samples,requestedSpeed=m.requestedSpeed,achievedSpeed=game.speed} end
 local function measurement_status(r) C.keys(r,{"op","id","attemptId"});local w=(storage.af.workshops or {})[r.id];local m=w and w.measurement;if not m then return {ok=true,attemptId=r.attemptId,present=false,state="not-admitted",finished=true} end;if m.attemptId~=r.attemptId then return {ok=true,attemptId=r.attemptId,present=false,state="identity-conflict",finished=false} end;return {ok=true,attemptId=m.attemptId,present=true,state=m.state,finished=m.finished} end
 local function measurement_abort(r) C.keys(r,{"op","id","attemptId"});local w=state(r.id);local m=w.measurement;C.check(m and m.attemptId==r.attemptId,"unknown_workshop_measurement");if not m.finished then m.finished=true;m.state="aborted";m.error="host_aborted";game.speed=m.previousSpeed;game.tick_paused=m.previousPaused end;return {ok=true,attemptId=m.attemptId,state=m.state,finished=m.finished,restoredSpeed=game.speed,restoredPaused=game.tick_paused} end
-function M.guard() for _,w in pairs(storage.af.workshops or {}) do if w.measurement and not w.measurement.finished then error("workshop_measurement_observation_only",0) end end end
+local function screenshot(r)
+ C.keys(r,{"op","id","generation","token"});local w=state(r.id);C.check(r.generation==w.generation,"stale_workshop_generation");C.id(r.token)
+ local player=nil;for _,p in pairs(game.connected_players) do if p.surface.name==w.surface then player=p;break end end
+ if not player then return {ok=true,available=false,tick=game.tick} end
+ local minx,miny,maxx,maxy=0,14,0,14
+ for _,e in ipairs(candidate_entities(w)) do local b=e.bounding_box;minx=math.min(minx,b.left_top.x);miny=math.min(miny,b.left_top.y);maxx=math.max(maxx,b.right_bottom.x);maxy=math.max(maxy,b.right_bottom.y) end
+ for _,f in pairs(w.fixtures) do minx=math.min(minx,f.position.x-2);miny=math.min(miny,f.position.y-2);maxx=math.max(maxx,f.position.x+2);maxy=math.max(maxy,f.position.y+2) end
+ local file="autofactorio/"..r.token..".png";local zoom=math.min(2,1536/((maxx-minx+8)*32),1024/((maxy-miny+8)*32))
+ game.take_screenshot{by_player=player.index,player=player.index,surface=w.surface,position={x=(minx+maxx)/2,y=(miny+maxy)/2},resolution={x=1536,y=1024},zoom=zoom,path=file,show_gui=false,show_entity_info=true,force_render=true}
+ return {ok=true,available=true,path=file,tick=game.tick}
+end
+local function observe(r)
+ C.keys(r,{"op","id","generation","stop"});local w=state(r.id);C.check(r.generation==w.generation,"stale_workshop_generation");C.check(type(r.stop)=="boolean","invalid_observation_stop")
+ C.check(not storage.af.workshopObservationOwner or storage.af.workshopObservationOwner==r.id,"workshop_observation_owner_conflict")
+ local m=w.measurement;C.check(m and m.finished,"workshop_measurement_active")
+ if r.stop then
+  if w.observation and not w.observation.finished then game.speed=w.observation.previousSpeed end
+  w.observation=w.observation or {};w.observation.finished=true;game.tick_paused=true;storage.af.workshopObservationOwner=nil
+ else
+  C.check(m.state=="finished","workshop_measurement_not_finished")
+  if not w.observation then w.observation={previousSpeed=game.speed,finished=false} end
+  -- A durable stop wins a racing start and must never be replayed into a resume.
+  if not w.observation.finished then storage.af.workshopObservationOwner=r.id;game.speed=m.requestedSpeed;game.tick_paused=false end
+ end
+ return {ok=true,running=not w.observation.finished,paused=game.tick_paused,speed=game.speed}
+end
+function M.guard() for _,w in pairs(storage.af.workshops or {}) do if w.measurement and not w.measurement.finished or w.observation and not w.observation.finished then error("workshop_measurement_observation_only",0) end end end
 function M.tick()
  for _,w in pairs(storage.af.workshops or {}) do
   for _,fixture in pairs(w.fixtures) do local e=game.surfaces[w.surface].find_entity(fixture.entity,fixture.position);if e and e.valid and fixture.kind~="power" then local amount=0;if fixture.product.kind=="item" and fixture.transport=="belt" then
@@ -164,6 +191,6 @@ function M.tick()
  end
 end
 function M.rpc(r)
- M.init();if r.op=="workshop-profile" then return installed_profile(r) elseif r.op=="workshop-setup" then return setup(r) elseif r.op=="workshop-expand" then return expand(r) elseif r.op=="workshop-materialize" then return materialize(r) elseif r.op=="workshop-inspect" then return inspect(r) elseif r.op=="workshop-enter" then return enter(r) elseif r.op=="workshop-actor" then return actor_state(r) elseif r.op=="workshop-provision" then return provision(r) elseif r.op=="workshop-measure-configure" then return measurement_configure(r) elseif r.op=="workshop-measure-status" then return measurement_status(r) elseif r.op=="workshop-measure-abort" then return measurement_abort(r) elseif r.op=="workshop-measure-read" then return measurement_read(r) end;error("unsupported_workshop_operation",0)
+ M.init();if r.op=="workshop-screenshot" then return screenshot(r) elseif r.op=="workshop-observe" then return observe(r) elseif r.op=="workshop-profile" then return installed_profile(r) elseif r.op=="workshop-setup" then return setup(r) elseif r.op=="workshop-expand" then return expand(r) elseif r.op=="workshop-materialize" then return materialize(r) elseif r.op=="workshop-inspect" then return inspect(r) elseif r.op=="workshop-enter" then return enter(r) elseif r.op=="workshop-actor" then return actor_state(r) elseif r.op=="workshop-provision" then return provision(r) elseif r.op=="workshop-measure-configure" then return measurement_configure(r) elseif r.op=="workshop-measure-status" then return measurement_status(r) elseif r.op=="workshop-measure-abort" then return measurement_abort(r) elseif r.op=="workshop-measure-read" then return measurement_read(r) end;error("unsupported_workshop_operation",0)
 end
 return M
