@@ -18,8 +18,8 @@ local function setup(r)
  local allowed={};for _,name in ipairs(r.allowedEquipment) do C.id(name);C.check(prototypes.entity[name] or prototypes.item[name],"unknown_workshop_equipment");allowed[name]=true end
  local w={id=r.id,surface=r.surface,force=r.force,profileFingerprint=r.profileFingerprint,area=a,maxTiles=r.maxTiles,allowed=allowed,units={},fixtures={},generation=1}
  storage.af.workshops[r.id]=w
- for _,fixture in ipairs(r.fixtures) do C.keys(fixture,{"id","kind","position","product","rate"});C.id(fixture.id);C.pos(fixture.position);C.check(in_area(fixture.position,a),"fixture_outside_workshop");C.check(fixture.kind=="source" or fixture.kind=="sink" or fixture.kind=="power","invalid_fixture");C.check(type(fixture.rate)=="number" and fixture.rate>=0,"invalid_fixture_rate");C.keys(fixture.product,{"kind","name","quality"});C.check(fixture.product.quality=="normal","unsupported_fixture_quality");C.id(fixture.product.name)
-  local name=fixture.kind=="power" and "electric-energy-interface" or (fixture.product.kind=="fluid" and "storage-tank" or "steel-chest");local e=surface.create_entity{name=name,position=fixture.position,force=force};C.check(e,"fixture_creation_failed");if fixture.kind=="power" then e.power_production=1000000000;e.electric_buffer_size=1000000000 end;storage.af.protected[e.unit_number]=true;w.fixtures[fixture.id]={unit=e.unit_number,entity=e.name,position={x=e.position.x,y=e.position.y},kind=fixture.kind,product=fixture.product,rate=fixture.rate,accumulator=0,delivered=0}
+ for _,fixture in ipairs(r.fixtures) do fixture.transport=fixture.transport or (fixture.kind=="power" and "power" or fixture.product.kind=="fluid" and "pipe" or "chest");fixture.facing=fixture.facing or defines.direction.east;C.keys(fixture,{"id","kind","position","product","rate","transport","facing"});C.id(fixture.id);C.pos(fixture.position);C.check(in_area(fixture.position,a),"fixture_outside_workshop");C.check(fixture.kind=="source" or fixture.kind=="sink" or fixture.kind=="power","invalid_fixture");C.check(type(fixture.rate)=="number" and fixture.rate>=0,"invalid_fixture_rate");C.keys(fixture.product,{"kind","name","quality"});C.check(fixture.product.quality=="normal","unsupported_fixture_quality");C.id(fixture.product.name)
+  local name=fixture.kind=="power" and "electric-energy-interface" or (fixture.product.kind=="fluid" and "storage-tank" or (fixture.transport=="belt" and "express-transport-belt" or "steel-chest"));local e=surface.create_entity{name=name,position=fixture.position,direction=fixture.facing or defines.direction.east,force=force};C.check(e,"fixture_creation_failed");if fixture.kind=="power" then e.power_production=1000000000;e.electric_buffer_size=1000000000 end;storage.af.protected[e.unit_number]=true;w.fixtures[fixture.id]={unit=e.unit_number,entity=e.name,position={x=e.position.x,y=e.position.y},kind=fixture.kind,product=fixture.product,rate=fixture.rate,transport=fixture.transport,accumulator=0,delivered=0}
  end
  return {ok=true,id=w.id,surface=w.surface,force=w.force,area=w.area,maxTiles=w.maxTiles,generation=w.generation,fixtures=w.fixtures}
 end
@@ -30,7 +30,7 @@ local function materialize(r)
  C.keys(r,{"op","id","generation","operationId","entities","wires"});local w=state(r.id);C.check(not w.measurement or w.measurement.finished,"workshop_measurement_active");C.integer(r.generation,1,2147483647);C.check(r.generation==w.generation,"stale_workshop_generation");C.id(r.operationId);w.operations=w.operations or {};if w.operations[r.operationId] then return w.operations[r.operationId] end
  local surface=game.surfaces[w.surface];local force=game.forces[w.force];local created={};local baseUnits=#w.units
  local ok,failure=pcall(function()
-  for _,value in ipairs(r.entities) do C.keys(value,{"id","name","position","direction","quality","recipe","modules","filters","inventoryBar","undergroundType","settings"});C.id(value.id);C.id(value.name);C.pos(value.position);C.integer(value.direction,0,15);C.check(value.quality=="normal","unsupported_quality_placement");C.check(w.allowed[value.name],"profile_denied");C.check(in_area(value.position,w.area),"direct_outside_workshop");C.check(not created[value.id],"duplicate_blueprint_entity");C.check(surface.can_place_entity{name=value.name,position=value.position,direction=value.direction,force=force,build_check_type=defines.build_check_type.script},"direct_collision")
+  for _,value in ipairs(r.entities) do C.keys(value,{"id","name","position","direction","quality","recipe","modules","filters","inventoryBar","undergroundType","settings"});C.id(value.id);C.id(value.name);C.pos(value.position);C.integer(value.direction,0,15);C.check(value.quality=="normal","unsupported_quality_placement");C.check(w.allowed[value.name],"profile_denied");C.check(in_area(value.position,w.area),"direct_outside_workshop");C.check(not created[value.id],"duplicate_blueprint_entity");C.check(surface.can_place_entity{name=value.name,position=value.position,direction=value.direction,force=force,build_check_type=defines.build_check_type.script},"direct_collision:"..value.name.."@"..value.position.x..","..value.position.y)
    local parameters={name=value.name,position=value.position,direction=value.direction,force=force,quality="normal",raise_built=false};if value.undergroundType then C.check(value.undergroundType=="input" or value.undergroundType=="output","invalid_underground_type");C.check(prototypes.entity[value.name].type=="underground-belt","underground_type_unsupported");parameters.type=value.undergroundType end
    local e=surface.create_entity(parameters);C.check(e,"direct_creation_failed");created[value.id]=e;w.units[#w.units+1]=e.unit_number
    if value.recipe then
@@ -52,16 +52,57 @@ local function materialize(r)
  if not ok then for _,e in pairs(created) do if e.valid then e.destroy() end end;for index=#w.units,baseUnits+1,-1 do w.units[index]=nil end;error(failure,0) end
  local receipt={ok=true,operationId=r.operationId,generation=w.generation,entities={}};for id,e in pairs(created) do receipt.entities[id]=ref(e) end;w.operations[r.operationId]=receipt;return receipt
 end
-local function inspect(r) C.keys(r,{"op","id"});local w=state(r.id);local out={};for _,e in ipairs(candidate_entities(w)) do out[#out+1]=ref(e) end;return {ok=true,id=w.id,generation=w.generation,area=w.area,profileFingerprint=w.profileFingerprint,entities=out,fixtures=w.fixtures,candidateFingerprint=fingerprint(w)} end
+local function inspect(r)
+ C.keys(r,{"op","id"});local w=state(r.id);local out={};local diagnostics={};local statuses={};for name,value in pairs(defines.entity_status) do statuses[value]=name end
+ for _,e in ipairs(candidate_entities(w)) do
+  out[#out+1]=ref(e)
+  if e.type=="furnace" or e.type=="assembling-machine" or e.type=="inserter" then
+   local row={name=e.name,position=e.position,status=statuses[e.status] or tostring(e.status),energy=e.energy}
+   if e.type=="inserter" then
+    -- Endpoints and inventories explain geometry; a transient waiting status alone is not a fault.
+    row.pickupPosition=e.pickup_position;row.dropPosition=e.drop_position
+    local pickup=e.pickup_target;local drop=e.drop_target
+    row.pickupTarget=pickup and pickup.valid and ref(pickup) or nil
+    row.dropTarget=drop and drop.valid and ref(drop) or nil
+    local held=e.held_stack
+    if held.valid_for_read then row.heldItem={name=held.name,quality=held.quality.name,count=held.count} end
+   else
+    -- Inventory enum values are entity-specific; furnace_source is not an assembler input alias.
+    local input=e.type=="furnace" and defines.inventory.furnace_source or defines.inventory.assembling_machine_input
+    local output=e.type=="furnace" and defines.inventory.furnace_result or defines.inventory.assembling_machine_output
+    row.productsFinished=e.products_finished;row.contents=C.inventory(e.get_inventory(input))
+    row.outputContents=C.inventory(e.get_inventory(output));row.fuel=C.inventory(e.get_fuel_inventory())
+   end
+   diagnostics[#diagnostics+1]=row
+  end
+ end
+ return {ok=true,id=w.id,generation=w.generation,area=w.area,profileFingerprint=w.profileFingerprint,entities=out,diagnostics=diagnostics,fixtures=w.fixtures,candidateFingerprint=fingerprint(w)}
+end
+
 local function installed_profile(r)
  C.keys(r,{"op","profileId","product"});C.id(r.profileId);C.id(r.product);C.check(r.profileId=="starter-assembly" or r.profileId=="advanced-assembly" or r.profileId=="electromagnetic-production","unknown_workshop_profile")
  local recipe=prototypes.recipe[r.product];C.check(recipe,"unknown_workshop_product_recipe");local machines=r.profileId=="starter-assembly" and {"assembling-machine-1","stone-furnace"} or r.profileId=="advanced-assembly" and {"assembling-machine-2","electric-furnace","chemical-plant"} or {"electromagnetic-plant","foundry","assembling-machine-3","chemical-plant"};local machine=nil
  for _,name in ipairs(machines) do local prototype=prototypes.entity[name];if prototype and prototype.crafting_categories and prototype.crafting_categories[recipe.category] then machine=name;break end end;C.check(machine,"profile_has_no_compatible_machine")
- local common={"transport-belt","underground-belt","splitter","inserter","fast-inserter","long-handed-inserter","wooden-chest","steel-chest","small-electric-pole","medium-electric-pole","pipe","pipe-to-ground","pump","beacon"};local allowed={machine};for _,name in ipairs(common) do if prototypes.entity[name] then allowed[#allowed+1]=name end end
+ -- Workshop presets select production machines; transport must have headroom at
+ -- the default 15/s target instead of silently forcing one saturated yellow belt.
+ local common={"transport-belt","underground-belt","splitter","fast-transport-belt","fast-underground-belt","fast-splitter","express-transport-belt","express-underground-belt","express-splitter","inserter","fast-inserter","long-handed-inserter","wooden-chest","steel-chest","small-electric-pole","medium-electric-pole","pipe","pipe-to-ground","pump","beacon"};local allowed={machine};for _,name in ipairs(common) do if prototypes.entity[name] then allowed[#allowed+1]=name end end
  local technologies={};local requested=r.profileId=="starter-assembly" and {"automation","logistics"} or r.profileId=="advanced-assembly" and {"automation","automation-2","logistics","logistics-2","modules","speed-module"} or {"automation","modules","electromagnetic-plant","electromagnetic-science-pack"};for _,name in ipairs(requested) do if prototypes.technology[name] then technologies[#technologies+1]=name end end
  local function products(values)local out={};for _,value in pairs(values) do if value.name and value.amount and (not value.probability or value.probability==1) then out[#out+1]={type=value.type,name=value.name,amount=value.amount,temperature=value.temperature} end end;table.sort(out,function(a,b)return a.type..":"..a.name<b.type..":"..b.name end);return out end
+ local machinePrototype=prototypes.entity[machine];local machineFacts={craftingSpeed=machinePrototype.get_crafting_speed("normal"),energyWatts=machinePrototype.get_max_energy_usage("normal")*60,burner=machinePrototype.burner_prototype~=nil,coalFuelJoules=prototypes.item.coal.fuel_value};
+ local equipmentFacts={};for _,name in ipairs(allowed) do
+  local p=prototypes.entity[name]
+  local facts={name=name,type=p.type,collisionBox=p.collision_box,tileWidth=p.tile_width,tileHeight=p.tile_height,beltSpeed=p.belt_speed,supplyArea=(p.type=="electric-pole" or p.type=="beacon") and p.get_supply_area_distance("normal") or nil,wireDistance=p.get_max_wire_distance("normal")}
+  -- Factorio returns Vector as an array, unlike live MapPosition. Normalize the public facts to named points.
+  if p.type=="inserter" then
+   local pickup=p.inserter_pickup_position;local drop=p.inserter_drop_position
+   facts.inserterPickupPosition={x=pickup[1] or pickup.x,y=pickup[2] or pickup.y}
+   facts.inserterDropPosition={x=drop[1] or drop.x,y=drop[2] or drop.y}
+  end
+  equipmentFacts[#equipmentFacts+1]=facts
+ end
  local mods={};for name,version in pairs(script.active_mods) do mods[name]=version end
- return {ok=true,gameVersion=script.active_mods.base,mods=mods,profileId=r.profileId,profileRevision=1,surface="nauvis",technologies=technologies,allowedEquipment=allowed,modules={},beacons=prototypes.entity.beacon and {"beacon"} or {},recipe={id=recipe.name,category=recipe.category,energy=recipe.energy,ingredients=products(recipe.ingredients),products=products(recipe.products)},machine=machine}
+ for _,name in ipairs({"logistics-2","logistics-3"}) do if prototypes.technology[name] then local found=false;for _,existing in ipairs(technologies) do if existing==name then found=true end end;if not found then technologies[#technologies+1]=name end end end
+ return {ok=true,gameVersion=script.active_mods.base,mods=mods,profileId=r.profileId,profileRevision=2,surface="nauvis",technologies=technologies,allowedEquipment=allowed,modules={},beacons=prototypes.entity.beacon and {"beacon"} or {},recipe={id=recipe.name,category=recipe.category,energy=recipe.energy,ingredients=products(recipe.ingredients),products=products(recipe.products)},machine=machine,machineFacts=machineFacts,equipmentFacts=equipmentFacts}
 end
 local function provision(r)
  C.keys(r,{"op","id","actor","operationId","items"});local w=state(r.id);C.check(not w.measurement or w.measurement.finished,"workshop_measurement_active");C.id(r.operationId);w.provisions=w.provisions or {};if w.provisions[r.operationId] then return w.provisions[r.operationId] end;local p=C.actor(r.actor);C.check(p.surface.name==w.surface and p.force.name==w.force,"actor_not_in_workshop");local inventory=p.get_main_inventory();C.check(inventory and inventory.valid,"actor_inventory_unavailable");local before=C.inventory(inventory);local seen={};for _,item in ipairs(r.items) do C.keys(item,{"name","quality","count"});C.id(item.name);C.check(item.quality=="normal" and w.allowed[item.name],"provision_profile_denied");C.integer(item.count,1,10000);C.check(not seen[item.name],"duplicate_provision_item");seen[item.name]=true end
@@ -71,10 +112,24 @@ local function enter(r) C.keys(r,{"op","id","actor"});local w=state(r.id);local 
 local function actor_state(r) C.keys(r,{"op","id","actor"});local w=state(r.id);local p=C.actor(r.actor);C.check(p.surface.name==w.surface and p.force.name==w.force,"actor_not_in_workshop");return {ok=true,id=w.id,actor=r.actor,surface=w.surface,force=w.force,position=p.position,inventory=C.inventory(p.get_main_inventory())} end
 local function production(w)
  local totals={};local stock={};local complete=true;local energy=true
+ -- Engine counters are cumulative even when an idle furnace clears get_recipe().
+ -- Scripted fixture insertion is not manufacturing (guarded by the live probe).
+ local force=game.forces[w.force];local surface=game.surfaces[w.surface]
+ for _,fixture in pairs(w.fixtures) do if fixture.kind=="sink" then
+  local product=fixture.product;local statistics=product.kind=="item" and force.get_item_production_statistics(surface) or force.get_fluid_production_statistics(surface)
+  totals[product.kind..":"..product.name]=statistics.get_input_count(product.name)
+ end end
  for _,e in ipairs(candidate_entities(w)) do
-  if e.type=="assembling-machine" or e.type=="furnace" then local ok,recipe=pcall(function()return e.get_recipe()end);if not ok or not recipe then complete=false else for _,product in pairs(recipe.products) do if product.amount and (not product.probability or product.probability==1) then totals[product.type..":"..product.name]=(totals[product.type..":"..product.name] or 0)+e.products_finished*product.amount else complete=false end end end;if e.energy==0 then energy=false end
+  if e.type=="assembling-machine" or e.type=="furnace" then
+   -- Zero energy/production is an observed idle state, not missing coverage.
+   if type(e.products_finished)~="number" then complete=false end
+   if type(e.energy)~="number" then energy=false end
   end
-  for _,inventory in pairs(C.inventory_ids) do local ok,inv=pcall(function()return e.get_inventory(inventory)end);if ok and inv then for _,item in pairs(inv.get_contents()) do local key="item:"..item.name;stock[key]=(stock[key] or 0)+item.count end end end
+  local seenInventories={};for _,inventory in pairs(C.inventory_ids) do if not seenInventories[inventory] then seenInventories[inventory]=true;local ok,inv=pcall(function()return e.get_inventory(inventory)end);if ok and inv then for _,item in pairs(inv.get_contents()) do local key="item:"..item.name;stock[key]=(stock[key] or 0)+item.count end end end end
+  -- Plates on belts or held by inserters remain inside the measured boundary.
+  if e.type=="transport-belt" or e.type=="underground-belt" or e.type=="splitter" then
+   for index=1,e.get_max_transport_line_index() do for _,item in pairs(e.get_transport_line(index).get_contents()) do local key="item:"..item.name;stock[key]=(stock[key] or 0)+item.count end end
+  elseif e.type=="inserter" and e.held_stack.valid_for_read then local item=e.held_stack;local key="item:"..item.name;stock[key]=(stock[key] or 0)+item.count end
   local ok,boxes=pcall(function()return #e.fluidbox end);if ok then for i=1,boxes do local fluid=e.fluidbox[i];if fluid then local key="fluid:"..fluid.name;stock[key]=(stock[key] or 0)+fluid.amount end end end
  end
  return {production=totals,stock=stock,stageCoverage=complete and "complete" or "partial",energyCoverage=energy and "complete" or "partial"}
@@ -96,7 +151,15 @@ local function measurement_abort(r) C.keys(r,{"op","id","attemptId"});local w=st
 function M.guard() for _,w in pairs(storage.af.workshops or {}) do if w.measurement and not w.measurement.finished then error("workshop_measurement_observation_only",0) end end end
 function M.tick()
  for _,w in pairs(storage.af.workshops or {}) do
-  for _,fixture in pairs(w.fixtures) do local e=game.surfaces[w.surface].find_entity(fixture.entity,fixture.position);if e and e.valid and fixture.kind~="power" then local amount=0;if fixture.product.kind=="item" then local inv=e.get_inventory(defines.inventory.chest);if fixture.kind=="source" then fixture.accumulator=fixture.accumulator+fixture.rate/60;amount=math.floor(fixture.accumulator);if amount>0 then amount=inv.insert{name=fixture.product.name,quality="normal",count=amount};fixture.accumulator=fixture.accumulator-amount end else amount=inv.get_item_count();if amount>0 then amount=inv.remove{name=fixture.product.name,quality="normal",count=amount};fixture.delivered=fixture.delivered+amount end end else local fluid=e.fluidbox[1];if fixture.kind=="source" then fixture.accumulator=fixture.accumulator+fixture.rate/60;amount=fixture.accumulator;if amount>=0.01 then e.fluidbox[1]={name=fixture.product.name,amount=(fluid and fluid.amount or 0)+amount,temperature=fluid and fluid.temperature or 15};fixture.accumulator=0 end elseif fluid and fluid.name==fixture.product.name then amount=fluid.amount;e.fluidbox[1]=nil;fixture.delivered=fixture.delivered+amount end end end end
+  for _,fixture in pairs(w.fixtures) do local e=game.surfaces[w.surface].find_entity(fixture.entity,fixture.position);if e and e.valid and fixture.kind~="power" then local amount=0;if fixture.product.kind=="item" and fixture.transport=="belt" then
+    -- Fixtures are physical two-lane belts. Count only items actually removed at the sink.
+    if fixture.kind=="source" then
+     fixture.accumulator=math.min(2,fixture.accumulator+fixture.rate/60)
+     for lane=1,2 do if fixture.accumulator>=1 and e.get_transport_line(lane).insert_at_back{name=fixture.product.name,quality="normal",count=1} then fixture.accumulator=fixture.accumulator-1 end end
+    else
+     for lane=1,2 do fixture.delivered=fixture.delivered+e.get_transport_line(lane).remove_item{name=fixture.product.name,quality="normal",count=1000} end
+    end
+   elseif fixture.product.kind=="item" then local inv=e.get_inventory(defines.inventory.chest);if fixture.kind=="source" then fixture.accumulator=fixture.accumulator+fixture.rate/60;amount=math.floor(fixture.accumulator);if amount>0 then amount=inv.insert{name=fixture.product.name,quality="normal",count=amount};fixture.accumulator=fixture.accumulator-amount end else amount=inv.get_item_count();if amount>0 then amount=inv.remove{name=fixture.product.name,quality="normal",count=amount};fixture.delivered=fixture.delivered+amount end end else local fluid=e.fluidbox[1];if fixture.kind=="source" then fixture.accumulator=fixture.accumulator+fixture.rate/60;amount=fixture.accumulator;if amount>=0.01 then e.fluidbox[1]={name=fixture.product.name,amount=(fluid and fluid.amount or 0)+amount,temperature=fluid and fluid.temperature or 15};fixture.accumulator=0 end elseif fluid and fluid.name==fixture.product.name then amount=fluid.amount;e.fluidbox[1]=nil;fixture.delivered=fixture.delivered+amount end end end end
   local m=w.measurement;if m and not m.finished then if game.tick==m.nextTick then local current=snapshot(w);if m.state=="settling" then m.state="scoring";m.baseline=current;m.nextTick=game.tick+m.windowTicks else complete_window(w,m,current);if m.sequence>=m.windows then m.finished=true;m.state="finished";game.speed=m.previousSpeed;game.tick_paused=m.previousPaused else m.nextTick=game.tick+m.windowTicks end end elseif game.tick>m.nextTick then m.finished=true;m.state="invalid";m.error="missed_exact_tick";game.speed=m.previousSpeed;game.tick_paused=m.previousPaused end end
  end
 end

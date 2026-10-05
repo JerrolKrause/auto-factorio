@@ -1,17 +1,24 @@
 import assert from 'node:assert/strict';
-import { access, mkdtemp, writeFile } from 'node:fs/promises';
+import { access, mkdtemp, rename, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
 import { validateWorkshopAssignment } from '@autofactorio/contracts';
 import type { BlueprintDocument, WorkshopAssignment, WorkshopWindowMeasurement } from '@autofactorio/contracts';
-import type { CapabilityProfile } from '../packages/core/workshop/profiles.js';
 import { evaluateWorkshop } from '../packages/core/workshop/evaluation.js';
 import { WorkshopControl } from '../packages/factorio/src/workshop.js';
 import { reconcileWorkshopMeasurementFence } from '../apps/runtime/workshop-live-host.js';
 import type { Rcon } from '../packages/factorio/src/rcon.js';
 import { createProfile, startServer, stopProfile, waitForServer, runtimeOutputPath } from './dev/game-processes.js';
+import { captureLifecycleObservation, lifecycleFailureEvidence, measurementLifecycleCounterCommand, measurementLifecycleFixture } from './dev/workshop-measure-fixture.js';
+import type { LifecycleCounters, LifecycleObservations } from './dev/workshop-measure-fixture.js';
 
 const option=(flag:string)=>{const index=process.argv.indexOf(flag);return index>=0?process.argv[index+1]:undefined;};
+// Preflight is deliberately before every output/profile operation and starts no game.
+const lifecycleFixture = measurementLifecycleFixture();
+if (process.argv.includes('--preflight-only')) {
+  console.log(JSON.stringify({ passed: true, preflightOnly: true, gameLaunches: 0, modelInference: false, fixture: lifecycleFixture.id }));
+  process.exit(0);
+}
 const resultFile=option('--result-file')?await runtimeOutputPath(option('--result-file')!):undefined;
 const profileResultFile=option('--profile-result-file')?await runtimeOutputPath(option('--profile-result-file')!):undefined;
 const gameProfile=await createProfile(false,true),evidence=await mkdtemp(path.join(gameProfile.dir,'workshop-measure-probe-'));
@@ -20,7 +27,16 @@ const checks:string[]=[];let failure:string|null=null;
 const assertions:{id:string;surface:string;scope:string;tick:number;window:{index:number;startTick:number;endTick:number};units:string;expected:number;actual:number;coverage:string;outcome:string}[]=[];
 const pass=(message:string)=>{checks.push(message);console.log(message);};console.log(JSON.stringify({evidence,profile:gameProfile.config}));
 let port!:Rcon;let control!:WorkshopControl;
-const capability:CapabilityProfile={schema:1,id:'measurement',revision:1,fingerprint:'live-2.0.77',source:'custom',technologies:['automation','automation-2'],researchBonuses:{},recipes:['iron-gear-wheel'],allowedEquipment:['assembling-machine-2','inserter','small-electric-pole'],locallyManufacturable:[],modules:[],beacons:[],quality:'normal',surface:'nauvis'};
+const capability = lifecycleFixture.capability;
+let stage = 'startup';
+let lifecycleObservations: LifecycleObservations = { timeline: [], samples: [] };
+async function persistLifecycleObservation(counters: LifecycleCounters, samples: WorkshopWindowMeasurement[] = []) {
+  lifecycleObservations = captureLifecycleObservation(lifecycleObservations, counters, samples);
+  // Atomic replacement retains the previous complete observation if a write fails.
+  const file = path.join(evidence, 'lifecycle-observations.json');
+  await writeFile(`${file}.pending`, JSON.stringify({ schema: 1, stage, ...lifecycleObservations }, null, 2));
+  await rename(`${file}.pending`, file);
+}
 const document:BlueprintDocument={schema:1,label:'Measured gear cell',description:'Live measurement reference',entities:[
   {id:'assembler',entityNumber:1,name:'assembling-machine-2',position:{x:0,y:0},direction:0,quality:'normal',recipe:'iron-gear-wheel'},
   {id:'output',entityNumber:2,name:'inserter',position:{x:2,y:0},direction:12,quality:'normal'},
@@ -34,25 +50,142 @@ async function preload(surface:string,input:number,buffer:number){
   assert.deepEqual(inserted,{input,buffer});
 }
 interface RunOptions{speed:number;settlingTicks:number;windowTicks:number;windows:number;inputStock:number;bufferStock?:number;pause?:boolean;initiallyPaused?:boolean}
-async function run(id:string,options:RunOptions){const setup=await control.setup({id,surface:`af-${id}`,force:`af-${id}`,profile:capability,area:[{x:-256,y:-256},{x:256,y:256}],maxTiles:512*512,fixtures:[{id:'source',kind:'source',position:{x:-3,y:0},product:{kind:'item',name:'iron-plate',quality:'normal'},rate:0},{id:'sink',kind:'sink',position:{x:3,y:0},product:{kind:'item',name:'iron-gear-wheel',quality:'normal'},rate:0},{id:'power',kind:'power',position:{x:0,y:5},product:{kind:'item',name:'electricity',quality:'normal'},rate:0}]});await control.materialize(id,Number(setup.generation),`${id}-build`,document);await preload(`af-${id}`,options.inputStock,options.bufferStock??0);if(options.initiallyPaused)assert.equal((await port.command('/silent-command game.tick_paused=true;rcon.print(tostring(game.tick_paused))')).trim(),'true');const admitted=await control.measureConfigure({id,generation:Number(setup.generation),attemptId:`${id}-attempt`,settlingTicks:options.settlingTicks,windowTicks:options.windowTicks,windows:options.windows,requestedSpeed:options.speed,ports:[{id:'gears',fixtureId:'sink',product:{kind:'item',name:'iron-gear-wheel',quality:'normal'}}]});assert.equal(admitted.requestedSpeed,options.speed);let after=-1;const samples:WorkshopWindowMeasurement[]=[];let pausedTick:number|undefined;const deadline=Date.now()+((options.settlingTicks+options.windowTicks*options.windows)/60/options.speed)*1500+30000;
+async function run(id:string,options:RunOptions){stage=`${id}/setup-and-measurement`;const setup=await control.setup({id,surface:`af-${id}`,force:`af-${id}`,profile:capability,area:[{x:-256,y:-256},{x:256,y:256}],maxTiles:512*512,fixtures:[{id:'source',kind:'source',position:{x:-3,y:0},product:{kind:'item',name:'iron-plate',quality:'normal'},rate:0},{id:'sink',kind:'sink',position:{x:3,y:0},product:{kind:'item',name:'iron-gear-wheel',quality:'normal'},rate:0},{id:'power',kind:'power',position:{x:0,y:5},product:{kind:'item',name:'electricity',quality:'normal'},rate:0}]});await control.materialize(id,Number(setup.generation),`${id}-build`,document);await preload(`af-${id}`,options.inputStock,options.bufferStock??0);if(options.initiallyPaused)assert.equal((await port.command('/silent-command game.tick_paused=true;rcon.print(tostring(game.tick_paused))')).trim(),'true');const admitted=await control.measureConfigure({id,generation:Number(setup.generation),attemptId:`${id}-attempt`,settlingTicks:options.settlingTicks,windowTicks:options.windowTicks,windows:options.windows,requestedSpeed:options.speed,ports:[{id:'gears',fixtureId:'sink',product:{kind:'item',name:'iron-gear-wheel',quality:'normal'}}]});assert.equal(admitted.requestedSpeed,options.speed);let after=-1;const samples:WorkshopWindowMeasurement[]=[];let pausedTick:number|undefined;const deadline=Date.now()+((options.settlingTicks+options.windowTicks*options.windows)/60/options.speed)*1500+30000;
   while(Date.now()<deadline){const page=await control.measureRead(id,`${id}-attempt`,after);for(const sample of page.samples){samples.push(sample);after=Math.max(after,sample.index);
       // This is a scoped observation of an exact window, not an inferred missing counter.
       const complete=sample.stageCoverage==='complete'&&sample.ports[0]?.coverage==='complete';
       const summary={id:`${id}-window-${sample.index}`,surface:`af-${id}`,scope:'gears measurement boundary',tick:sample.endTick,window:{index:sample.index,startTick:sample.startTick,endTick:sample.endTick},units:'game ticks',expected:options.windowTicks,actual:sample.endTick-sample.startTick,coverage:complete?'complete':'unknown',outcome:!complete?'unknown':sample.endTick-sample.startTick===options.windowTicks?'pass':'fail'};
       assertions.push(summary);console.log(JSON.stringify({assertion:summary}));console.log(JSON.stringify({id,window:sample.index+1,windows:options.windows,tick:page.tick,production:sample.ports[0]?.production,delivery:sample.ports[0]?.delivery,opening:sample.ports[0]?.openingStock,closing:sample.ports[0]?.closingStock}));}if(options.pause&&pausedTick===undefined&&page.state==='scoring'){await port.command('/silent-command game.tick_paused=true;rcon.print("paused")');const held=await control.measureRead(id,`${id}-attempt`,after);pausedTick=held.tick;await delay(300);const heldAgain=await control.measureRead(id,`${id}-attempt`,after);assert.equal(heldAgain.tick,pausedTick);await port.command('/silent-command game.tick_paused=false;rcon.print("resumed")');}if(page.finished){if(options.initiallyPaused){assert.equal((await port.command('/silent-command rcon.print(tostring(game.tick_paused))')).trim(),'true');await port.command('/silent-command game.tick_paused=false;rcon.print("unpaused after restoration check")');}return{samples,pausedTick};}await delay(100);}throw new Error('Workshop measurement timeout');}
 function assignment(id:string,samples:WorkshopWindowMeasurement[],required:number,maxStockDrawdown:number):WorkshopAssignment{const windowTicks=samples[0]!.endTick-samples[0]!.startTick;return validateWorkshopAssignment({schema:1,id,revision:1,comparisonSeries:`${id}-series`,objective:'Prove live gear throughput',source:{kind:'brief',id:null},ports:[{id:'iron',direction:'input',product:{kind:'item',name:'iron-plate',quality:'normal',surface:'nauvis'},position:{x:-3,y:0},facing:4,transport:'belt',lane:1,rate:{numerator:'0',denominator:'1'},unit:'units-per-game-second',required:true},{id:'gears',direction:'output',product:{kind:'item',name:'iron-gear-wheel',quality:'normal',surface:'nauvis'},position:{x:3,y:0},facing:4,transport:'belt',lane:1,rate:{numerator:String(required*60),denominator:String(windowTicks)},unit:'units-per-game-second',required:true}],profileId:'measurement',profileRevision:1,gameFingerprint:'live-2.0.77',footprint:{width:16,height:8,clearance:1,maxTiles:512*512},construction:'direct',libraryAccess:false,improveRevision:null,requestedSpeed:{numerator:'1',denominator:'1'},settlingTicks:0,throughput:[{portId:'gears',windowTicks,windows:samples.length,quantum:{numerator:'1',denominator:'1'},productionError:{numerator:'0',denominator:'1'},deliveryError:{numerator:'0',denominator:'1'},maxStockDrawdown:{numerator:String(maxStockDrawdown),denominator:'1'},maxResidual:{numerator:'1',denominator:'1'},interval:'(startTick,endTick]'}],rubric:{version:'live-control-1',weights:{throughput:{numerator:'1',denominator:'1'}},materiality:{throughput:{numerator:'1',denominator:'1'}}},iterations:{attempts:1,mode:'exact',earlyStop:false,plateauRounds:1},checkpoints:{brief:false,afterScore:false,libraryAdmission:false,learningActivation:false,timeoutMs:600000,timeoutAction:'finish'},budgets:{wallMs:600000,gameTicks:100000,turns:1,toolCalls:1,reportedTokens:null,learningReservedTurns:0,learningReservedTools:0},models:{sessionDefault:{provider:'openai',modelId:'gpt-6-astra',reasoningEffort:'low'},overrides:{}},learning:{cadence:'off',batchSessions:1,candidateCap:1,attemptsPerCandidate:1,autoActivate:false}});}
+async function furnaceCounters(surface: string): Promise<LifecycleCounters> {
+  assert.equal(surface, lifecycleFixture.surface);
+  const raw = await port.command(measurementLifecycleCounterCommand(lifecycleFixture));
+  if (!raw.startsWith('{')) throw new Error(`Furnace counter observation failed: ${raw}`);
+  const inspection = await control.inspect(lifecycleFixture.id);
+  const fixtures = inspection.fixtures as Record<string, { delivered: number }>;
+  const delivered = fixtures['plate-sink']?.delivered;
+  assert.equal(typeof delivered, 'number', 'Public inspection must expose sink delivery');
+  return { ...JSON.parse(raw), delivered } as LifecycleCounters;
+}
+
+async function runFurnaceIdleLifecycle() {
+  const { id, surface, positions, fixtures, document: furnaceDocument, assignment: plateAssignment } = lifecycleFixture;
+  const luaPosition = (value: { x: number; y: number }) => `{x=${value.x},y=${value.y}}`;
+  stage = 'furnace/setup';
+  const setup = await control.setup({ id, surface, force: surface, profile: capability, area: [{ x: -256, y: -256 }, { x: 256, y: 256 }], maxTiles: 512 * 512, fixtures });
+  stage = 'furnace/materialization';
+  await control.materialize(id, Number(setup.generation), `${id}-build`, furnaceDocument);
+  stage = 'furnace/fixture-readiness';
+  const ready = await furnaceCounters(surface);
+  assert.equal(ready.furnaceCount, 2, 'Lifecycle fixture must expose both furnaces before loading');
+  await persistLifecycleObservation(ready);
+  stage = 'furnace/first-load';
+  const loaded = JSON.parse(await port.command(`/silent-command local s=game.surfaces[${JSON.stringify(surface)}];local active=s.find_entity("stone-furnace",${luaPosition(positions.active)});local loadedOre=active.insert{name="iron-ore",count=1};local loadedCoal=active.insert{name="coal",count=1};rcon.print(helpers.table_to_json{ore=loadedOre,coal=loadedCoal})`)) as { ore: number; coal: number };
+  assert.deepEqual(loaded, { ore: 1, coal: 1 });
+  await port.command('/silent-command game.tick_paused=false');
+  stage = 'furnace/first-delivery';
+  let firstDone: LifecycleCounters | undefined;
+  const firstDeadline = Date.now() + 30_000;
+  while (Date.now() < firstDeadline) {
+    const current = await furnaceCounters(surface);
+    if (current.productsFinished >= 1 && current.delivered >= 1 && current.scopeStock === 0) {
+      firstDone = current;
+      lifecycleObservations.firstDone = current;
+    }
+    await persistLifecycleObservation(current);
+    if (firstDone) break;
+    await delay(50);
+  }
+  assert(firstDone, 'First real plate did not leave the candidate boundary before measurement');
+  assert.equal(firstDone.manufactured, 1); assert.equal(firstDone.productsFinished, 1); assert.equal(firstDone.delivered, 1); assert.equal(firstDone.scopeStock, 0); assert.equal(firstDone.furnaceCount, 2);
+  assert(firstDone.spare.energy === 0 && firstDone.spare.productsFinished === 0 && !firstDone.spare.hasRecipe, 'Dormant spare must be observed with zero energy and zero production');
+  stage = 'furnace/second-load';
+  const secondOre = JSON.parse(await port.command(`/silent-command local active=game.surfaces[${JSON.stringify(surface)}].find_entity("stone-furnace",${luaPosition(positions.active)});rcon.print(tostring(active.insert{name="iron-ore",count=1}))`));
+  assert.equal(secondOre, 1);
+  stage = 'furnace/active-baseline';
+  let baseline: LifecycleCounters | undefined;
+  const activeDeadline = Date.now() + 30_000;
+  while (Date.now() < activeDeadline) {
+    const current = await furnaceCounters(surface);
+    if (current.productsFinished === 1 && current.activeFurnaces > 0 && current.scopeStock === 0 && current.delivered === 1) {
+      baseline = current;
+      lifecycleObservations.baseline = current;
+    }
+    await persistLifecycleObservation(current);
+    if (baseline) break;
+    await delay(25);
+  }
+  assert(baseline, 'Furnace did not resume an active recipe after the prior plate was delivered');
+  assert.equal(baseline.manufactured, 1); assert.equal(baseline.productsFinished, 1); assert.equal(baseline.furnaceCount, 2);
+  assert(baseline.spare.energy === 0 && baseline.spare.productsFinished === 0 && !baseline.spare.hasRecipe, 'Dormant spare must be observed with zero energy and zero production');
+  stage = 'furnace/measurement-configuration';
+  const attemptId = `${id}-attempt`;
+  const threshold = plateAssignment.throughput[0]!;
+  await control.measureConfigure({ id, generation: Number(setup.generation), attemptId, settlingTicks: plateAssignment.settlingTicks, windowTicks: threshold.windowTicks, windows: threshold.windows, requestedSpeed: Number(plateAssignment.requestedSpeed.numerator) / Number(plateAssignment.requestedSpeed.denominator), ports: [{ id: 'plates', fixtureId: 'plate-sink', product: { kind: 'item', name: 'iron-plate', quality: 'normal' } }] });
+  stage = 'furnace/measurement-sampling';
+  let after = -1;
+  const samples: WorkshopWindowMeasurement[] = [];
+  let final = baseline;
+  const timeline = [baseline], deadline = Date.now() + 30_000;
+  while (Date.now() < deadline) {
+    const page = await control.measureRead(id, attemptId, after);
+    for (const sample of page.samples) { samples.push(sample); after = Math.max(after, sample.index); }
+    // Persist an actual sample even if the following counter observation fails.
+    if (page.samples.length > 0) await persistLifecycleObservation(final, page.samples);
+    final = await furnaceCounters(surface);
+    timeline.push(final);
+    await persistLifecycleObservation(final);
+    assert(final.manufactured >= timeline.at(-2)!.manufactured, 'Engine production statistic decreased');
+    assert(final.productsFinished >= timeline.at(-2)!.productsFinished, 'Furnace production counter decreased');
+    if (page.samples.length > 0 && process.argv.includes('--fail-after-lifecycle-sample')) {
+      stage = 'furnace/measurement-sample-captured';
+      throw new Error('Deliberate diagnostic failure after a real lifecycle sample');
+    }
+    if (page.finished) break;
+    await delay(25);
+  }
+  stage = 'furnace/lifecycle-assertions';
+  assert.equal(samples.length,1,'Furnace lifecycle window did not finish');assert.equal(samples[0]!.stageCoverage,'complete');assert.equal(samples[0]!.energyCoverage,'complete');assert.equal(samples[0]!.ports[0]!.openingStock.numerator,'0','Measured baseline must contain no earlier plate stock');assert.equal(samples[0]!.ports[0]!.closingStock.numerator,'0','Delivered measured production must leave no residual stock');assert.equal(final.manufactured,final.productsFinished,'Force production statistics must match lifetime furnace products after the active furnace becomes idle');assert(final.manufactured>=baseline.manufactured+1,'Measured window did not manufacture a new plate');assert.equal(final.activeFurnaces,0,'All supplied furnace work should be complete at the window boundary');assert.equal(final.furnaceCount,2);assert.equal(final.delivered-baseline.delivered,1,'Exactly the newly manufactured plate must be delivered during the measurement');assert.equal(final.scopeStock,0);assert(final.spare.energy===0&&final.spare.productsFinished===0&&!final.spare.hasRecipe,'The zero-energy spare is valid observed idle coverage');assert(timeline.some(row=>row.activeFurnaces>0),'No active furnace state was observed');
+  stage = 'furnace/evaluation';
+  const sample = samples[0]!, report = evaluateWorkshop(plateAssignment, samples);
+  assert.equal(report.valid, true); assert.equal(report.passed, true); assert(integer(sample.ports[0]!.production) >= 1); assert(integer(sample.ports[0]!.delivery) >= 1);
+  const guard={id:'furnace-active-to-idle-cumulative-production',surface,scope:'force statistics equal lifetime furnace counters while a zero-energy spare remains',tick:sample.endTick,window:{index:sample.index,startTick:sample.startTick,endTick:sample.endTick},units:'iron plates',expected:baseline.manufactured+1,actual:final.manufactured,coverage:'complete',outcome:'pass'} as const;assertions.push(guard);console.log(JSON.stringify({assertion:guard,baseline,final,timeline,measurement:sample,report}));pass('Cumulative force production matched furnace products across an active-to-idle transition with a zero-energy spare; the sustained target passed');return{baseline,final,timeline,sample,report};
+}
+
 try{
+  await writeFile(path.join(evidence, 'lifecycle-observations.json'), JSON.stringify({ schema: 1, stage, ...lifecycleObservations }, null, 2));
   await startServer(gameProfile);port=await waitForServer(gameProfile);await port.command('/silent-command rcon.print("workshop console authorization")');await port.command('/silent-command rcon.print("workshop console ready")');control=new WorkshopControl(port);
+  stage = 'abort-control';
   const abortSetup=await control.setup({id:'measure-abort',surface:'af-measure-abort',force:'af-measure-abort',profile:capability,area:[{x:-256,y:-256},{x:256,y:256}],maxTiles:512*512,fixtures:[{id:'source',kind:'source',position:{x:-3,y:0},product:{kind:'item',name:'iron-plate',quality:'normal'},rate:0},{id:'sink',kind:'sink',position:{x:3,y:0},product:{kind:'item',name:'iron-gear-wheel',quality:'normal'},rate:0},{id:'power',kind:'power',position:{x:0,y:5},product:{kind:'item',name:'electricity',quality:'normal'},rate:0}]});await control.materialize('measure-abort',Number(abortSetup.generation),'measure-abort-build',document);await port.command('/silent-command game.speed=2;game.tick_paused=true;rcon.print("abort setup ready")');await control.measureConfigure({id:'measure-abort',generation:Number(abortSetup.generation),attemptId:'measure-abort-attempt',settlingTicks:600,windowTicks:600,windows:2,requestedSpeed:10,ports:[{id:'gears',fixtureId:'sink',product:{kind:'item',name:'iron-gear-wheel',quality:'normal'}}]});const aborted=await control.measureAbort('measure-abort','measure-abort-attempt');assert.deepEqual({state:aborted.state,finished:aborted.finished,restoredSpeed:aborted.restoredSpeed,restoredPaused:aborted.restoredPaused},{state:'aborted',finished:true,restoredSpeed:2,restoredPaused:true});const abortedRead=await control.measureRead('measure-abort','measure-abort-attempt',-1);assert.equal(abortedRead.state,'aborted');assert.equal(abortedRead.finished,true);await port.command('/silent-command game.speed=1;game.tick_paused=false;rcon.print("abort restoration checked")');pass('An acknowledged host abort terminated measurement and restored its prior speed and pause state');
+  stage = 'replacement-reconciliation';
   const restartSetup=await control.setup({id:'measure-restart',surface:'af-measure-restart',force:'af-measure-restart',profile:capability,area:[{x:-256,y:-256},{x:256,y:256}],maxTiles:512*512,fixtures:[{id:'source',kind:'source',position:{x:-3,y:0},product:{kind:'item',name:'iron-plate',quality:'normal'},rate:0},{id:'sink',kind:'sink',position:{x:3,y:0},product:{kind:'item',name:'iron-gear-wheel',quality:'normal'},rate:0},{id:'power',kind:'power',position:{x:0,y:5},product:{kind:'item',name:'electricity',quality:'normal'},rate:0}]});await control.materialize('measure-restart',Number(restartSetup.generation),'measure-restart-build',document);await port.command('/silent-command game.speed=2;game.tick_paused=true;rcon.print("restart reconciliation setup ready")');await control.measureConfigure({id:'measure-restart',generation:Number(restartSetup.generation),attemptId:'measure-restart-attempt',settlingTicks:600,windowTicks:600,windows:2,requestedSpeed:10,ports:[{id:'gears',fixtureId:'sink',product:{kind:'item',name:'iron-gear-wheel',quality:'normal'}}]});const fenceFile=path.join(evidence,'workshop-measurement-fence.json');await writeFile(fenceFile,JSON.stringify({schema:1,sessionId:'replacement-session',id:'measure-restart',attemptId:'measure-restart-attempt'}));assert.equal(await reconcileWorkshopMeasurementFence(evidence,control),true);await assert.rejects(()=>access(fenceFile));assert.equal((await port.command('/silent-command rcon.print(tostring(game.tick_paused)..":"..tostring(game.speed))')).trim(),'true:2');await port.command('/silent-command game.speed=1;game.tick_paused=false;rcon.print("restart reconciliation checked")');pass('Replacement startup reconciled the durable measurement fence before operator pause recovery');
+  stage = 'pre-admission-reconciliation';
   await control.setup({id:'measure-not-admitted',surface:'af-measure-not-admitted',force:'af-measure-not-admitted',profile:capability,area:[{x:-256,y:-256},{x:256,y:256}],maxTiles:512*512,fixtures:[]});await writeFile(fenceFile,JSON.stringify({schema:1,sessionId:'before-dispatch',id:'measure-not-admitted',attemptId:'never-admitted-attempt'}));assert.equal(await reconcileWorkshopMeasurementFence(evidence,control),true);await assert.rejects(()=>access(fenceFile));pass('Replacement startup cleared a pre-admission fence only after exact not-admitted status');
+  const furnaceLifecycle=await runFurnaceIdleLifecycle();
   const stable={settlingTicks:300,windowTicks:300,windows:5,inputStock:120};const normal=await run('measure-normal',{...stable,speed:1,initiallyPaused:true});const accelerated=await run('measure-fast',{...stable,speed:10,pause:true});assert.equal(normal.samples.length,5);assert.equal(accelerated.samples.length,5);for(const samples of [normal.samples,accelerated.samples])for(const [index,sample] of samples.entries()){assert.equal(sample.startTick+stable.windowTicks,sample.endTick);assert.equal(sample.index,index);assert.equal(sample.interval,'(startTick,endTick]');assert.equal(sample.ports[0]?.coverage,'complete');assert.equal(sample.stageCoverage,'complete');assert.equal(sample.energyCoverage,'complete');assert(integer(sample.ports[0]!.production)>0);assert(integer(sample.ports[0]!.delivery)>0);}
   const total=(samples:WorkshopWindowMeasurement[])=>samples.reduce((sum,s)=>sum+integer(s.ports[0]!.delivery),0);assert(Math.abs(total(normal.samples)-total(accelerated.samples))<=2,JSON.stringify({normal:total(normal.samples),accelerated:total(accelerated.samples)}));pass('A measurement admitted from a paused dashboard advanced exact windows and restored the prior pause');pass('Normal and accelerated dedicated-process runs produced equivalent positive exact-tick windows');assert.notEqual(accelerated.pausedTick,undefined);pass('Paused polling held the game tick and resumed the same measurement without skipping a boundary');
+  stage = 'integer-threshold-evaluation';
   const minimum=Math.min(...normal.samples.map(sample=>Math.min(integer(sample.ports[0]!.production),integer(sample.ports[0]!.delivery))));assert(minimum>0);const exact=evaluateWorkshop(assignment('threshold-pass',normal.samples,minimum,1000),normal.samples);const above=evaluateWorkshop(assignment('threshold-fail',normal.samples,minimum+1,1000),normal.samples);assert.equal(exact.passed,true);assert.equal(above.passed,false);assert(above.ports[0]!.windows.some(window=>window.reasons.includes('production_below_target')||window.reasons.includes('delivery_below_target')));pass('Game-backed integer threshold passes exactly and fails one quantum above the observed lower bound');
   const burst=await run('measure-burst',{speed:10,settlingTicks:60,windowTicks:600,windows:5,inputStock:20});const burstValues=burst.samples.map(sample=>integer(sample.ports[0]!.production));assert(burstValues.some(value=>value>0));assert.equal(burstValues.at(-1),0);const burstReport=evaluateWorkshop(assignment('burst-control',burst.samples,1,1000),burst.samples);assert.equal(burstReport.valid,true);assert.equal(burstReport.passed,false);assert(burstReport.ports[0]!.windows.some(window=>window.reasons.includes('production_below_target')));pass('Finite live input produced an early burst followed by starvation and failed the every-window predicate');
   const stock=await run('measure-stock',{speed:10,settlingTicks:60,windowTicks:600,windows:2,inputStock:0,bufferStock:100});assert(stock.samples.some(sample=>integer(sample.ports[0]!.openingStock)>integer(sample.ports[0]!.closingStock)));const stockReport=evaluateWorkshop(assignment('stock-control',stock.samples,1,0),stock.samples);assert.equal(stockReport.valid,true);assert.equal(stockReport.passed,false);assert(stockReport.ports[0]!.windows.some(window=>window.reasons.includes('stock_drawdown')));pass('Preloaded live settling stock was baselined and its drawdown could not satisfy sustained production');
-  await writeFile(path.join(evidence,'normal.json'),JSON.stringify(normal,null,2));await writeFile(path.join(evidence,'accelerated.json'),JSON.stringify(accelerated,null,2));await writeFile(path.join(evidence,'controls.json'),JSON.stringify({minimum,exact,above,burst,burstReport,stock,stockReport},null,2));
-}catch(error){failure=String(error);process.exitCode=1;await writeFile(path.join(evidence,'failure.txt'),failure);console.error(failure.slice(0,1500));}finally{port?.close();let cleanup=false;try{await stopProfile(gameProfile.config);cleanup=true;}catch(error){failure??=String(error);process.exitCode=1;}
-  const result={passed:failure===null,checks,failure,cleanup,modelInference:false,assertions,assertionsComplete:assertions.length>0&&assertions.every(row=>row.coverage==='complete'&&row.outcome==='pass')};
+  stage = 'controls-persistence';
+  await writeFile(path.join(evidence,'normal.json'),JSON.stringify(normal,null,2));await writeFile(path.join(evidence,'accelerated.json'),JSON.stringify(accelerated,null,2));await writeFile(path.join(evidence,'controls.json'),JSON.stringify({minimum,exact,above,burst,burstReport,stock,stockReport,furnaceLifecycle},null,2));
+  stage = 'complete';
+} catch (error) {
+  failure = String(error); process.exitCode = 1;
+  await writeFile(path.join(evidence, 'failure.txt'), failure);
+  await writeFile(path.join(evidence, 'failure.json'), JSON.stringify(lifecycleFailureEvidence(stage, error, lifecycleObservations), null, 2));
+  console.error(JSON.stringify({ stage, failure: failure.slice(0, 1500), observations: 'lifecycle-observations.json' }));
+} finally {
+  port?.close(); let cleanup = false;
+  try { await stopProfile(gameProfile.config); cleanup = true; }
+  catch (error) {
+    failure ??= String(error); process.exitCode = 1;
+    if (stage === 'complete') {
+      stage = 'cleanup';
+      await writeFile(path.join(evidence, 'failure.json'), JSON.stringify(lifecycleFailureEvidence(stage, error, lifecycleObservations), null, 2));
+    }
+  }
+  const result={passed:failure===null,checks,failure,stage,cleanup,modelInference:false,assertions,lifecycleObservationsFile:'lifecycle-observations.json',assertionsComplete:assertions.length>0&&assertions.every(row=>row.coverage==='complete'&&row.outcome==='pass')};
   await writeFile(path.join(evidence,'result.json'),JSON.stringify(result,null,2));if(resultFile)await writeFile(resultFile,JSON.stringify(result,null,2));
   console.log(JSON.stringify({evidence,checks:checks.length,failure:failure?.slice(0,300),cleanup}));}

@@ -167,6 +167,20 @@ describe('independent workshop evaluation', () => {
     expect(evaluateWorkshop(manifest,windows([60,60,60,60,60],{delivery:[59,60,60,60,60]})).passed).toBe(false);expect(evaluateWorkshop(manifest,windows([60,60,60,60,60],{opening:100,closing:0}))).toMatchObject({valid:true,passed:false});
     for(const altered of [windows([60,60,60,60,60],{coverage:'partial'}),windows([60,60,60,60,60],{contamination:['manual-output']}),windows([60,60,60,60,60],{connected:false}),windows([60,60,60,60,60],{energy:'unknown'})])expect(evaluateWorkshop(manifest,altered).valid).toBe(false);
   });
+  it('allows the brief-derived stock buffer while keeping fresh production and drawdown gates strict',()=>{
+    const base=assignment();
+    const brief=validateWorkshopAssignment({...base,objective:'create 15 iron plates per second',source:{kind:'brief',id:null,numericTargetText:'15 per second'},ports:base.ports.map(port=>port.direction==='output'?{...port,rate:rate('15')}:port),throughput:base.throughput.map(rule=>({...rule,maxStockDrawdown:rate('15')}))});
+    const buffered=windows([900,900,900,900,900],{delivery:[900,900,900,900,900],opening:8,closing:0});
+    expect(evaluateWorkshop(brief,buffered)).toMatchObject({valid:true,passed:true});
+    const bufferedDeliveryOnly=windows([899,899,899,899,899],{delivery:[900,900,900,900,900],opening:8,closing:0});
+    const underproduced=evaluateWorkshop(brief,bufferedDeliveryOnly);
+    expect(underproduced).toMatchObject({valid:true,passed:false,reasons:['sustained_target_failed']});
+    expect(underproduced.ports[0]!.windows[0]).toMatchObject({passed:false,reasons:expect.arrayContaining(['production_below_target'])});
+    expect(underproduced.ports[0]!.windows[0]!.reasons).not.toContain('delivery_below_target');
+    const excessiveDrawdown=evaluateWorkshop(brief,windows([900,900,900,900,900],{delivery:[900,900,900,900,900],opening:16,closing:0}));
+    expect(excessiveDrawdown).toMatchObject({valid:true,passed:false});
+    expect(excessiveDrawdown.ports[0]!.windows[0]).toMatchObject({passed:false,reasons:expect.arrayContaining(['stock_drawdown'])});
+  });
   it('prevents duplicate production allocation across output ports',()=>{
     const manifest=validateWorkshopAssignment({...assignment(),ports:[...assignment().ports,{...assignment().ports[1]!,id:'circuits-2',position:{x:10,y:2}}],throughput:[...assignment().throughput,{...assignment().throughput[0]!,portId:'circuits-2'}]});const measured=windows([60,60,60,60,60],{duplicate:true}).map(w=>({...w,ports:[...w.ports,{...w.ports[0]!,portId:'circuits-2'}]}));expect(evaluateWorkshop(manifest,measured)).toMatchObject({valid:false,passed:false,reasons:expect.arrayContaining(['duplicate_production_allocation'])});
   });

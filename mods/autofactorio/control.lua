@@ -151,7 +151,7 @@ local function encoded(fn,payload,operator)
   C.check(type(payload)=="string" and #payload<=(operator and 4194304 or 65536),"invalid_payload")
   local r=helpers.json_to_table(payload)
   -- A verified held receipt ledger can exceed the ordinary action-batch limit.
-  C.check(#payload<=65536 or (operator and r.op=="reconcile"),"invalid_payload")
+  C.check(#payload<=65536 or (operator and (r.op=="reconcile" or r.op=="workshop-materialize")),"invalid_payload")
   return fn(r)
  end)
  return helpers.table_to_json(ok and result or {ok=false,error=tostring(result),tick=game.tick})

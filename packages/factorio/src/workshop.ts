@@ -5,16 +5,32 @@ import { normalizeBlueprint } from '../../core/workshop/blueprint.js';
 import type { CommandPort } from './rcon.js';
 import { wrapper } from './rcon.js';
 
-export interface WorkshopFixture { id:string;kind:'source'|'sink'|'power';position:Position;product:{kind:'item'|'fluid';name:string;quality:'normal'};rate:number }
+export interface WorkshopFixture { id:string;kind:'source'|'sink'|'power';position:Position;product:{kind:'item'|'fluid';name:string;quality:'normal'};rate:number;transport?:'belt'|'pipe'|'chest'|'power';facing?:number }
 export interface WorkshopSetup { id:string;surface:string;force:string;profile:CapabilityProfile;area:[Position,Position];maxTiles:number;fixtures:WorkshopFixture[] }
-export interface InstalledWorkshopProfile { gameVersion:string;mods:Record<string,string>;profileId:string;profileRevision:number;surface:string;technologies:string[];allowedEquipment:string[];modules:string[];beacons:string[];recipe:{id:string;category:string;energy:number;ingredients:{type:'item'|'fluid';name:string;amount:number;temperature?:number}[];products:{type:'item'|'fluid';name:string;amount:number;temperature?:number}[]};machine:string }
+export interface InstalledWorkshopProfile { gameVersion:string;mods:Record<string,string>;profileId:string;profileRevision:number;surface:string;technologies:string[];allowedEquipment:string[];modules:string[];beacons:string[];recipe:{id:string;category:string;energy:number;ingredients:{type:'item'|'fluid';name:string;amount:number;temperature?:number}[];products:{type:'item'|'fluid';name:string;amount:number;temperature?:number}[]};machine:string;machineFacts?:{craftingSpeed:number;energyWatts:number;burner:boolean;coalFuelJoules:number};equipmentFacts?:unknown[] }
+export class WorkshopOperationRejected extends Error {}
 export class WorkshopControl {
   constructor(private port:CommandPort){}
-  private async rpc(request:Record<string,unknown>){const response=record(JSON.parse(await this.port.command(wrapper(request,true))));if(response.ok!==true)throw new Error(String(response.error??'Workshop operation unacknowledged'));return response;}
+  private async rpc(request:Record<string,unknown>){const response=record(JSON.parse(await this.port.command(wrapper(request,true))));if(response.ok===false&&typeof response.error==='string')throw new WorkshopOperationRejected(response.error);if(response.ok!==true)throw new Error('Workshop operation unacknowledged');return response;}
   async installedProfile(profileId:string,product:string):Promise<InstalledWorkshopProfile>{const response=await this.rpc({op:'workshop-profile',profileId,product}),list=(value:unknown)=>Array.isArray(value)?value:value&&typeof value==='object'&&Object.keys(value).length===0?[]:null;for(const key of ['gameVersion','profileId','surface','machine'] as const)if(typeof response[key]!=='string')throw new Error('Incomplete installed workshop profile');for(const key of ['technologies','allowedEquipment','modules','beacons'] as const){const values=list(response[key]);if(!values)throw new Error('Incomplete installed workshop profile');response[key]=values;}const recipe=record(response.recipe);for(const key of ['ingredients','products'] as const){const values=list(recipe[key]);if(!values)throw new Error('Incomplete installed workshop recipe');recipe[key]=values;}return response as unknown as InstalledWorkshopProfile;}
   setup(input:WorkshopSetup){return this.rpc({op:'workshop-setup',id:input.id,surface:input.surface,force:input.force,profileFingerprint:input.profile.fingerprint,technologies:input.profile.technologies,recipes:input.profile.recipes,allowedEquipment:input.profile.allowedEquipment,surfaceProperties:input.profile.surfaceProperties??{},area:input.area,maxTiles:input.maxTiles,fixtures:input.fixtures});}
   expand(id:string,generation:number,area:[Position,Position]){return this.rpc({op:'workshop-expand',id,generation,area});}
-  inspect(id:string){return this.rpc({op:'workshop-inspect',id});}
+  async inspect(id:string){
+    const response=await this.rpc({op:'workshop-inspect',id});
+    // Factorio serializes an empty Lua sequence as {}. Normalize only declared
+    // sequence fields; malformed nonempty objects must not masquerade as no items.
+    const sequence=(value:unknown):unknown[]=>{
+      if(Array.isArray(value))return value;
+      if(value&&typeof value==='object'&&Object.keys(value).length===0)return [];
+      throw new Error('Incomplete workshop diagnostic sequence');
+    };
+    if(response.diagnostics!==undefined)response.diagnostics=sequence(response.diagnostics).map(raw=>{
+      const row=record(raw);
+      for(const key of ['contents','outputContents','fuel'])if(row[key]!==undefined)row[key]=sequence(row[key]);
+      return row;
+    });
+    return response;
+  }
   enter(id:string,actor:string){return this.rpc({op:'workshop-enter',id,actor});}
   actor(id:string,actor:string){return this.rpc({op:'workshop-actor',id,actor});}
   async provision(id:string,actor:string,operationId:string,items:{name:string;quality:'normal';count:number}[]){const response=await this.rpc({op:'workshop-provision',id,actor,operationId,items});if(response.operationId!==operationId||!Number.isSafeInteger(response.tick)||!Array.isArray(response.before)||!Array.isArray(response.after))throw new Error('Incomplete provision receipt');return response;}

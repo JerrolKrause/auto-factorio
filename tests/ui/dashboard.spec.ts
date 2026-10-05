@@ -15,12 +15,12 @@ import { WorkshopInvocationRecorder } from '../../apps/runtime/workshop-invocati
 
 async function waitForWorkshopOptions(page:Page){
   // An available launch button no longer supplies Playwright's implicit wait for setup readiness.
-  await expect(page.getByLabel('Session model').getByRole('option',{name:'Astra',exact:true})).toHaveCount(1);
+  await expect(page.getByLabel('Session model').locator('option[value="gpt-6-astra"]')).toHaveCount(1);
 }
 
 function productionWorkshopHost(directory:string,buildFailure:string|null=null){
-  const inference:WorkshopInference={async invoke(_session,role,_selection,observation){if(role==='workshop-designer'){const assignment=(observation as {assignment:{ports:unknown[]}}).assignment;return JSON.stringify({schema:1,label:'Managed production host cell',description:'Production host composed with acceptance adapters',entities:[{id:'assembler',entityNumber:1,name:'assembling-machine-1',position:{x:0,y:0},direction:0,quality:'normal',recipe:'electronic-circuit'}],wires:[],ports:assignment.ports,icons:[{index:1,name:'electronic-circuit'}],tiles:[]});}return role==='workshop-scorer'?JSON.stringify({feedback:'Measured production-host candidate'}):JSON.stringify({decision:'no-change',reason:'No repeated failure',evidence:['valid-attempts']});},cancel:id=>effectReceipt(`inference:${id}`,'cancelled'),async close(){}};
-  const game:WorkshopGame={async resolveProfile(profileId,product){return{gameVersion:'2.0.77',mods:{base:'2.0.77'},profileId,profileRevision:1,surface:'nauvis',technologies:['automation','electronics'],allowedEquipment:['assembling-machine-1','transport-belt','inserter','small-electric-pole'],modules:[],beacons:[],recipe:{id:product,category:'crafting',energy:0.5,ingredients:[{type:'item',name:'iron-plate',amount:1},{type:'item',name:'copper-cable',amount:3}],products:[{type:'item',name:product,amount:1}]},machine:'assembling-machine-1'};},async build(session){if(buildFailure)throw new WorkshopEffectOutcomeError('failed',buildFailure);return{id:`${session.id}-${session.activeIteration}`,generation:1,surface:'af-ui-production',characterEvidence:session.assignment.construction==='character'?['game-receipt:ui-character']:null};},async measure(session):Promise<WorkshopEvaluationReport>{const rule=session.assignment.throughput[0]!,port=session.assignment.ports.find(value=>value.id===rule.portId)!,measured=String((session.activeIteration??1)*60);return{schema:1,attemptId:`${session.id}:${session.activeIteration}`,valid:true,passed:true,reasons:[],ports:[{portId:port.id,windows:Array.from({length:rule.windows},(_,index)=>({index,required:{numerator:'1',denominator:'1'},productionLower:{numerator:measured,denominator:'1'},deliveryLower:{numerator:measured,denominator:'1'},passed:true,reasons:[]}))}],evidence:['production-host-game-adapter']};},cancel:id=>effectReceipt(`game:${id}`,'cancelled')};
+  const inference:WorkshopInference={async invoke(_session,role,_selection,observation){if(role==='workshop-designer'){const assignment=(observation as {assignment:{ports:{direction:string;product:{name:string}}[]}}).assignment,product=assignment.ports.find(port=>port.direction==='output')?.product.name??'electronic-circuit',machine=product==='iron-plate'?'stone-furnace':'assembling-machine-1';return JSON.stringify({schema:1,label:'Managed production host cell',description:'Production host composed with acceptance adapters',entities:[{id:'assembler',entityNumber:1,name:machine,position:{x:0,y:0},direction:0,quality:'normal',...(machine==='assembling-machine-1'?{recipe:product}:{})}],wires:[],ports:assignment.ports,icons:[{index:1,name:product}],tiles:[]});}return role==='workshop-scorer'?JSON.stringify({feedback:'Measured production-host candidate'}):JSON.stringify({decision:'no-change',reason:'No repeated failure',evidence:['valid-attempts']});},cancel:id=>effectReceipt(`inference:${id}`,'cancelled'),async close(){}};
+  const game:WorkshopGame={async resolveProfile(profileId,product){const iron=product==='iron-plate';return{gameVersion:'2.0.77',mods:{base:'2.0.77'},profileId,profileRevision:1,surface:'nauvis',technologies:['automation','electronics'],allowedEquipment:iron?['stone-furnace','transport-belt','inserter','small-electric-pole']:['assembling-machine-1','transport-belt','inserter','small-electric-pole'],modules:[],beacons:[],recipe:{id:product,category:iron?'smelting':'crafting',energy:0.5,ingredients:iron?[{type:'item',name:'iron-ore',amount:1}]:[{type:'item',name:'iron-plate',amount:1},{type:'item',name:'copper-cable',amount:3}],products:[{type:'item',name:product,amount:1}]},machine:iron?'stone-furnace':'assembling-machine-1'};},async build(session){if(buildFailure)throw new WorkshopEffectOutcomeError('failed',buildFailure);return{id:`${session.id}-${session.activeIteration}`,generation:1,surface:'af-ui-production',characterEvidence:session.assignment.construction==='character'?['game-receipt:ui-character']:null};},async measure(session):Promise<WorkshopEvaluationReport>{const rule=session.assignment.throughput[0]!,port=session.assignment.ports.find(value=>value.id===rule.portId)!,measured=String((session.activeIteration??1)*60);return{schema:1,attemptId:`${session.id}:${session.activeIteration}`,valid:true,passed:true,reasons:[],ports:[{portId:port.id,windows:Array.from({length:rule.windows},(_,index)=>({index,required:{numerator:'1',denominator:'1'},productionLower:{numerator:measured,denominator:'1'},deliveryLower:{numerator:measured,denominator:'1'},passed:true,reasons:[]}))}],evidence:['production-host-game-adapter']};},cancel:id=>effectReceipt(`game:${id}`,'cancelled')};
   return Object.assign(new LiveWorkshopHost(directory,inference,game),{profileReader:(profileId:string)=>game.resolveProfile(profileId,'electronic-circuit')});
 }
 
@@ -69,11 +69,11 @@ test('all documented role states remain distinct in deterministic UI fixtures', 
   } finally { await server.close(); f.close(); }
 });
 
-test('workshop surfaces asynchronous failure reasons and keeps the evidence inspector current',async({page})=>{
+test('workshop records asynchronous character construction failure reasons',async({page})=>{
   const root=mkdtempSync(path.join(os.tmpdir(),'af-ui-workshop-failure-')),f=await dashboardFixture(path.join(root,'dashboard','run-fixture'),true),catalog=new WorkspaceCatalog(root),server=dashboard(f.operator,undefined,{workspaceCatalog:catalog,managedModels:[{id:'gpt-6-astra',displayName:'Astra',efforts:['low']}],workshopHost:productionWorkshopHost(f.runtime.directory,'character actor disconnected')});
   const origin=await server.listen();
-  try{await page.goto(origin+'/workshop');const panel=page.getByTestId('workshop'),response=page.waitForResponse(value=>value.url().endsWith('/api/workshop/launch'));await waitForWorkshopOptions(page);await panel.getByRole('button',{name:'Launch workshop'}).click();expect((await response).status()).toBe(202);
-    await expect(page).toHaveURL(/\/history\//);await expect(page.locator('.workspace-page')).toContainText('character actor disconnected');
+  try{await page.goto(origin+'/workshop');const panel=page.getByTestId('workshop'),response=page.waitForResponse(value=>value.url().endsWith('/api/workshop/launch'));await waitForWorkshopOptions(page);await panel.getByLabel('Construction').selectOption('character');await panel.getByRole('button',{name:'Launch workshop'}).click();expect((await response).status()).toBe(202);
+    await expect(page).toHaveURL(/\/history\//);await expect(page.locator('.workspace-page')).toContainText('no-valid-result');
     const session=f.runtime.journal.list<{operationIntents:Record<string,{status:string;failure?:string}>}>(f.runtime.run,'workshopSessions')[0]!;
     expect(Object.values(session.operationIntents)).toContainEqual(expect.objectContaining({status:'failed',failure:expect.stringContaining('character actor disconnected')}));
   }finally{await server.close();catalog.close();f.close();}
@@ -109,7 +109,7 @@ test('workshop setup restores its draft and run detail controls checkpoints acro
     await expect.poll(()=>f.runtime.journal.get<{activeIteration:number;stage:string}>(f.runtime.run,'workshopSessions',session.id)).toMatchObject({activeIteration:2,stage:'checkpoint'});
     await page.getByRole('button',{name:'Finish after this attempt'}).click();
     await expect.poll(()=>f.runtime.journal.get<{stage:string}>(f.runtime.run,'workshopSessions',session.id)?.stage).toBe('complete');
-    await page.getByRole('link',{name:'Run History'}).click();await expect(page.locator('.history-row').first()).toContainText('create 15 green circuits per second');
+    await page.getByRole('link',{name:'Run History'}).click();await expect(page.locator('.history-row').first()).toContainText('create 15 iron plates per second');
     await page.locator('a.history-row').first().click();await expect(page).toHaveURL(new RegExp(`/history/${session.id}$`));
     await page.reload();await expect(page.getByRole('heading',{name:/Workshop/})).toBeVisible();
     await page.goBack();await expect(page.getByRole('heading',{name:'Briefs, scenarios and runs'})).toBeVisible();
@@ -134,13 +134,13 @@ test('workshop setup restores its draft and run detail controls checkpoints acro
     await expect(page.getByRole('alert').filter({hasText:'Designer model is unavailable'})).toBeVisible();await expect(page.getByLabel('Designer model')).toBeFocused();
     await expect(page.locator('details.advanced-options')).toHaveAttribute('open','');expect(f.runtime.journal.list(f.runtime.run,'workshopSessions')).toHaveLength(existingSessionCount);
     await page.getByRole('button',{name:'Reset saved setup'}).click();
-    await expect(panel.locator('textarea')).toHaveValue('create 15 green circuits per second');
-    await expect(panel.getByLabel('Session model')).toHaveValue('gpt-6-astra');await expect(panel.getByLabel('Session effort')).toHaveValue('medium');
+    await expect(panel.locator('textarea')).toHaveValue('create 15 iron plates per second');
+    await expect(panel.getByLabel('Session model')).toHaveValue('gpt-6-astra');await expect(panel.getByLabel('Session effort')).toHaveValue('low');
     await expect(panel.getByRole('button',{name:'Launch workshop'})).toBeEnabled();await waitForWorkshopOptions(page);await panel.getByRole('button',{name:'Launch workshop'}).click();await expect(page).toHaveURL(/\/history\//);
     const resetId=new URL(page.url()).pathname.split('/').at(-1)!;
-    await expect.poll(()=>f.runtime.journal.get<{id:string;assignment:Record<string,unknown>}>(f.runtime.run,'workshopSessions',resetId)).toMatchObject({id:resetId,assignment:{objective:'create 15 green circuits per second'}});
+    await expect.poll(()=>f.runtime.journal.get<{id:string;assignment:Record<string,unknown>}>(f.runtime.run,'workshopSessions',resetId)).toMatchObject({id:resetId,assignment:{objective:'create 15 iron plates per second'}});
     const resetSession=f.runtime.journal.get<{id:string;assignment:Record<string,unknown>}>(f.runtime.run,'workshopSessions',resetId)!;
-    expect(resetSession.assignment).toMatchObject({objective:'create 15 green circuits per second',source:{numericTargetText:'15 per second'},models:{sessionDefault:{modelId:'gpt-6-astra',reasoningEffort:'medium'}}});
+    expect(resetSession.assignment).toMatchObject({objective:'create 15 iron plates per second',source:{numericTargetText:'15 per second'},models:{sessionDefault:{modelId:'gpt-6-astra',reasoningEffort:'low'}}});
   }finally{await context.close();await server.close();catalog.close();f.close();}
 });
 
@@ -165,17 +165,17 @@ test('a second tab cannot silently replace local setup edits',async({browser})=>
   }finally{await context.close();await server.close();catalog.close();f.close();}
 });
 
-test('fresh setup admits the Astra preferred medium default brief',async({page})=>{
+test('fresh setup admits the Astra ID default and iron brief regardless of catalog order or display name',async({page})=>{
   const root=mkdtempSync(path.join(os.tmpdir(),'af-ui-fresh-default-'));
   const f=await dashboardFixture(path.join(root,'dashboard','run-fixture'),true),catalog=new WorkspaceCatalog(root),host=productionWorkshopHost(f.runtime.directory);
-  const server=dashboard(f.operator,undefined,{workspaceCatalog:catalog,managedModels:[{id:'gpt-5.6-sol',displayName:'Sol',efforts:['low','medium']},{id:'gpt-6-astra',displayName:'Astra',efforts:['low','medium']}],workshopHost:host,profileReader:host.profileReader}),origin=await server.listen();
+  const server=dashboard(f.operator,undefined,{workspaceCatalog:catalog,managedModels:[{id:'gpt-5.6-sol',displayName:'Sol',efforts:['low','medium']},{id:'gpt-6-astra',displayName:'Preferred engine',efforts:['low','medium']}],workshopHost:host,profileReader:host.profileReader}),origin=await server.listen();
   try{await page.goto(origin+'/workshop');const panel=page.getByTestId('workshop');
-    await expect(panel.locator('textarea')).toHaveValue('create 15 green circuits per second');await expect(panel.getByLabel('Session model')).toHaveValue('gpt-6-astra');await expect(panel.getByLabel('Session effort')).toHaveValue('medium');
+    await expect(panel.locator('textarea')).toHaveValue('create 15 iron plates per second');await expect(panel.getByLabel('Session model')).toHaveValue('gpt-6-astra');await expect(panel.getByLabel('Session effort')).toHaveValue('low');
     await waitForWorkshopOptions(page);await panel.getByRole('button',{name:'Launch workshop'}).click();await expect(page).toHaveURL(/\/history\//);
     const id=new URL(page.url()).pathname.split('/').at(-1)!;
-    await expect.poll(()=>f.runtime.journal.get<{id:string;assignment:Record<string,unknown>}>(f.runtime.run,'workshopSessions',id)).toMatchObject({id,assignment:{objective:'create 15 green circuits per second'}});
+    await expect.poll(()=>f.runtime.journal.get<{id:string;assignment:Record<string,unknown>}>(f.runtime.run,'workshopSessions',id)).toMatchObject({id,assignment:{objective:'create 15 iron plates per second'}});
     const session=f.runtime.journal.get<{assignment:Record<string,unknown>}>(f.runtime.run,'workshopSessions',id)!;
-    expect(session.assignment).toMatchObject({objective:'create 15 green circuits per second',source:{numericTargetText:'15 per second'},models:{sessionDefault:{modelId:'gpt-6-astra',reasoningEffort:'medium'}}});
+    expect(session.assignment).toMatchObject({objective:'create 15 iron plates per second',source:{numericTargetText:'15 per second'},models:{sessionDefault:{modelId:'gpt-6-astra',reasoningEffort:'low'}}});
   }finally{await server.close();catalog.close();f.close();}
 });
 
@@ -423,10 +423,10 @@ test('rerunning a brief pins new settings and editing its objective creates immu
   const f=await dashboardFixture(path.join(root,'dashboard','run-fixture'),true),catalog=new WorkspaceCatalog(root);
   const server=dashboard(f.operator,undefined,{workspaceCatalog:catalog,managedModels:[{id:'gpt-6-astra',displayName:'Astra',efforts:['low','medium']}],workshopHost:productionWorkshopHost(f.runtime.directory)}),origin=await server.listen();
   async function launchAndStop(){await waitForWorkshopOptions(page);await page.getByRole('button',{name:'Launch workshop'}).click();await expect(page.locator('.workspace-page')).toContainText('Waiting for you');const id=page.url().split('/history/')[1]!;await page.locator('.active-run-banner').getByRole('button',{name:'Stop run',exact:true}).click();await expect.poll(()=>catalog.request(id)?.state).toBe('cancelled');await expect(page.locator('.active-run-banner')).toHaveCount(0);return catalog.run(id)!.identity;}
-  async function rerun(groupId:string){await page.getByRole('link',{name:'Run History'}).click();await page.getByRole('button',{name:/create 15 green circuits per second/}).click();await page.getByRole('button',{name:'Run this brief again'}).click();await expect(page).toHaveURL(new RegExp(`group=${groupId}`));}
+  async function rerun(groupId:string){await page.getByRole('link',{name:'Run History'}).click();await page.getByRole('button',{name:/create 15 iron plates per second/}).click();await page.getByRole('button',{name:'Run this brief again'}).click();await expect(page).toHaveURL(new RegExp(`group=${groupId}`));}
   try {
     await page.goto(origin+'/workshop');await page.getByText('Advanced settings').click();await page.getByLabel('brief',{exact:true}).check();const first=await launchAndStop();
-    await rerun(first.groupId);await page.getByLabel('Session effort').selectOption('low');const second=await launchAndStop();
+    await rerun(first.groupId);await page.getByLabel('Session effort').selectOption('medium');const second=await launchAndStop();
     expect(second.groupId).toBe(first.groupId);expect(second.assignmentHash).not.toBe(first.assignmentHash);expect(second.comparisonSeries).not.toBe(first.comparisonSeries);
     await rerun(first.groupId);await page.locator('textarea').fill('Produce 120 electronic circuits per minute');const third=await launchAndStop();
     expect(third.groupId).not.toBe(first.groupId);expect(catalog.group(third.groupId)?.parentGroupId).toBe(first.groupId);
@@ -465,7 +465,7 @@ test('delayed checkpoint and history failures expose pending state and a scoped 
     release();await expect(page.locator('.workspace-page').getByRole('alert').filter({hasText:'Submitting checkpoint decision failed'})).toContainText('Checkpoint temporarily unavailable');fail=false;await page.getByRole('button',{name:'Finish after this attempt',exact:true}).click();await expect(page.locator('.terminal-summary')).toBeVisible();
     fail=true;held=new Promise<void>(resolve=>{release=resolve;});pending=new Promise<void>(resolve=>{ready=resolve;});
     await page.route('**/api/workspace/groups?*',async route=>{if(fail){ready();await held;await route.fulfill({status:503,json:{error:'History temporarily unavailable'}});}else await route.continue();});
-    await page.getByRole('link',{name:'Run History'}).click();await pending;await expect(page.getByRole('status').filter({hasText:'Loading history'})).toBeVisible();release();await expect(page.getByRole('alert')).toContainText('History temporarily unavailable');fail=false;await page.getByRole('button',{name:'Retry history'}).click();await expect(page.getByRole('button',{name:/create 15 green circuits per second/})).toBeVisible();
+    await page.getByRole('link',{name:'Run History'}).click();await pending;await expect(page.getByRole('status').filter({hasText:'Loading history'})).toBeVisible();release();await expect(page.getByRole('alert')).toContainText('History temporarily unavailable');fail=false;await page.getByRole('button',{name:'Retry history'}).click();await expect(page.getByRole('button',{name:/create 15 iron plates per second/})).toBeVisible();
   }finally{release();await server.close();catalog.close();f.close();}
 });
 

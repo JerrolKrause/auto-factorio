@@ -35,7 +35,8 @@ describe('project workspace catalog', () => {
       const group=catalog.listGroups().find(value=>value.title==='Late retained workshop')!;
       expect(catalog.listRuns(group.id)[0]?.identity.createdAt).toBe(createdAt);
       expect(catalog.importLegacy().registered).toBe(0);
-      expect(readFileSync(file)).toEqual(original);
+      // Compare bytes natively: recursive matcher traversal dominates this >2MB fixture.
+      expect(readFileSync(file).equals(original)).toBe(true);
     } finally {catalog.close();rmSync(root,{recursive:true,force:true});}
   });
   it('reads terminal summaries through the live exclusive journal and preserves historical timestamps', () => {

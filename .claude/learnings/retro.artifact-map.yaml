@@ -1,0 +1,19 @@
+# Local evidence is authoritative for interactive runs; graph records are unavailable.
+# Do not synthesize graph records or citation tallies from these artifacts.
+version: 1
+gates: .claude/stack.md
+records_command: null
+targets:
+  workshop-development:
+    kind: campaign
+    evidence:
+      - docs/IMPLEMENTATION_HANDOFF.md
+      - .runtime/workshop-success/verification/
+      - .runtime/workshop-success/review/
+      - .runtime/workshop-success/ledger/
+  workshop-design:
+    kind: campaign
+    evidence:
+      - .runtime/default-workshop-trial/
+      - .runtime/workshop-candidate-probe/
+      - docs/decisions/022-workshop-executable-design-contract.md

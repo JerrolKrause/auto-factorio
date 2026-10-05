@@ -1,0 +1,45 @@
+# Workshop retrospectives, 4 October 2026
+
+The user requested two retrospectives and authorized implementation of the resulting fixes. The evidence is the completed workshop campaign, not a model benchmark. Seven retained managed sessions contain 17 returned candidates; two candidate replays helped separate harness defects from design defects. Graph journal and scoreboard inputs are unavailable locally. No aggregate escape rate, developer-token savings or population-level success rate is inferred from that gap. The repository evidence map records the available local sources without fabricating graph records.
+
+## 1. Troubleshooting and implementation
+
+| Lesson | Evidence | Improvement |
+| --- | --- | --- |
+| We retained useful data, but repeatedly needed ad hoc extractors to understand it. | `.runtime/workshop-success/` contains separate status, output, counter and summary scripts. The trial originally printed stage transitions without evaluated windows. | The trial now writes `progress.json` and `summary.json`: iteration identity, distinct candidate count, separate production/delivery bounds, reasons, raw stock measurements when available, and evidence locations. |
+| A failing evaluator can cause unnecessary redesign. | `run-AXNOvj` appeared to fail; replay `run-HpYvdu` passed after cumulative manufacturing accounting was corrected. | Keep production, delivery and stock distinct. Persist each actual window before evaluation so later exceptions do not erase observations. The existing exact-candidate replay remains the diagnostic path for separating design from harness failures. |
+| Test harnesses require executable validation too. | `R2-correction-1` through `R2-correction-4` in the previous campaign ledger: missing power, half-tile lookup, inaccessible console storage, then a one-port assignment. | A pure lifecycle fixture centralizes geometry, fixtures and the assignment. `--preflight-only` validates before profile creation; observation commands reuse the same positions. |
+| Late errors discarded useful intermediate facts. | `R2-correction-3` reached successful physical assertions before assignment validation failed; counters remained local variables. | Named stages and bounded lifecycle observations are retained on failure. A deliberate diagnostic failure after sample capture checks this behavior without changing normal acceptance. |
+| Review cannot establish runtime validity. | Follow-up reviews were clean while the newly added physical probe still failed. | Use the existing smoke-before-final-review workflow: run the changed probe first, then review the stable candidate. No duplicate standing rule or new approval step is added. |
+| An unexplained worker crash is not evidence for a concurrency or timeout fix. | Final suite first reported a lost Vitest worker; the unchanged isolated file and full suite passed afterward. | Preserve the failure, inspect its exact unfinished selection, and rerun only with a stated diagnostic reason. No speculative settings change or weakened test was made. |
+
+The original identity and powered-fixture review findings were fixed in the preceding task. This retrospective adds prevention and observability; it does not count those old repairs as new work. Failed historical results remain unchanged. Source snapshots for this follow-up are under `.runtime/workshop-retro/before/`.
+
+## 2. Building blueprints
+
+| Pass | What happened | Reusable lesson |
+| --- | --- | --- |
+| `cxAle2`; replay `wxOLoq` | The session held on missing transport; replay produced only 33–75 plates per window. | A declared resource port must be physically executable. Interface and cell checks belong before expensive iteration. |
+| `3zwOVj` | Output rose from 210 to 725 per window, with 15 furnaces reporting no fuel. | Steady fuel consumption is different from the inventory needed to start a long row. Supply startup headroom and allow settling. |
+| `AXNOvj`; replay `HpYvdu` | The first candidate passed all windows when replayed with corrected accounting. | Idle recipe clearing must not erase historical manufacturing. Diagnose inconsistent measurement before replacing geometry. |
+| `3D8pwt` | Low delivery, a collision, then a late window with 889 fresh plates. | Furnace count does not prove extraction, lane capacity or connector legality. Exact nominal capacity leaves no margin. |
+| `KoUTV5` | A collision; saturated 900/window delivery with a late 897 production window; then a zero-delivery design. | Faster trunks and correct extraction geometry both matter. The zero-delivery case had 58 full furnaces and 64 extraction inserters waiting for source items; misplaced pickup is an inference supported by the geometry and states. |
+| `va5fcG` | Every window exceeded target, but the fixed two-item stock limit rejected normal fluctuations; scorer context was truncated. | Keep measured facts ahead of geometry, and distinguish inventory phase changes from fresh manufacturing and delivery. |
+| `OIbndu` | The first candidate passed at about 17.5/s. Later designs improved to at least 21.8167/s. Iterations 3–5 share one hash. | Valid repeated cells with faster transport worked. Five passing iterations were three distinct geometries, not five independent successes. |
+
+Resource supply, faster transport, settling, compact repetition, safe rejection feedback, cumulative manufacturing and bounded stock tolerance were already repaired. The remaining improvements implemented by this retrospective are:
+
+1. **Deterministic public sizing.** [The host calculator](../apps/runtime/workshop-design-plan.ts) derives base-machine counts, material and fuel demand, allowed belt total/lane capacities and supply shortfalls from installed facts. At 15 iron plates/s, speed 1 and 3.2 seconds per plate, 48 furnaces are the theoretical minimum; 60 provide suggested 25% headroom. Missing facts stay unknown. Modules/beacons and actual inserter throughput are explicitly outside that estimate.
+2. **Cell tracing before repetition.** [Designer guidance](../agents/workshop/designer.ts) calls for checking pickup/drop endpoints, lanes, power coverage and wire reach, fuel segregation, neighboring cells and unique row connectors. This is a reasoning checklist, not a claim that a cell was physically tested.
+3. **Installed and live geometry.** Public equipment facts include tile dimensions and inserter vectors. Inspection includes actual endpoints, available target references, held items and type-correct machine output inventories. The [prototype](https://lua-api.factorio.com/latest/classes/LuaEntityPrototype.html#inserter_pickup_position) and [entity](https://lua-api.factorio.com/latest/classes/LuaEntity.html#pickup_position) APIs define these observations; the installed-game probe is the compatibility check.
+4. **Actionable diagnostic ordering.** Fuel/power/ingredient shortages and full outputs precede routine working/waiting groups in bounded summaries. Waiting alone is not classified as a defect: the successful factory also had waiting inserters.
+
+## Expectations and verification
+
+The changes should eliminate game launches for malformed lifecycle assignments, retain observations after an injected late failure, expose a shifted extraction pickup directly, and put independently calculated sizing ahead of the first designer response. Focused software guards and real-game probes test those expectations. A separately bounded single-attempt Astra trial checks the integrated prompt/data path; it cannot establish a general first-attempt success probability.
+
+Verification results and the fresh trial outcome belong in the current [implementation handoff](IMPLEMENTATION_HANDOFF.md). Historical successful and failed runs are never rescored into new evidence. No global settings, plugin criteria, model routing, evaluator thresholds or personal saves are changed by this retrospective.
+
+Observed outcome: fresh Astra run `ARRGYw` passed with its first candidate, using the suggested 60 furnaces. The lowest fresh-production window was 1123 plates in 60 seconds (18.7167/s versus 15/s required). All five delivery windows also passed. This supports the integrated sizing/instruction path, without attributing causality to any one change. The final report helper was validated separately against those immutable samples because the live diagnostic had started before its last rebuild.
+
+Implementation also exposed three concrete protocol lessons: prototype vectors need array-to-point normalization, live endpoints need installed coordinate precision, and empty Lua sequence tables need normalization at the TypeScript boundary. The physical probe now distinguishes a missed furnace pickup from working extraction. Independent review found two reporting failure paths, both fixed with fault guards. A separate full-suite timeout was traced to recursive comparison of a multi-megabyte Buffer; native byte comparison removed that overhead while preserving the check. These are executed findings, not speculative model or timeout tuning.

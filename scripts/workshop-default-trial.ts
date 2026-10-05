@@ -1,12 +1,15 @@
 import assert from 'node:assert/strict';
+import { appendFileSync } from 'node:fs';
 import { createHash } from 'node:crypto';
-import { appendFile, mkdir, mkdtemp, readFile, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { dashboard } from '../apps/runtime/http.js';
 import { DurableRuntime } from '../apps/runtime/durable-runtime.js';
 import { Operator } from '../apps/runtime/operator.js';
 import { prepareLiveWorkshopHost } from '../apps/runtime/workshop-live-host.js';
 import { reconcileWorkspaceStartup } from '../apps/runtime/workspace-startup.js';
+import { exportBlueprint } from '../packages/core/workshop/blueprint.js';
+import type { WorkshopSessionState } from '../packages/core/workshop/orchestrator.js';
 import { Coordinator } from '../packages/core/orchestration/coordinator.js';
 import { PROBE_CAPS } from '../packages/codex/src/budget.js';
 import { GameClient } from '../packages/factorio/src/client.js';
@@ -18,10 +21,14 @@ import { createProfile, listProjectProcesses, startServer, stopProfile, waitFor,
 import type { GameProfile } from './dev/game-processes.js';
 import { readFreshGame, recordFreshGame } from './dev/fresh-game.js';
 import { cleanupAll } from './dev/cleanup.js';
+import { workshopReport, workshopTrialSession, writeWorkshopTrialReports } from './dev/workshop-report.js';
+import type { WorkshopWindowMeasurement } from '@autofactorio/contracts';
 
 const argument = (name: string) => { const index = process.argv.indexOf(name); return index < 0 ? undefined : process.argv[index + 1]; };
 const codex = argument('--codex');
 if (!process.argv.includes('--live') || !codex || !path.isAbsolute(codex)) throw new Error('Requires --live --codex <absolute managed executable>; this command spends included usage');
+const attempts=Number(argument('--attempts')??'5');
+if(!Number.isInteger(attempts)||attempts<1||attempts>5)throw new Error('--attempts must be an integer from 1 to 5');
 if ((await listProjectProcesses()).some(item => item.kind === 'server')) throw new Error('Existing project server must be preserved; run the trial only after its supported shutdown');
 await mkdir('.runtime/default-workshop-trial', { recursive: true });
 const evidence = await mkdtemp(path.resolve('.runtime/default-workshop-trial/run-'));
@@ -29,13 +36,13 @@ process.env.AF_GAME_PROFILE_ROOT = path.join(evidence, 'profiles');
 const id = 'default-brief-trial';
 // Preserve the user-facing default brief/profile/measurement. Narrow iteration and
 // inference budgets explicitly; learning and library mutation are outside this trial.
-const input = { schema: 1, id, revision: 1, comparisonSeries: id, objective: 'create 15 green circuits per second',
+const input = { schema: 1, id, revision: 1, comparisonSeries: id, objective: argument('--objective') ?? 'create 15 iron plates per second',
   source: { kind: 'brief', id: null }, profileId: 'starter-assembly', construction: 'direct', libraryAccess: false, improveRevision: null,
-  requestedSpeed: { numerator: '10', denominator: '1' }, settlingTicks: 600, windowTicks: 3600, windows: 5,
+  requestedSpeed: { numerator: '10', denominator: '1' }, settlingTicks: 18000, windowTicks: 3600, windows: 5,
   rubric: { version: 'rubric-1', weights: { throughput: { numerator: '1', denominator: '1' } }, materiality: { throughput: { numerator: '1', denominator: '100' } }, directions: { throughput: 'maximize' } },
-  iterations: { attempts: 1, mode: 'exact', earlyStop: false, plateauRounds: 2 },
+  iterations: { attempts, mode: 'maximum', earlyStop: true, plateauRounds: 2 },
   checkpoints: { brief: false, afterScore: false, libraryAdmission: false, learningActivation: false, timeoutMs: 60000, timeoutAction: 'finish' },
-  budgets: { wallMs: 480000, gameTicks: 18600, turns: 6, toolCalls: 24, reportedTokens: 60000, learningReservedTurns: 0, learningReservedTools: 0 },
+  budgets: { wallMs: 1800000, gameTicks: 180000, turns: 40, toolCalls: 200, reportedTokens: 600000, learningReservedTurns: 0, learningReservedTools: 0 },
   models: { sessionDefault: { provider: 'openai', modelId: 'gpt-6-astra', reasoningEffort: 'low' }, overrides: {} },
   learning: { cadence: 'off', batchSessions: 1, candidateCap: 1, attemptsPerCandidate: 1, autoActivate: false } };
 await writeFile(path.join(evidence, 'input.json'), JSON.stringify(input, null, 2));
@@ -44,6 +51,19 @@ const profiles: GameProfile[] = [];
 let port: SerialPort | undefined, runtime: DurableRuntime | undefined, server: ReturnType<typeof dashboard> | undefined;
 let catalog: WorkspaceCatalog | undefined, stopPolling: (() => Promise<void>) | undefined;
 let failure: string | null = null, cleanup = false, recovery: unknown = null, final: unknown = null;
+let lastObserved: WorkshopSessionState | null = null;
+const sessionDirectory = path.join(evidence, 'startup/dashboard-trial/workshop-live', id);
+async function report(session: WorkshopSessionState | null) {
+  const measurements: Record<number, WorkshopWindowMeasurement[]> = {};
+  for (const iteration of session?.iterations ?? []) {
+    try {
+      const lines = await readFile(path.join(sessionDirectory, `iteration-${iteration.number}.measurements.jsonl`), 'utf8');
+      // Ignore only an incomplete final line while the host is appending; completed invalid JSON is an error.
+      measurements[iteration.number] = lines.split('\n').slice(0, -1).filter(Boolean).map(line => JSON.parse(line));
+    } catch (error) { if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error; }
+  }
+  return workshopReport(session, measurements);
+}
 try {
   const profile = await createProfile(false, true); profiles.push(profile); await startServer(profile);
   port = new SerialPort(await waitForServer(profile));
@@ -51,14 +71,14 @@ try {
   const control = await waitFor('live operator RPC', async () => { try { return await life.inspect(); } catch { return undefined; } });
   const directory = path.join(evidence, 'startup/dashboard-trial'); await mkdir(directory, { recursive: true });
   runtime = new DurableRuntime(directory, 'default-trial-runtime', control.epoch, game, life, [profile.password]);
-  const operator = new Operator(new Coordinator(runtime, { ...PROBE_CAPS, runMs: 600000 })); await operator.control('pause');
+  const operator = new Operator(new Coordinator(runtime, { ...PROBE_CAPS, runMs: 1800000 })); await operator.control('pause');
   const activeRuntime = runtime;
   const prepared = await prepareLiveWorkshopHost({ directory, fenceDirectory: profile.dir, codexExecutable: codex, port, game, lifecycle: life,
     reserveGameControl: () => operator.reserveGameControl(),
     activity: activity => {
       activeRuntime.record(`workshop/${activity.category}-${activity.status}`, [{ entity: 'workshopOperations', id: activity.id, value: { ...activity } }]);
       console.log(JSON.stringify({ activity: activity.category, status: activity.status, id: activity.id }));
-    }, events: event => { void appendFile(path.join(evidence, 'provider-activity.jsonl'), JSON.stringify(event) + '\n'); } });
+    }, events: event => { appendFileSync(path.join(evidence, 'provider-activity.jsonl'), JSON.stringify(event) + '\n'); } });
   assert(prepared.catalog.models.some(model => model.id === 'gpt-6-astra' && model.efforts.includes('low')), 'Required Astra/low unavailable; no fallback');
   catalog = new WorkspaceCatalog(evidence); reconcileWorkspaceStartup(catalog, runtime);
   server = dashboard(operator, undefined, { workspaceCatalog: catalog, workshopHost: prepared.host, managedModels: prepared.catalog.models });
@@ -66,19 +86,28 @@ try {
   const headers = { origin, authorization: `Bearer ${server.capability}`, 'content-type': 'application/json' };
   const launch = await fetch(`${origin}/api/workshop/launch`, { method: 'POST', headers, body: JSON.stringify({ assignment: input }) });
   assert.equal(launch.status, 202, await launch.text());
-  const deadline = Date.now() + 510000; let stage: unknown;
+  const deadline = Date.now() + 1830000; let stage: unknown; let lastProgress = 0;
   for (;;) {
-    const session = runtime.journal.get<Record<string, unknown>>(runtime.run, 'workshopSessions', id);
+    const session = runtime.journal.get<WorkshopSessionState>(runtime.run, 'workshopSessions', id);
+    lastObserved = session ?? lastObserved;
     if (session?.stage !== stage) { stage = session?.stage; console.log(JSON.stringify({ stage: stage ?? 'preparing' })); }
+    if (Date.now() - lastProgress >= 5000) {
+      const progress = await report(session ?? null); lastProgress = Date.now();
+      await writeFile(path.join(evidence, 'progress.json'), JSON.stringify({ observedAt: new Date().toISOString(), ...progress }, null, 2));
+      console.log(JSON.stringify({ stage: progress.stage, iteration: session?.activeIteration ?? null, bestIteration: session?.bestIteration ?? null, distinctCandidates: progress.distinctCandidates }));
+    }
     if (session && ['complete', 'stopped', 'held'].includes(String(stage))) { final = session; break; }
-    if (catalog.request(id)?.state === 'failed') { final = { request: catalog.request(id), session }; break; }
+    if (catalog.request(id)?.state === 'failed') { failure = 'Workshop launch request failed'; final = { request: catalog.request(id), session }; break; }
     if (Date.now() >= deadline) {
+      failure = 'Bounded default trial deadline exceeded';
       const stop = await fetch(`${origin}/api/workshop/stop`, { method: 'POST', headers, body: JSON.stringify({ sessionId: id, reason: 'bounded default trial deadline' }) });
       final = { deadline: true, stopStatus: stop.status, session: runtime.journal.get(runtime.run, 'workshopSessions', id) }; break;
     }
     await new Promise(resolve => setTimeout(resolve, 250));
   }
   await writeFile(path.join(evidence, 'outcome.json'), JSON.stringify(final, null, 2));
+  const finished=workshopTrialSession(final);const best=finished?.iterations.find(iteration=>iteration.number===finished.bestIteration);
+  if(best?.valid&&best.evaluation?.passed&&best.artifact){const document=JSON.parse(await readFile(path.join(directory,'workshop-live',id,`${best.artifact.artifactHash}.json`),'utf8'));await writeFile(path.join(evidence,'blueprint.txt'),exportBlueprint(document));await writeFile(path.join(evidence,'blueprint.json'),JSON.stringify(document,null,2));}
   await stopPolling(); stopPolling = undefined; await server.close(); server = undefined;
   // Save only this trial's world before its exact process is stopped.
   await port.command('/silent-command game.server_save("default-trial-final")');
@@ -106,7 +135,7 @@ try {
     for (const [file, expected] of Object.entries(hashes)) assert.equal(createHash('sha256').update(await readFile(file)).digest('hex'), expected);
     recovery = { passed: true, priorOwner, successorAdmitted: true, successorInference: false, preserved: hashes };
   } finally { successorJournal.close(); }
-} catch (error) { failure = String(error); process.exitCode = 1; }
+} catch (error) { failure = String(error); final ??= lastObserved; process.exitCode = 1; }
 finally {
   const cleanupReceipts = await cleanupAll([
     { id: 'polling', run: () => stopPolling?.() }, { id: 'dashboard', run: () => server?.close() },
@@ -116,8 +145,11 @@ finally {
   ]);
   cleanup = cleanupReceipts.every(receipt => receipt.completed);
   failure ??= cleanup ? null : 'Owned cleanup incomplete; inspect cleanupReceipts';
-  const result = { passed: !failure && cleanup && recovery !== null, failure, cleanup, cleanupReceipts, final, recovery,
-    limitations: ['One bounded default-brief attempt; library and learning disabled', 'A completed trial is not necessarily target-passing', 'Direct construction only; no universal entity support'], budgets: input.budgets };
-  await writeFile(path.join(evidence, 'result.json'), JSON.stringify(result, null, 2));
-  console.log(JSON.stringify({ evidence, passed: result.passed, cleanup, failure })); if (!result.passed) process.exitCode = 1;
+  const state = workshopTrialSession(final);
+  const result = await writeWorkshopTrialReports({ failure, cleanup, cleanupReceipts, final, recovery,
+    limitations: ['Bounded default-brief attempts; library and learning disabled', 'Direct construction only; no universal entity support'], budgets: input.budgets },
+    state, () => report(state), (name, value) => writeFile(path.join(evidence, name), JSON.stringify(value, null, 2)), {
+    cleanupReceipts, evidence: { result: 'result.json', providerActivity: 'provider-activity.jsonl', providerBudget: 'startup/dashboard-trial/workshop-live/default-brief-trial/provider-budget.json', blueprint: workshopReport(state).targetPassed ? 'blueprint.txt' : null },
+  });
+  console.log(JSON.stringify({ evidence, passed: result.passed, cleanup, failure: result.failure })); if (!result.passed) process.exitCode = 1;
 }

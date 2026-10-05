@@ -11,6 +11,7 @@ import { composeWorkshop } from '../apps/runtime/workshop-composition.js';
 import { invocationFile, readInvocationPage } from '../apps/runtime/workshop-invocation.js';
 import type { EventContext } from '../packages/core/execution/durable.js';
 import { SqliteJournal } from '../packages/storage/src/journal.js';
+import { WorkshopEffectOutcomeError } from '../packages/core/workshop/runtime.js';
 
 const selected={provider:'openai' as const,modelId:'gpt-6-astra',reasoningEffort:'low'};
 const request=(id:string,overrides:Record<string,unknown>={})=>({schema:1,id,revision:1,comparisonSeries:`series-${id}`,objective:'Produce 60 electronic circuits per minute',source:{kind:'brief',id:null},profileId:'starter-assembly',construction:'direct',libraryAccess:false,improveRevision:null,requestedSpeed:{numerator:'10',denominator:'1'},settlingTicks:0,windowTicks:60,windows:1,rubric:{version:'rubric-1',weights:{throughput:{numerator:'1',denominator:'1'}},materiality:{throughput:{numerator:'0',denominator:'1'}},directions:{throughput:'maximize'}},iterations:{attempts:1,mode:'exact',earlyStop:false,plateauRounds:1},checkpoints:{brief:false,afterScore:false,libraryAdmission:false,learningActivation:false,timeoutMs:1000,timeoutAction:'finish'},budgets:{wallMs:60000,gameTicks:600,turns:3,toolCalls:8,reportedTokens:1000,learningReservedTurns:1,learningReservedTools:2},models:{sessionDefault:selected,overrides:{}},learning:{cadence:'off',batchSessions:2,candidateCap:2,attemptsPerCandidate:1,autoActivate:false},...overrides});
@@ -47,6 +48,92 @@ describe('production workshop host integration',()=>{
       expect(readInvocationPage(file,'envelope:1:designer','instructions').text).toContain('Design attempt 1');
       expect(readInvocationPage(file,'envelope:1:designer','context').text).toContain('starter-assembly');
       expect(readInvocationPage(file,'envelope:1:designer','output')).toMatchObject({status:'complete',text:expect.stringContaining('Budgeted cell')});
+    }finally{await f.close();}
+  });
+  it('gives the designer the iron brief and actionable instructions for its real port fixtures',async()=>{
+    let captured:{prompt:string;observation:unknown}|undefined;
+    const inference:WorkshopInference={async invoke(_session,role,_selection,observation,prompt){if(role==='workshop-designer'){captured={prompt,observation};const assignment=(observation as {assignment:{ports:BlueprintDocument['ports']}}).assignment;return JSON.stringify(document(assignment.ports));}return JSON.stringify({feedback:'measured'});},async close(){}};
+    const ironProfile={...installed,recipe:{...installed.recipe,id:'iron-plate',energy:0.5,ingredients:[{type:'item' as const,name:'iron-ore',amount:1}],products:[{type:'item' as const,name:'iron-plate',amount:1}]},machine:'stone-furnace',machineFacts:{craftingSpeed:1,energyWatts:90000,burner:true,coalFuelJoules:8000000}};
+    const f=harness(inference,{async resolveProfile(){return structuredClone(ironProfile);}});
+    try{await f.runtime.launch(request('iron-prompt',{objective:'create 15 iron plates per second'}));await f.runtime.pending('iron-prompt');
+      expect(captured).toBeDefined();
+      expect(captured!.observation).toMatchObject({assignment:{objective:'create 15 iron plates per second',ports:expect.arrayContaining([expect.objectContaining({product:expect.objectContaining({name:'coal'})})])}});
+      expect(captured!.prompt).toContain('Construction equipment is unlimited');
+      expect(captured!.prompt).toContain('Item ports are existing express transport belt tiles');
+      expect(captured!.prompt).toContain('Source inputs include burner fuel when needed');
+      expect(captured!.prompt).toContain('unlimited electric-energy-interface');
+      expect(captured!.prompt).toContain('connect ordinary belts directly to them');
+      expect(captured!.prompt).toContain('entityGroups');
+      expect(captured!.prompt).toContain('This is declarative data, not JavaScript');
+    }finally{await f.close();}
+  });
+  it('shows measured facts before compacting a large candidate for scoring and retains group input for retries',async()=>{
+    const roles:string[]=[],scorerObservations:unknown[]=[],retryObservations:unknown[]=[];let designs=0;
+    const inference:WorkshopInference={async invoke(_session,role,_selection,observation){roles.push(role);if(role==='workshop-designer'){
+      designs++;if(designs===1){return{text:JSON.stringify({schema:1,label:'Large grouped line',description:'One thousand repeated belt tiles',entities:[],entityGroups:[{count:1000,step:{x:0.5,y:0},entities:[{name:'transport-belt',position:{x:-249.5,y:1},direction:4}]}],wires:[],ports:(observation as {assignment:{ports:BlueprintDocument['ports']}}).assignment.ports,icons:[{index:1,name:'electronic-circuit'}],tiles:[]}),usage:{turns:1,tools:1,elapsedMs:5,tokens:10}};}
+      retryObservations.push(observation);const assignment=(observation as {assignment:{ports:BlueprintDocument['ports']}}).assignment;return{text:JSON.stringify(document(assignment.ports)),usage:{turns:1,tools:1,elapsedMs:5,tokens:10}};
+    }
+    if(role==='workshop-scorer'){scorerObservations.push(observation);return{text:JSON.stringify({feedback:'Measured facts reviewed'}),usage:{turns:1,tools:1,elapsedMs:5,tokens:10}};}
+    return JSON.stringify({decision:'no-change',scope:'lesson',reason:'Not requested',evidence:['test']});},async close(){}};
+    const f=harness(inference,{async resolveProfile(){return{...structuredClone(installed),allowedEquipment:['assembling-machine-1','transport-belt']};}});
+    try{
+      await f.runtime.launch(request('large-scoring-context',{iterations:{attempts:2,mode:'exact',earlyStop:false,plateauRounds:1},budgets:{wallMs:60000,gameTicks:1200,turns:10,toolCalls:20,reportedTokens:1000,learningReservedTurns:0,learningReservedTools:0}}));
+      await f.runtime.pending('large-scoring-context');
+      const runState=f.orchestrator.get('large-scoring-context');expect(roles,JSON.stringify({stage:runState.stage,stopReason:runState.stopReason,iteration:runState.iterations.map(iteration=>({valid:iteration.valid,feedback:iteration.feedback,evaluation:iteration.evaluation,artifact:iteration.artifact}))})).toEqual(['workshop-designer','workshop-scorer','workshop-designer','workshop-scorer']);
+      const scoreInput=scorerObservations[0] as {evaluation?:WorkshopEvaluationReport;score?:unknown;document?:Record<string,unknown>};
+      expect(scoreInput.evaluation).toMatchObject({valid:true,passed:true,ports:expect.any(Array)});
+      expect(scoreInput.score).toBeDefined();
+      expect(scoreInput.document).toMatchObject({entityCount:1000,countsByName:{'transport-belt':1000}});
+      expect(scoreInput.document).not.toHaveProperty('entities');
+      expect((retryObservations[0] as {previousCandidate?:{entityGroups?:unknown[]}}).previousCandidate?.entityGroups).toHaveLength(1);
+      expect(((retryObservations[0] as {previousCandidate:{entityGroups:[{count:number}]}}).previousCandidate.entityGroups[0]!).count).toBe(1000);
+    }finally{await f.close();}
+  });
+  it('normalizes expanded group entities to unique blueprint identities and positions',async()=>{
+    const inference:WorkshopInference={async invoke(_session,role,_selection,observation){if(role==='workshop-designer')return JSON.stringify({schema:1,label:'Repeated line',description:'Expanded by the trusted host',entities:[],entityGroups:[{count:3,step:{x:2.5,y:0},entities:[{id:'shared-template',entityNumber:9,name:'assembling-machine-1',position:{x:-1.5,y:2},direction:0,recipe:'electronic-circuit'}]}],wires:[],ports:(observation as {assignment:{ports:BlueprintDocument['ports']}}).assignment.ports,icons:[{index:1,name:'electronic-circuit'}],tiles:[]});return JSON.stringify({feedback:'expanded layout'});},async close(){}};
+    const f=harness(inference);try{await f.runtime.launch(request('expanded-identities'));await f.runtime.pending('expanded-identities');
+      const result=f.orchestrator.get('expanded-identities'),artifact=result.iterations[0]?.artifact;expect(artifact).toBeDefined();const hash=artifact!.artifactHash;
+      const saved=JSON.parse(readFileSync(path.join(f.root,'workshop-live','expanded-identities',`${hash}.json`),'utf8')) as BlueprintDocument;
+      expect(saved.entities.map(entity=>entity.position)).toEqual([{x:-1.5,y:2},{x:1,y:2},{x:3.5,y:2}]);
+      expect(saved.entities.map(entity=>entity.entityNumber)).toEqual([1,2,3]);
+      expect(new Set(saved.entities.map(entity=>entity.id)).size).toBe(3);
+      expect(saved.entities.map(entity=>entity.id)).toEqual(['entity-1','entity-2','entity-3']);
+    }finally{await f.close();}
+  });
+  it('preserves explicit native wire references when generated identities must skip reserved numbers',async()=>{
+    const inference:WorkshopInference={async invoke(_session,role,_selection,observation){if(role==='workshop-designer'){const assignment=(observation as {assignment:{ports:BlueprintDocument['ports']}}).assignment;return JSON.stringify({schema:1,label:'Mixed native identities',description:'Reserve entity numbers 1 and 3 before assigning the generated pole number 2',entities:[{id:'explicit-source',entity_number:1,name:'small-electric-pole',position:{x:0,y:0},direction:0},{id:'wire-target',entityNumber:3,name:'small-electric-pole',position:{x:4,y:0},direction:0}],entityGroups:[{count:1,step:{x:0,y:0},entities:[{name:'small-electric-pole',position:{x:8,y:0},direction:0}]}],wires:[[1,'1',3,'1']],ports:assignment.ports,icons:[{index:1,name:'electronic-circuit'}],tiles:[]});}return JSON.stringify({feedback:'mixed identity candidate'});},async close(){}};
+    const f=harness(inference,{async resolveProfile(){return{...structuredClone(installed),allowedEquipment:['assembling-machine-1','small-electric-pole']};}});
+    try{await f.runtime.launch(request('mixed-identities'));await f.runtime.pending('mixed-identities');const result=f.orchestrator.get('mixed-identities'),artifact=result.iterations[0]?.artifact;expect(artifact).toBeDefined();
+      const saved=JSON.parse(readFileSync(path.join(f.root,'workshop-live','mixed-identities',`${artifact!.artifactHash}.json`),'utf8')) as BlueprintDocument;
+      expect(saved.entities.map(entity=>({id:entity.id,entityNumber:entity.entityNumber}))).toEqual([{id:'entity-2',entityNumber:1},{id:'explicit-source',entityNumber:2},{id:'wire-target',entityNumber:3}]);
+      expect(saved.wires).toMatchObject([{from:{entityId:'explicit-source',connector:'1'},to:{entityId:'wire-target',connector:'1'},color:'copper'}]);
+    }finally{await f.close();}
+  });
+  it('continues to a fresh attempt after a conclusively rejected designer result',async()=>{
+    let designs=0;const inference:WorkshopInference={async invoke(_session,role,_selection,observation){if(role==='workshop-designer'){designs++;if(designs===1)return{text:'{}',usage:{turns:1,tools:1,elapsedMs:5,tokens:10}};const assignment=(observation as {assignment:{ports:BlueprintDocument['ports']}}).assignment;return{text:JSON.stringify(document(assignment.ports)),usage:{turns:1,tools:1,elapsedMs:5,tokens:10}};}return{text:JSON.stringify({feedback:'measured'}),usage:{turns:1,tools:1,elapsedMs:5,tokens:10}};},async close(){}};
+    const f=harness(inference);try{await f.runtime.launch(request('design-retry',{iterations:{attempts:2,mode:'exact',earlyStop:false,plateauRounds:1},budgets:{wallMs:60000,gameTicks:1200,turns:10,toolCalls:20,reportedTokens:1000,learningReservedTurns:0,learningReservedTools:0}}));await f.runtime.pending('design-retry');
+      const result=f.orchestrator.get('design-retry');expect(result.stage,result.stopReason??'').toBe('complete');expect(designs).toBe(2);expect(result.iterations).toHaveLength(2);
+      expect(result.iterations[0]).toMatchObject({valid:false,artifact:null,evaluation:null,feedback:expect.stringContaining('no blueprint entities')});
+      expect(result.operationIntents['design-retry:1:design']).toMatchObject({status:'failed'});
+      expect(result.iterations[1]).toMatchObject({valid:true,artifact:{iteration:2}});
+    }finally{await f.close();}
+  });
+  it('continues after an exact rolled-back build rejection',async()=>{
+    const buildAttempts:number[]=[];const inference:WorkshopInference={async invoke(_session,role,_selection,observation){if(role==='workshop-designer'){const assignment=(observation as {assignment:{ports:BlueprintDocument['ports']}}).assignment;return{text:JSON.stringify(document(assignment.ports)),usage:{turns:1,tools:1,elapsedMs:5,tokens:10}};}return{text:JSON.stringify({feedback:'measured'}),usage:{turns:1,tools:1,elapsedMs:5,tokens:10}};},async close(){}};
+    const f=harness(inference,{async build(session){buildAttempts.push(session.activeIteration!);if(session.activeIteration===1)throw new WorkshopEffectOutcomeError('failed','placement batch rolled back');return{id:`${session.id}-${session.activeIteration}`,generation:1,surface:'af-test',characterEvidence:null};}});
+    try{await f.runtime.launch(request('build-retry',{iterations:{attempts:2,mode:'exact',earlyStop:false,plateauRounds:1},budgets:{wallMs:60000,gameTicks:1200,turns:10,toolCalls:20,reportedTokens:1000,learningReservedTurns:0,learningReservedTools:0}}));await f.runtime.pending('build-retry');
+      const result=f.orchestrator.get('build-retry');expect(result.stage,result.stopReason??'').toBe('complete');expect(buildAttempts).toEqual([1,2]);expect(result.iterations).toHaveLength(2);
+      expect(result.iterations[0]).toMatchObject({valid:false,evaluation:null,feedback:expect.stringContaining('placement batch rolled back')});
+      expect(result.operationIntents['build-retry:1:build']).toMatchObject({status:'failed'});
+      expect(result.iterations[1]).toMatchObject({valid:true,artifact:{iteration:2}});
+    }finally{await f.close();}
+  });
+  it('completes exhausted conclusively rejected attempts without inventing valid evidence',async()=>{
+    let designs=0;const inference:WorkshopInference={async invoke(_session,role){if(role==='workshop-designer'){designs++;return{text:'{}',usage:{turns:1,tools:1,elapsedMs:5,tokens:10}};}return{text:'{}',usage:{turns:1,tools:1,elapsedMs:5,tokens:10}};},async close(){}};
+    const f=harness(inference);try{await f.runtime.launch(request('rejected-exhaustion',{iterations:{attempts:2,mode:'exact',earlyStop:false,plateauRounds:1},budgets:{wallMs:60000,gameTicks:1200,turns:10,toolCalls:20,reportedTokens:1000,learningReservedTurns:0,learningReservedTools:0}}));await f.runtime.pending('rejected-exhaustion');
+      const result=f.orchestrator.get('rejected-exhaustion');expect(result.stage,result.stopReason??'').toBe('complete');expect(designs).toBe(2);expect(result.iterations).toHaveLength(2);
+      expect(result.iterations.every(iteration=>iteration.valid===false&&iteration.artifact===null&&iteration.evaluation===null)).toBe(true);
+      expect(result.bestIteration).toBeNull();
     }finally{await f.close();}
   });
   it('delivers a measured failure finding to the next designer and retains its linked change plan',async()=>{
@@ -115,7 +202,7 @@ describe('production workshop host integration',()=>{
 
   it('holds an admitted provider effect whose outcome is unknown',async()=>{const inference:WorkshopInference={async invoke(){throw new Error('provider response lost');},async close(){}};const h=harness(inference);try{await h.runtime.launch(request('provider-unknown'));await h.runtime.pending('provider-unknown');expect(h.orchestrator.get('provider-unknown')).toMatchObject({stage:'held',stopReason:expect.stringContaining('provider response lost'),operationIntents:{'provider-unknown:1:design':{status:'unknown'}}});}finally{await h.close();}});
 
-  it('holds a game effect that throws without a conclusive receipt',async()=>{const inference:WorkshopInference={async invoke(_session,role,_selection,observation){if(role==='workshop-designer'){const assignment=(observation as {assignment:{ports:BlueprintDocument['ports']}}).assignment;return JSON.stringify(document(assignment.ports));}return'{}';},async close(){}};const h=harness(inference,{async build(){throw new Error('game response lost');}});try{await h.runtime.launch(request('game-unknown'));await h.runtime.pending('game-unknown');expect(h.orchestrator.get('game-unknown')).toMatchObject({stage:'held',stopReason:expect.stringContaining('game response lost'),operationIntents:{'game-unknown:1:build':{status:'unknown'}}});}finally{await h.close();}});
+  it('holds an unknown game outcome without retrying the dispatched attempt',async()=>{let designs=0,builds=0;const inference:WorkshopInference={async invoke(_session,role,_selection,observation){if(role==='workshop-designer'){designs++;const assignment=(observation as {assignment:{ports:BlueprintDocument['ports']}}).assignment;return JSON.stringify(document(assignment.ports));}return'{}';},async close(){}};const h=harness(inference,{async build(){builds++;throw new Error('game response lost');}});try{await h.runtime.launch(request('game-unknown',{iterations:{attempts:2,mode:'exact',earlyStop:false,plateauRounds:1},budgets:{wallMs:60000,gameTicks:1200,turns:10,toolCalls:20,reportedTokens:1000,learningReservedTurns:0,learningReservedTools:0}}));await h.runtime.pending('game-unknown');const result=h.orchestrator.get('game-unknown');expect(result).toMatchObject({stage:'held',stopReason:expect.stringContaining('game response lost'),operationIntents:{'game-unknown:1:build':{status:'unknown'}}});expect(designs).toBe(1);expect(builds).toBe(1);expect(result.iterations).toHaveLength(1);}finally{await h.close();}});
 
   it('enforces one durable aggregate budget across designer and scorer invocations',async()=>{let calls=0;const inference:WorkshopInference={async invoke(_session,role,_selection,observation){calls++;if(role==='workshop-designer'){const assignment=(observation as {assignment:{ports:BlueprintDocument['ports']}}).assignment;return{text:JSON.stringify(document(assignment.ports)),usage:{turns:1,tools:1,elapsedMs:5,tokens:10}};}return{text:JSON.stringify({feedback:'measured'}),usage:{turns:1,tools:1,elapsedMs:5,tokens:10}};},async close(){}};const h=harness(inference);try{const input=request('budget',{iterations:{attempts:2,mode:'exact',earlyStop:false,plateauRounds:1}});await h.runtime.launch(input);await h.runtime.pending('budget');expect(h.orchestrator.get('budget')).toMatchObject({stage:'stopped'});expect(h.orchestrator.get('budget').stopReason).toContain('aggregate provider budget exhausted');expect(Object.values(h.orchestrator.get('budget').operationIntents)).toContainEqual(expect.objectContaining({status:'failed',failure:expect.stringContaining('aggregate provider budget exhausted')}));expect(calls).toBe(2);const state=JSON.parse(readFileSync(path.join(h.root,'workshop-live','budget','provider-budget.json'),'utf8'))as{workshop:{turns:number;tools:number};tokens:number};expect(state).toMatchObject({workshop:{turns:2,tools:2},tokens:20});expect(h.journal.list('run','usage')).toHaveLength(1);}finally{await h.close();}});
 

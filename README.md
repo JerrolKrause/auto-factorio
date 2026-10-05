@@ -168,6 +168,8 @@ These checks establish observation correctness and efficiency only. No model/gam
 
 ## Blueprint workshop
 
+The default is **15 iron plates per second using Astra**. Direct construction has unlimited allowed equipment; presets include red and blue belts for transport headroom. Ore and burner fuel arrive on replenished belt ports; the design must connect those ports, route both belt lanes and distribute the supplied electricity. Five game minutes of warmup precede five one-minute scoring windows. See the [workshop design contract](docs/decisions/022-workshop-executable-design-contract.md) for resource limits, compact repeated designs and automatic retry behavior.
+
 The dashboard can launch a versioned component assignment from a brief, preset or library revision; an authorized caller can submit the same full contract. Every mode is checked against the running game's installed data, and Improve supplies the exact compatible parent document. The session pins a capability profile, ports and exact rates, direct or legal-character construction, fixed measurement windows, iteration/checkpoint rules, per-role managed model selections and one durable aggregate provider budget before work begins. Library revisions are immutable and export as ordinary Factorio blueprint strings or books; optional portable metadata contains interfaces and evidence references without provider transcripts or credentials.
 
 Build before running the bounded acceptance probes:

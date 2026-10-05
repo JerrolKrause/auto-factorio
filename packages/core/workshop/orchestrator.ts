@@ -74,6 +74,18 @@ export class WorkshopOrchestrator {
     return structuredClone(iteration);
   }
   advance(id: string, next: WorkshopStage): WorkshopSessionState { const s=this.get(id);this.requireOpen(s);return this.transition(s, next, `workshop/${next}`); }
+  rejectIteration(id:string,operationId:string,reason:string):void {
+    const s=this.get(id);this.requireOpen(s);
+    if(!['designing','building'].includes(s.stage)||s.activeIteration===null)throw new Error('Cannot reject this workshop stage');
+    const intent=s.operationIntents[operationId];
+    if(!intent||intent.status!=='dispatched'||operationId!==`${id}:${s.activeIteration}:${s.stage==='designing'?'design':'build'}`)throw new Error('Rejected operation identity mismatch');
+    // Only the runtime's explicit known-failed receipt reaches this transition.
+    // Unknown game/provider effects retain the existing hold/reconciliation path.
+    s.operationIntents[operationId]={...intent,status:'failed',failure:reason};
+    const iteration=s.iterations[s.activeIteration-1]!;
+    iteration.valid=false;iteration.feedback=reason;iteration.stage='scoring';s.stage='scoring';
+    this.saveBoth(s,iteration,'workshop/attempt-rejected');
+  }
   artifact(id: string, candidate: WorkshopCandidateRef): void { const [s,i]=this.active(id,'building'); if (candidate.sessionId !== id || candidate.iteration !== i.number || candidate.assignmentRevision !== s.assignment.revision || candidate.bundleHash !== s.pinnedBundleHash) throw new Error('Candidate provenance mismatch'); i.artifact=structuredClone(candidate); this.saveBoth(s,i,'workshop/artifact'); }
   evaluation(id: string, report: WorkshopEvaluationReport): void { const [s,i]=this.active(id,'measuring'); if (report.attemptId !== i.id) throw new Error('Evaluation provenance mismatch'); i.evaluation=structuredClone(report); i.valid=report.valid; this.saveBoth(s,i,'workshop/evaluated'); }
   score(id: string, score: WorkshopScore, feedback: string, critique:WorkshopCritique|null=null): void {

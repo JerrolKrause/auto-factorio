@@ -150,12 +150,15 @@ export class WorkshopRuntime {
       const op=(name:string)=>`${id}:${iteration}:${name}`;
       if(session.stage==='designing'){
         this.orchestrator.recheckAvailability(id,this.available());
-        const candidate=await this.effect(id,op('design'),()=>this.host.design(session,iteration),()=>this.reconcile(session,op('design')));
+        let candidate:WorkshopCandidateRef;
+        try{candidate=await this.effect(id,op('design'),()=>this.host.design(session,iteration),()=>this.reconcile(session,op('design')));}catch(error){if(!(error instanceof WorkshopEffectOutcomeError)||error.outcome!=='failed')throw error;this.orchestrator.rejectIteration(id,op('design'),String(error));continue;}
         this.guard(id);
         this.orchestrator.advance(id,'building');this.orchestrator.artifact(id,candidate);continue;
       }
-      const state=session.iterations[iteration-1]!;if(!state.artifact)throw new Error('Workshop artifact missing');
-      if(session.stage==='building'){await this.effect(id,op('build'),async()=>{await this.host.build(session,state.artifact!);return{completed:true};},()=>this.reconcile(session,op('build')));this.guard(id);this.orchestrator.advance(id,'frozen');continue;}
+      const state=session.iterations[iteration-1]!;
+      if(session.stage==='scoring'&&state.valid===false&&!state.evaluation){const next=this.orchestrator.next(id);if(next==='iterate'){this.orchestrator.beginIteration(id);continue;}if(next==='checkpoint'){this.track(id);return;}this.orchestrator.finalize(id);continue;}
+      if(!state.artifact&&['building','frozen','measuring','scoring'].includes(session.stage))throw new Error('Workshop artifact missing');
+      if(session.stage==='building'){try{await this.effect(id,op('build'),async()=>{await this.host.build(session,state.artifact!);return{completed:true};},()=>this.reconcile(session,op('build')));}catch(error){if(!(error instanceof WorkshopEffectOutcomeError)||error.outcome!=='failed')throw error;this.orchestrator.rejectIteration(id,op('build'),String(error));continue;}this.guard(id);this.orchestrator.advance(id,'frozen');continue;}
       if(session.stage==='frozen'){this.orchestrator.advance(id,'measuring');continue;}
       if(session.stage==='measuring'){const evaluation=await this.effect(id,op('measure'),()=>this.host.measure(session,state.artifact!),()=>this.reconcile(session,op('measure')));this.guard(id);this.orchestrator.evaluation(id,evaluation);this.orchestrator.advance(id,'scoring');continue;}
       if(session.stage==='scoring'&&!state.score){this.orchestrator.recheckAvailability(id,this.available());const evaluation=state.evaluation;if(!evaluation)throw new Error('Workshop evaluation missing');const result=await this.effect(id,op('score'),()=>this.host.score(session,state.artifact!,evaluation),()=>this.reconcile(session,op('score')));this.guard(id);this.orchestrator.score(id,result.score,result.feedback,result.critique??null);session=this.orchestrator.get(id);const next=this.orchestrator.next(id);if(next==='iterate'){this.orchestrator.beginIteration(id);continue;}if(next==='checkpoint'){this.track(id);return;}this.orchestrator.finalize(id);continue;}
