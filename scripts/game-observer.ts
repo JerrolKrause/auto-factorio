@@ -1,9 +1,10 @@
 import { readFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
+import { setTimeout as delay } from 'node:timers/promises';
 import { record } from '@autofactorio/contracts';
 import { GameClient, observeRequest } from '../packages/factorio/src/client.js';
-import { identifyObserver, listProjectProcesses, ownedPath, readProfile, startObserver, stopProfile, waitFor, waitForServer } from './dev/game-processes.js';
+import { identifyObserver, listProjectProcesses, ObserverDisconnectedError, ownedPath, readProfile, startObserver, stopProfile, waitFor, waitForServer } from './dev/game-processes.js';
 import type { GameProfile, ProjectProcess } from './dev/game-processes.js';
 
 export interface ObserverDependencies {
@@ -14,8 +15,8 @@ export interface ObserverDependencies {
 }
 const observerDependencies:ObserverDependencies={list:listProjectProcesses,start:startObserver,identify:identifyObserver,stop:stopProfile};
 
-/** Own only observers started by this call; a reused supplied-profile observer survives failures and shutdown. */
-export async function ensureVisibleObserver(profile:GameProfile,ready:()=>Promise<void>,dependencies:ObserverDependencies=observerDependencies,onOwned:()=>void=()=>{}):Promise<{observerPid:number;launched:boolean}>{
+/** Reused observers survive failure unless the caller explicitly permits one matching-profile replacement. */
+export async function ensureVisibleObserver(profile:GameProfile,ready:()=>Promise<void>,dependencies:ObserverDependencies=observerDependencies,onOwned:()=>void=()=>{},replaceDisconnected:boolean|(()=>boolean)=false):Promise<{observerPid:number;launched:boolean}>{
   const processes=await dependencies.list(),matching=processes.find(value=>value.kind==='observer'&&path.resolve(value.config).toLowerCase()===path.resolve(profile.observerConfig).toLowerCase());
   let observerPid=matching?.pid,launched=false;
   try{
@@ -24,6 +25,17 @@ export async function ensureVisibleObserver(profile:GameProfile,ready:()=>Promis
     return{observerPid,launched};
   }catch(error){
     if(launched)await dependencies.stop(profile.observerConfig);
+    // Only a matching project client may be replaced. A process alone is not
+    // readiness: it can still be sitting in the menu after leaving the server.
+    const permitted=()=>typeof replaceDisconnected==='function'?replaceDisconnected():replaceDisconnected;
+    if((matching||(launched&&error instanceof ObserverDisconnectedError))&&permitted()){
+      if(matching)await dependencies.stop(profile.observerConfig);
+      // A killed client's peer may still hold the username. Give the server
+      // time to remove it before the one permitted fresh-client retry.
+      if(error instanceof ObserverDisconnectedError)await delay(30000);
+      if(!permitted())throw error;
+      return ensureVisibleObserver(profile,ready,dependencies,onOwned);
+    }
     throw error;
   }
 }

@@ -1,4 +1,5 @@
 import { readFile, writeFile, mkdir, mkdtemp } from 'node:fs/promises';
+import { writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { dashboard } from '../apps/runtime/http.js';
 import { Operator } from '../apps/runtime/operator.js';
@@ -10,6 +11,7 @@ import { GameClient } from '../packages/factorio/src/client.js';
 import { Lifecycle } from '../packages/factorio/src/lifecycle.js';
 import { SerialPort } from '../packages/factorio/src/serial-port.js';
 import { readProfile, waitFor, waitForServer } from './dev/game-processes.js';
+import { workshopObserver } from './dev/workshop-observer.js';
 import { dashboardFixture } from './dev/dashboard-fixture.js';
 import { prepareLiveWorkshopHost, reconcileWorkshopMeasurementFence } from '../apps/runtime/workshop-live-host.js';
 import { WorkshopControl } from '../packages/factorio/src/workshop.js';
@@ -24,6 +26,7 @@ const directory = value('--directory') ? path.resolve(value('--directory')!) : a
 if (!directory.startsWith(path.resolve('.runtime') + path.sep)) throw new Error('Dashboard data must be project scoped');
 let operator: Operator; let runtime: DurableRuntime; let closePort = () => {}; let workshopOptions:Parameters<typeof dashboard>[2]={};
 let freshGame: FreshGameReceipt | undefined;
+let closeObserver=async()=>{};
 if (process.argv.includes('--fixture')) {
   const fixture = await dashboardFixture(directory, true); operator = fixture.operator; runtime = fixture.runtime;
 } else {
@@ -33,6 +36,10 @@ if (process.argv.includes('--fixture')) {
     const profile = await readProfile((JSON.parse(await readFile(file, 'utf8')) as { dir: string }).dir);
     port = new SerialPort(await waitForServer(profile)); closePort = () => port?.close();
     const game = new GameClient(port, () => {}); const life = new Lifecycle(port, game, () => {});
+    // Windows may terminate this process before signal handlers run. Transfer
+    // launched-client ownership durably so the npm launcher can also clean up.
+    const observer=process.argv.includes('--headless')?null:workshopObserver(profile,game,()=>writeFileSync(path.join(directory,'observer-owned.json'),JSON.stringify({profileFile:path.resolve(file),observerConfig:profile.observerConfig})));
+    closeObserver=()=>observer?.close()??Promise.resolve();
     // RCON accepts connections before Factorio has finished loading the map and
     // registering the mod interface. Poll the actual operator RPC, not the socket.
     const control = await waitFor('Factorio operator RPC', async () => {
@@ -45,7 +52,7 @@ if (process.argv.includes('--fixture')) {
     const c = new Coordinator(runtime, { ...PROBE_CAPS, runMs: 3600000 });
     if (!c.agents().length) team().forEach(a => c.register(a));
     operator = new Operator(c); await operator.control('pause');
-    const prepared=await prepareLiveWorkshopHost({directory,fenceDirectory:profile.dir,observerData:profile.observerData,keepFinalRunning:true,codexExecutable:codex,port,game,lifecycle:life,reserveGameControl:()=>operator.reserveGameControl(),activity:value=>runtime.record(`workshop/${value.category}-${value.status}`,[{entity:'workshopOperations',id:value.id,value:{...value}}])});workshopOptions={workshopHost:prepared.host,managedModels:prepared.catalog.models,profileReader:profileId=>new WorkshopControl(port!).installedProfile(profileId,'electronic-circuit')};
+    const prepared=await prepareLiveWorkshopHost({directory,fenceDirectory:profile.dir,observerData:profile.observerData,ensureVisibleClient:observer?()=>observer.ensure():null,keepFinalRunning:true,codexExecutable:codex,port,game,lifecycle:life,reserveGameControl:()=>operator.reserveGameControl(),activity:value=>runtime.record(`workshop/${value.category}-${value.status}`,[{entity:'workshopOperations',id:value.id,value:{...value}}])});workshopOptions={workshopHost:prepared.host,managedModels:prepared.catalog.models,profileReader:profileId=>new WorkshopControl(port!).installedProfile(profileId,'electronic-circuit')};
   } catch (error) {
     port?.close();
     throw new Error(`Factorio dashboard initialization failed: ${error instanceof Error ? error.message : String(error)}`);
@@ -64,5 +71,5 @@ const stop = operator.start();
 let closing = false;
 // Workshop shutdown confirms observation Stop and releases its control reservation
 // before the operator can request its ordinary neutral pause.
-async function close() { if (closing) return; closing = true; await stop(); await server.close(); await operator.control('pause'); runtime.close(); workspaceCatalog.close(); closePort(); }
+async function close() { if (closing) return; closing = true; await stop(); await server.close(); await operator.control('pause'); await closeObserver(); runtime.close(); workspaceCatalog.close(); closePort(); }
 process.on('SIGINT', () => void close()); process.on('SIGTERM', () => void close());

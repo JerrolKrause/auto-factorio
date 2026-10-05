@@ -1,6 +1,16 @@
 # Implementation handoff
 
-## Current implementation - Installed Codex patch compatibility and live startup, 5 October 2026
+## Current implementation - Blueprint client recovery, 5 October 2026
+
+Implemented the requested per-run visible-client check for direct and character blueprint workshop runs. Ordinary mode reuses a viable project client or launches a fresh copy before inference/construction, confirming the current client's multiplayer InGame state and connected builder. Explicit terminal disconnect permits one retry after a 30-second peer-expiry grace. Launches serialize; durable profile/config ownership lets the npm launcher clean up replacement clients after Windows terminates the dashboard. Headless diagnostics opt out. REQUIREMENTS and README match. Changes are uncommitted on 096a94d961fe78c1e7e8bb988677af0a8dd6b69e; blueprint-client-recovery is reviewed-clean.
+
+Executed acceptance: frozen dependency install; corepack.cmd pnpm verify --plan .runtime/blueprint-client/session-plan.json passed all five stages, 900 tests / 46 files, including 77 client regressions. Final Factorio 2.0.77 probe passed five checks: absent launch, healthy reuse, closure/fresh character preflight, production blueprint build/render, and production parent cleanup functions after native Windows child termination bypassed JS signal cleanup. Evidence: .runtime/blueprint-client/probe-NgIg6Q/result.json and source-matched check-evidence-v2.mjs. All owned game profiles cleaned up; zero gameplay/provider inference. Earlier failures and diagnoses are retained. No dashboard UI changed; no browser run was needed. A Windows sandbox helper failure required automatically permitted scoped escalated execution.
+
+Independent review: 1 P2 found, 1 fixed, 0 rejected, 0 remaining; follow-up no findings. Ready source-matched contracts: blueprint-client-verification-693b7b42-891c-4579-bcf7-1903541a49b0; blueprint-client-review-8e0fd76e-95cd-461a-8c86-2851b23c018f. Original review, final contracts, snapshots, shared plan and acceptance index remain under .runtime/blueprint-client/. Handoff/task updates use author-run documentation/whitespace checks without changing reviewed implementation.
+
+Next action: restart AutoFactorio once through npm start to load the update, then use ordinary Workshop runs. The retained dashboard/server was preserved. Server-loss recovery and closure during in-flight construction remain governed by existing recovery rules; this change checks the visible client before new runs.
+
+## Historical implementation - Installed Codex patch compatibility and live startup, 5 October 2026
 
 Repaired the reported `installed-game-profile-unavailable` response after `npm start`. Installed managed Codex now reports **0.160.1**; the previous exact **0.160.0** startup gate selected the synthetic demo. Startup discovery/error text and adapter pin now accept exactly tested **0.160.1**; untested builds, API authentication, billing/model fallback and global/prerequisite changes remain excluded. Prior workshop edits are preserved; all changes remain **uncommitted** on `cdf2a2511bf372a94a16a84130595051b794eca9`. Current task `codex-1601-startup` is `reviewed-clean`. [Provider decision 004](decisions/004-subscription-provider.md) and README match the current pin; dated historical versions are preserved.
 

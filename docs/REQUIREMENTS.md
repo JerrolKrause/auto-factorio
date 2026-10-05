@@ -66,6 +66,8 @@ Passing requires the scenario's entire required automated chain, not just the fi
 
 ## Operating defaults
 
+Before every blueprint workshop run in ordinary visible mode, recheck the project Factorio client and the connected builder. Reuse a viable client; if it was closed or no longer connects, start a fresh project client and wait for readiness before model inference or construction. A failed client launch fails only that run's preflight and permits a later retry. Explicit headless diagnostics remain available. Never replace a personal or unrelated client automatically.
+
 Use the latest stable release selected at setup, then pin it for a benchmark series. Initial research found stable 2.0.77 and experimental 2.1.17; recheck at implementation. Include Space Age and its applicable dependencies. Ordinary-quality starting equipment avoids introducing quality variability into first experiments.
 
 The game continues during ordinary model reasoning. Explicit pause stops the experiment clock by pausing the controlled sandbox world. Stop cancels new work and active orders; it does not silently erase progress. Independent wall-time and game-time limits prevent indefinite runs. Values are configurable and visible before launch.

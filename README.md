@@ -46,6 +46,8 @@ The planned full stack is Node 24 LTS, TypeScript, Lua, Codex app-server, MCP, R
 
 Use Node 24 LTS. Git is not needed to run an installed copy. The supported startup path installs the pinned pnpm version through Corepack, builds the app, starts a dedicated server plus visible Factorio client, and opens the browser; prerequisite upgrades remain user-managed. Dependency installation may invoke existing native build tools; this host had Python 3.12.1 and VS2019 BuildTools. See [decision 003](docs/decisions/003-compatibility-foundation.md).
 
+Each blueprint workshop run checks the visible project client before starting. If you closed Factorio between runs, AutoFactorio launches a fresh client and waits for the builder to reconnect automatically. A healthy client is reused. Client startup failures are reported in preflight and can be retried; `--headless` explicitly skips automatic client launch for diagnostics.
+
 ```powershell
 Set-Location -LiteralPath 'C:\@Projects\AutoFactorio'
 npm start

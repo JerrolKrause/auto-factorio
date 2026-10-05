@@ -1,6 +1,6 @@
 import { spawn, spawnSync } from 'node:child_process';
 import { openSync, closeSync } from 'node:fs';
-import { realpath, readFile, writeFile, mkdir, mkdtemp, cp, lstat } from 'node:fs/promises';
+import { realpath, readFile, writeFile, mkdir, mkdtemp, cp, lstat, stat } from 'node:fs/promises';
 import path from 'node:path';
 import { randomBytes } from 'node:crypto';
 import { setTimeout as delay } from 'node:timers/promises';
@@ -170,6 +170,23 @@ export async function startObserver(profile: GameProfile, replaceConfig?: string
 export async function identifyObserver(profile: GameProfile): Promise<number> {
   const found = await waitFor('Observer process', async () => (await listProjectProcesses()).find(p => p.kind === 'observer' && p.config.toLowerCase() === profile.observerConfig.toLowerCase()), 20000);
   await recordProcesses(profile, { observerPid: found.pid, observerStartedAt: found.startedAt }); return found.pid;
+}
+/** The server can retain a connected flag while paused after a client dies.
+ * Require this actual client's latest multiplayer state, never the prior log. */
+export class ObserverDisconnectedError extends Error {}
+export async function observerInGame(profile:GameProfile):Promise<boolean>{
+  const observer=(await listProjectProcesses()).find(value=>value.kind==='observer'&&path.resolve(value.config).toLowerCase()===path.resolve(profile.observerConfig).toLowerCase());
+  if(!observer)return false;
+  try{
+    const file=await ownedPath(path.join(profile.observerData,'factorio-current.log'));
+    const info=await stat(file);
+    if(info.mtimeMs<Date.parse(observer.startedAt))return false;
+    const log=await readFile(file,'utf8');
+    const transitions=[...log.matchAll(/ClientMultiplayerManager[^\r\n]*changing state from\([^)]*\) to\(([^)]*)\)/g)];
+    const state=transitions.at(-1)?.[1];
+    if(state==='Disconnected')throw new ObserverDisconnectedError('Visible Factorio client disconnected before readiness');
+    return state==='InGame';
+  }catch(error){if((error as NodeJS.ErrnoException).code==='ENOENT')return false;throw error;}
 }
 export async function writeLaunchScripts(profile: GameProfile): Promise<void> {
   await writeFile(path.join(profile.dir, 'launch.ps1'), '& ' + [profile.executable, ...serverArgs(profile)].map(quote).join(' ') + '\n');

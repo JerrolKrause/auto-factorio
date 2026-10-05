@@ -181,12 +181,14 @@ async function prepareDependencies() {
   await run(packageManager, ['pnpm', 'build'], { label: 'application build' });
 }
 
-async function launchDashboard(mode, codex, profileFile, freshGameId) {
+async function launchDashboard(mode, codex, profileFile, freshGameId, headless) {
   const directory = await mkdtemp(path.join(runtimeRoot, 'dashboard-'));
+  dashboardDirectory = directory;
   const args = ['dist/scripts/dashboard.js', '--port', String(port), '--directory', directory];
   if (mode === 'fixture') args.push('--fixture');
   else args.push('--profile-file', profileFile, '--codex', codex);
   if (mode === 'real' && freshGameId) args.push('--fresh-game-id', freshGameId);
+  if (mode === 'real' && headless) args.push('--headless');
   const child = spawn(process.execPath, args, { cwd: root, env: process.env, windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] });
   childProcesses.add(child);
   child.stdout.on('data', chunk => process.stdout.write(`[dashboard] ${chunk}`));
@@ -202,9 +204,10 @@ async function stopGame(profileFile) {
   catch (error) { console.error(`\nWARNING: ${text(error)} The project-owned Factorio process may still be running. Run npm run game:processes to inspect it.`); }
 }
 
-async function stopObserver(profileFile) {
-  if (!profileFile || !existsSync(profileFile)) return;
-  try { await run(process.execPath, ['dist/scripts/game-processes.js', '--stop-observer-profile-file', profileFile], { label: 'Factorio observer cleanup' }); }
+async function stopObserver(profileFile, observerConfig) {
+  if (!observerConfig && (!profileFile || !existsSync(profileFile))) return;
+  const args = observerConfig ? ['--stop-profile', observerConfig] : ['--stop-observer-profile-file', profileFile];
+  try { await run(process.execPath, ['dist/scripts/game-processes.js', ...args], { label: 'Factorio observer cleanup' }); }
   catch (error) { console.error(`\nWARNING: ${text(error)} The project-owned visible Factorio client may still be running. Run npm run game:processes to inspect it.`); }
 }
 
@@ -258,19 +261,36 @@ async function main() {
     const result=await run(process.execPath, ['dist/scripts/game-observer.js', '--profile-file', profileFile], { label: 'visible Factorio launch', quiet: true });
     const observer=JSON.parse(result.stdout.trim().split(/\r?\n/).at(-1) ?? '{}');ownedObserver=observer.launched===true;
   }
-  const launched = await launchDashboard(mode, codex, profileFile, freshGameId);
+  const launched = await launchDashboard(mode, codex, profileFile, freshGameId, selected.headless);
   await writeFile(path.join(runtimeRoot, 'session.json'), JSON.stringify({ url, mode, headless: mode === 'real' && selected.headless, profileFile: profileFile ?? null, directory: launched.directory, startedAt: new Date().toISOString() }, null, 2));
   console.log(`\nAutoFactorio is ready at ${url}`);
   console.log(mode === 'fixture' ? 'Mode: local demonstration (no game or model inference).' : selected.headless ? 'Mode: connected headless Factorio session (starts paused; model inference remains user-controlled).' : 'Mode: connected visible Factorio session (starts paused; model inference remains user-controlled).');
   if (!openBrowser()) console.log(`Open ${url} in a browser.`);
   const stopped = await new Promise(resolve => launched.child.once('exit', (code, signal) => resolve({ code, signal })));
   if (!stopping) throw new StartupError('dashboard runtime', `The dashboard stopped unexpectedly (${stopped.code ?? stopped.signal ?? 'unknown outcome'}).`);
-  if(ownedGame)await stopGame(profileFile);else if(ownedObserver)await stopObserver(profileFile);
+  if(ownedGame)await stopGame(profileFile);else await stopDashboardObserver(profileFile);
 }
 
 let stopping = false;
 let ownedGame = false;
 let ownedObserver = false;
+let dashboardDirectory;
+async function stopDashboardObserver(profileFile) {
+  if (!profileFile) return;
+  let observerConfig;
+  if (!ownedObserver) {
+    if (!dashboardDirectory) return;
+    try {
+      const receipt = JSON.parse(await readFile(path.join(dashboardDirectory, 'observer-owned.json'), 'utf8'));
+      if (receipt.profileFile !== path.resolve(profileFile) || typeof receipt.observerConfig !== 'string' || !path.isAbsolute(receipt.observerConfig)) throw new Error('Client ownership profile does not match this launcher');
+      observerConfig = receipt.observerConfig;
+    } catch (error) {
+      if (error.code !== 'ENOENT') console.error(`\nWARNING: Factorio client ownership could not be checked. Inspect project game processes before cleanup.`);
+      return;
+    }
+  }
+  await stopObserver(profileFile, observerConfig);
+}
 async function shutdown() {
   if (stopping) return;
   stopping = true;
@@ -283,7 +303,7 @@ try {
   await main();
 } catch (error) {
   if (ownedGame) await stopGame(process.env.AUTOFACTORIO_PROFILE_FILE ? undefined : path.join(runtimeRoot, 'factorio-profile.json'));
-  else if(ownedObserver)await stopObserver(process.env.AUTOFACTORIO_PROFILE_FILE);
+  else await stopDashboardObserver(process.env.AUTOFACTORIO_PROFILE_FILE);
   if (error instanceof StartupError && error.stage === 'Node.js check') printPrerequisiteHelp();
   else console.error(`\nSTARTUP ERROR: ${text(error)}`);
   process.exitCode = 1;
