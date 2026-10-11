@@ -104,7 +104,8 @@ function findCodex() {
   if (process.env.APPDATA) candidates.push(path.join(process.env.APPDATA, 'npm', 'codex.cmd'));
   for (const candidate of candidates.filter(Boolean)) {
     const version = executableVersion(candidate);
-    if (version === 'codex-cli 0.160.1') return candidate;
+    // Discover Codex by identity; the app-server checks actual capabilities before inference.
+    if (/^codex-cli \d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?$/.test(version)) return candidate;
   }
   return undefined;
 }
@@ -232,7 +233,7 @@ async function main() {
   let profileFile = requestedProfile ? path.resolve(requestedProfile) : undefined;
   let freshGameId;
   if (mode === 'real' && !codex) {
-    const reason = 'Supported managed Codex 0.160.1 was not found. Set AUTOFACTORIO_CODEX to its absolute executable path.';
+    const reason = 'Codex CLI was not found. Set AUTOFACTORIO_CODEX to its absolute executable path.';
     if (realRequested) throw new StartupError('managed Codex check', reason);
     console.warn(`\nNOTICE: ${reason}`);
     console.warn('Starting the local demonstration dashboard. It has no Factorio connection and performs no model inference.');

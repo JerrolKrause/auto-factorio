@@ -106,7 +106,7 @@ When startup creates a verified fresh sandbox, unfinished legacy history and sou
 
 The app uses a same-origin, HttpOnly local session cookie created when `localhost:3000` is opened. The old `#cap=...` fragment is no longer required; old capability links remain accepted for compatibility. Bookmark `http://localhost:3000` directly.
 
-If the port is already occupied by another program, startup stops with a readable message instead of silently moving to another port. If AutoFactorio is already running there, a second `npm start` opens the existing session instead of creating duplicate resources. For a real session, set `AUTOFACTORIO_CODEX` to the supported `codex-cli 0.160.1` executable, or set `AUTOFACTORIO_PROFILE_FILE` to an existing project-owned Factorio profile. Ordinary startup attaches or reuses that profile's project-owned observer; explicit headless startup does not. `AUTOFACTORIO_FACTORIO_DIR` can override the default Steam installation location.
+If the port is already occupied by another program, startup stops with a readable message instead of silently moving to another port. If AutoFactorio is already running there, a second `npm start` opens the existing session instead of creating duplicate resources. For a real session, startup discovers installed Codex on PATH; `AUTOFACTORIO_CODEX` can select its absolute executable path, and `AUTOFACTORIO_PROFILE_FILE` can select an existing project-owned Factorio profile. Codex has no exact-version pin: normal updates need no repository version edit. Actual app-server, managed authentication and isolation checks must still pass before inference; an incompatible protocol/configuration change is reported as a provider failure. Ordinary startup attaches or reuses that profile's project-owned observer; explicit headless startup does not. `AUTOFACTORIO_FACTORIO_DIR` can override the default Steam installation location.
 
 ```powershell
 corepack.cmd pnpm build
@@ -195,7 +195,7 @@ The game probes create and clean dedicated project profiles. The provider exerci
 
 ## Provider diagnostic (phase 02)
 
-Build first, then supply the absolute installed Codex executable. The adapter pins the installed Codex 0.160.1, revalidated through the no-inference authentication, role-isolation and tool-catalog probe; it will not upgrade prerequisites or substitute a model. The historical gameplay exercise used 0.155.1; no new gameplay inference was run for this compatibility update.
+Build first, then supply the absolute installed Codex executable. The adapter records the actual CLI version and checks compatibility through app-server responses, effective restrictions, managed authentication, role isolation and tool catalogs. After a Codex update, this no-inference probe can diagnose compatibility without changing a version constant. AutoFactorio does not upgrade Codex or substitute a model. Experimental app-server changes can still require adapter fixes; accepting a version number alone does not establish compatibility. The historical gameplay exercise used 0.155.1.
 
 ```powershell
 corepack pnpm provider:probe --codex 'C:/Users/Jerrol/AppData/Roaming/npm/node_modules/@openai/codex/node_modules/@openai/codex-win32-x64/vendor/x86_64-pc-windows-msvc/bin/codex.exe'

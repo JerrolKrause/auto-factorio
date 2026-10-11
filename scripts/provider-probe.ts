@@ -13,7 +13,7 @@ import { Gateway } from '../packages/tools/src/gateway.js';
 import type { Role } from '../packages/tools/src/gateway.js';
 
 const executable = process.argv[process.argv.indexOf('--codex') + 1];
-if (!process.argv.includes('--codex') || !executable || !path.isAbsolute(executable)) throw new Error('Usage: provider-probe --codex <absolute pinned executable> [--live]');
+if (!process.argv.includes('--codex') || !executable || !path.isAbsolute(executable)) throw new Error('Usage: provider-probe --codex <absolute Codex executable> [--live]');
 const live = process.argv.includes('--live');
 function capArgument(flag: string, fallback: number): number {
   const index = process.argv.indexOf(flag); if (index < 0) return fallback;
@@ -128,6 +128,6 @@ finally {
   for (const provider of allProviders) provider.close();
   bootstrap.close(); clearInterval(timer); await server.close();
   await writeFile(path.join(evidence, 'events.jsonl'), events.map(event => JSON.stringify(event)).join('\n') + '\n');
-  await writeFile(path.join(evidence, 'result.json'), JSON.stringify({ live, caps, failure, sessions, budget: budget.snapshot(), messages: gateway.messages, attempts: gateway.attempts, histories }, null, 2));
+  await writeFile(path.join(evidence, 'result.json'), JSON.stringify({ codex: bootstrap.version, live, caps, failure, sessions, budget: budget.snapshot(), messages: gateway.messages, attempts: gateway.attempts, histories }, null, 2));
   console.log(JSON.stringify({ evidence, failure, spentTurns: budget.state.spentTurns }));
 }

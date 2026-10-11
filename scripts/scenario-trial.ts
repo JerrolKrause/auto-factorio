@@ -13,7 +13,8 @@ import { VerificationControl } from '../packages/factorio/src/verification.js';
 import { DurableRuntime } from '../apps/runtime/durable-runtime.js';
 import { Coordinator } from '../packages/core/orchestration/coordinator.js';
 import { team } from '../packages/core/orchestration/roles.js';
-import { ASTRA, PINNED_CODEX } from '../packages/codex/src/protocol.js';
+import { ASTRA } from '../packages/codex/src/protocol.js';
+import { readCodexVersion } from '../packages/codex/src/rpc.js';
 import { Operator } from '../apps/runtime/operator.js';
 import { dashboard } from '../apps/runtime/http.js';
 import { prepareLiveWorkshopHost } from '../apps/runtime/workshop-live-host.js';
@@ -81,7 +82,7 @@ workspaceCatalog.transitionRequest(requestId,'active');
 let holdForReplacement = kind === 'unassisted-team-replacement';
 const c = new Coordinator(runtime, TRIAL_CAPS, () => performance.now(), () => !holdForReplacement); agents.forEach(a => c.register(a));
 runtime.record('scenario/clock', [{ entity: 'runs', id: 'scenario-clock', value: { originTick: run.originTick, originWallMs: run.originWallMs, gameLimitTicks: TRIAL_PLAN.gameLimitTicks, wallLimitMs: TRIAL_CAPS.runMs } }]);
-const manifest = { schema: 1, kind, plan: TRIAL_PLAN, run: run.run, fixtureHash: run.fixtureHash, reference: evidence, model: ASTRA, effort: 'low', codex: PINNED_CODEX, instructions,
+const manifest = { schema: 1, kind, plan: TRIAL_PLAN, run: run.run, fixtureHash: run.fixtureHash, reference: evidence, model: ASTRA, effort: 'low', codex: readCodexVersion(codexExecutable), instructions,
   originTick: run.originTick, originWallMs: run.originWallMs, inferenceStarted: false, providerTelemetry: 'unknown until observed' };
 await writeFile(path.join(run.directory, 'trial-manifest.json'), JSON.stringify(manifest, null, 2));
 runtime.record('trial/manifest', [{ entity: 'runs', id: 'trial', value: manifest }]);

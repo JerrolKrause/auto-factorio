@@ -1,6 +1,6 @@
 ﻿import { spawn, execFileSync } from 'node:child_process';
 import { createInterface } from 'node:readline';
-import { object, PINNED_CODEX } from './protocol.js';
+import { object } from './protocol.js';
 import type { RpcPort } from './protocol.js';
 
 /** Only supported app-server calls needed by this phase; no billing or admin writes. */
@@ -14,15 +14,22 @@ export function cleanEnvironment(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
   }
   return result;
 }
+/** Version is evidence, not admission: effective configuration/session checks gate inference. */
+export function readCodexVersion(executable: string): string {
+  const output = execFileSync(executable, ['--version'], { encoding: 'utf8', windowsHide: true, timeout: 10_000 }).trim();
+  const match = /^codex-cli (\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?)$/.exec(output);
+  if (!match) throw new Error('Could not identify the Codex CLI version; provide a Codex executable');
+  return match[1]!;
+}
 export class AppServerRpc implements RpcPort {
+  readonly version: string;
   private readonly child;
   private sequence = 0;
   private readonly pending = new Map<number, { resolve: (v: unknown) => void; reject: (e: Error) => void; timer: NodeJS.Timeout }>();
   private readonly listeners = new Set<(method: string, params: unknown) => void>();
   private closed = false;
   constructor(executable: string, cwd: string, overrides: Record<string, unknown> = {}) {
-    const version = execFileSync(executable, ['--version'], { encoding: 'utf8', windowsHide: true }).trim();
-    if (version !== `codex-cli ${PINNED_CODEX}`) throw new Error(`Unsupported Codex: ${version}; expected ${PINNED_CODEX}`);
+    this.version = readCodexVersion(executable);
     const args = ['app-server', '--stdio', '--strict-config'];
     for (const [key, value] of Object.entries(overrides)) args.push('-c', `${key}=${JSON.stringify(value)}`);
     this.child = spawn(executable, args, { cwd, env: cleanEnvironment(process.env), windowsHide: true, stdio: ['pipe', 'pipe', 'pipe'] });
