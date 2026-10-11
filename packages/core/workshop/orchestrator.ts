@@ -11,7 +11,7 @@ export type WorkshopSnapshot = {status:'available';sha256:string;capturedAt:stri
 export type WorkshopCheckpointKind = 'brief'|'afterScore'|'libraryAdmission'|'learningActivation';
 export interface WorkshopCheckpointState { kind:WorkshopCheckpointKind; key:string; resumeStage:WorkshopStage; deadline:string }
 export interface WorkshopIterationState {
-  id: string; sessionId: string; number: number; stage: WorkshopStage; artifact: WorkshopCandidateRef|null;
+  id: string; sessionId: string; number: number; stage: WorkshopStage|'failed'; artifact: WorkshopCandidateRef|null;
   evaluation: WorkshopEvaluationReport|null; score: WorkshopScore|null; feedback: string|null; operationIds: string[]; valid: boolean|null;
   critique?: WorkshopCritique|null;
   snapshot?: WorkshopSnapshot;
@@ -85,7 +85,7 @@ export class WorkshopOrchestrator {
     // Unknown game/provider effects retain the existing hold/reconciliation path.
     s.operationIntents[operationId]={...intent,status:'failed',failure:reason};
     const iteration=s.iterations[s.activeIteration-1]!;
-    iteration.valid=false;iteration.feedback=reason;iteration.stage='scoring';s.stage='scoring';
+    iteration.valid=false;iteration.feedback=reason;iteration.stage='failed';s.stage='scoring';
     this.saveBoth(s,iteration,'workshop/attempt-rejected');
   }
   artifact(id: string, candidate: WorkshopCandidateRef): void { const [s,i]=this.active(id,'building'); if (candidate.sessionId !== id || candidate.iteration !== i.number || candidate.assignmentRevision !== s.assignment.revision || candidate.bundleHash !== s.pinnedBundleHash) throw new Error('Candidate provenance mismatch'); i.artifact=structuredClone(candidate); this.saveBoth(s,i,'workshop/artifact'); }
@@ -94,7 +94,7 @@ export class WorkshopOrchestrator {
     const [s,i]=this.active(id,'scoring');this.requireOpen(s); if (score.candidate.sessionId !== id || score.candidate.iteration !== i.number || score.candidate.artifactHash !== i.artifact?.artifactHash) throw new Error('Score provenance mismatch');
     if(score.rubricVersion!==s.assignment.rubric.version)throw new Error('Score rubric version mismatch');
     i.score=structuredClone(score); i.feedback=feedback; i.critique=critique?structuredClone(critique):null; i.valid=i.evaluation?.valid === true&&i.evaluation.passed===true&&score.eligible===true; if (i.valid&&!s.validIterations.includes(i.number)) s.validIterations.push(i.number);
-    s.bestIteration=this.best(s); this.saveBoth(s,i,'workshop/scored');
+    i.stage='complete';s.bestIteration=this.best(s); this.saveBoth(s,i,'workshop/scored');
   }
   snapshot(id:string,value:WorkshopSnapshot):void {const s=this.get(id);this.requireOpen(s);const i=s.iterations[s.activeIteration!-1]!;i.snapshot=structuredClone(value);this.saveBoth(s,i,'workshop/snapshot');}
   finishObservation(id:string,reason:string):WorkshopSessionState {const s=this.get(id);s.stage='complete';s.stopRequested=true;s.stopReason=reason;this.save(s,'workshop/complete');return s;}

@@ -100,6 +100,10 @@ export class Gateway {
         res.writeHead(200, { 'content-type': 'application/json' }).end(JSON.stringify({ jsonrpc: '2.0', id: request.id, result }));
       } catch { res.writeHead(400).end(); }
     });
+    // Codex retains its initialized MCP connection while the model reasons. Node's
+    // default idle timeout can close that connection just before the next tool call.
+    // The owning invocation explicitly closes all connections on completion/cancel.
+    server.keepAliveTimeout = 0;
     await new Promise<void>((resolve, reject) => { server.once('error', reject); server.listen(0, '127.0.0.1', resolve); });
     return { url: `http://127.0.0.1:${(server.address() as AddressInfo).port}/mcp`, close: () => new Promise<void>(resolve => { server.closeAllConnections(); server.close(() => resolve()); }) };
   }

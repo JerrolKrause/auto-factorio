@@ -114,8 +114,10 @@ describe('production workshop host integration',()=>{
     const f=harness(inference);try{await f.runtime.launch(request('design-retry',{iterations:{attempts:2,mode:'exact',earlyStop:false,plateauRounds:1},budgets:{wallMs:60000,gameTicks:1200,turns:10,toolCalls:20,reportedTokens:1000,learningReservedTurns:0,learningReservedTools:0}}));await f.runtime.pending('design-retry');
       const result=f.orchestrator.get('design-retry');expect(result.stage,result.stopReason??'').toBe('complete');expect(designs).toBe(2);expect(result.iterations).toHaveLength(2);
       expect(result.iterations[0]).toMatchObject({valid:false,artifact:null,evaluation:null,feedback:expect.stringContaining('no blueprint entities')});
+      expect(result.iterations[0]?.stage).toBe('failed');
       expect(result.operationIntents['design-retry:1:design']).toMatchObject({status:'failed'});
       expect(result.iterations[1]).toMatchObject({valid:true,artifact:{iteration:2}});
+      expect(result.iterations[1]?.stage).toBe('complete');
     }finally{await f.close();}
   });
   it('continues after an exact rolled-back build rejection',async()=>{
@@ -124,8 +126,10 @@ describe('production workshop host integration',()=>{
     try{await f.runtime.launch(request('build-retry',{iterations:{attempts:2,mode:'exact',earlyStop:false,plateauRounds:1},budgets:{wallMs:60000,gameTicks:1200,turns:10,toolCalls:20,reportedTokens:1000,learningReservedTurns:0,learningReservedTools:0}}));await f.runtime.pending('build-retry');
       const result=f.orchestrator.get('build-retry');expect(result.stage,result.stopReason??'').toBe('complete');expect(buildAttempts).toEqual([1,2]);expect(result.iterations).toHaveLength(2);
       expect(result.iterations[0]).toMatchObject({valid:false,evaluation:null,feedback:expect.stringContaining('placement batch rolled back')});
+      expect(result.iterations[0]?.stage).toBe('failed');
       expect(result.operationIntents['build-retry:1:build']).toMatchObject({status:'failed'});
       expect(result.iterations[1]).toMatchObject({valid:true,artifact:{iteration:2}});
+      expect(result.iterations[1]?.stage).toBe('complete');
     }finally{await f.close();}
   });
   it('completes exhausted conclusively rejected attempts without inventing valid evidence',async()=>{
@@ -133,6 +137,7 @@ describe('production workshop host integration',()=>{
     const f=harness(inference);try{await f.runtime.launch(request('rejected-exhaustion',{iterations:{attempts:2,mode:'exact',earlyStop:false,plateauRounds:1},budgets:{wallMs:60000,gameTicks:1200,turns:10,toolCalls:20,reportedTokens:1000,learningReservedTurns:0,learningReservedTools:0}}));await f.runtime.pending('rejected-exhaustion');
       const result=f.orchestrator.get('rejected-exhaustion');expect(result.stage,result.stopReason??'').toBe('complete');expect(designs).toBe(2);expect(result.iterations).toHaveLength(2);
       expect(result.iterations.every(iteration=>iteration.valid===false&&iteration.artifact===null&&iteration.evaluation===null)).toBe(true);
+      expect(result.iterations.every(iteration=>iteration.stage==='failed')).toBe(true);
       expect(result.bestIteration).toBeNull();
     }finally{await f.close();}
   });
