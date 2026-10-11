@@ -48,6 +48,8 @@ The user manages prerequisite upgrades. Recheck installed versions before treati
 
 ## Independent review before completion
 
+Review every new spec with `agent-graph-kit:spec-review` in a fresh-context, read-only independent agent, never in the main thread, before declaring it ready.
+
 Before committing or declaring implementation or changes to requirements, permissions or behavior complete, load the [author workflow](.agents/skills/change-audit/author-workflow.md) and delegate one combined implementation/documentation review to a fresh-context, read-only subagent. The author must not self-review; fixes and later substantive changes require follow-up review. Routine documentation-only maintenance and faithful archive/spec sync use the workflow's author-run checks without a reviewer. Read-only/no-change tasks and reviewers are exempt.
 
 ## Leave a usable handoff
