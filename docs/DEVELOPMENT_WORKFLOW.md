@@ -85,7 +85,7 @@ A completed probe, changed source, incomplete capture, absent cancellation/rollb
 
 ## Keep tool context bounded
 
-- Use `rg` to locate relevant files/sections, then read those sections. Keep [the handoff](IMPLEMENTATION_HANDOFF.md) focused on current status, evidence, limits and the next action; consult [implementation history](IMPLEMENTATION_HISTORY.md) only for relevant past runs. Move superseded execution records there rather than growing the current handoff.
+- Use `rg` to locate relevant files/sections, then read those sections. Keep [the handoff](IMPLEMENTATION_HANDOFF.md) a replacement snapshot capped at 800 whitespace-separated words and 80 lines, including headings and links. `check:docs` enforces both limits (a final newline does not add a line). Retain current revision/uncommitted boundaries, acceptance/evidence links, active limitations/resources and one next action; preserve details in task reports or [implementation history](IMPLEMENTATION_HISTORY.md), read only when relevant. Carry unresolved constraints forward even when their original task is old; never truncate the file mechanically or append superseded entries.
 - Batch independent reads/checks with separate labeled results; keep dependent edits/checks sequential.
 - Report status, counts, exact exits and evidence paths. Keep full logs on disk and inspect targeted excerpts when something fails. Avoid broad discovery dumps or repeatedly requesting truncated output.
 - Preserve a before-task snapshot when sharing uncommitted files with other work. Pass that boundary to the independent reviewer. Re-read before editing shared documents; a later snapshot mismatch may be another session's work, which must be preserved rather than restored from the old copy.

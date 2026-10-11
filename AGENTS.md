@@ -10,7 +10,7 @@ Before using agent-graph-kit skills, read the repository [kit profile](.claude/s
 
 OpenSpec is a pinned project dev dependency. After `corepack.cmd pnpm install --frozen-lockfile`, run `corepack.cmd pnpm exec openspec <args>` on Windows (`corepack pnpm exec openspec <args>` elsewhere). Treat bare `openspec` in generated skills as shorthand for this command; do not rely on a global PATH entry.
 
-Read the current implementation entry in `docs/IMPLEMENTATION_HANDOFF.md` for progress and the next milestone; consult historical entries only when relevant. Read `docs/REQUIREMENTS.md` before changing product behavior, then only the relevant architecture/scenario sections. Do not require the planning conversation or reread every document on every turn.
+Read the current snapshot in `docs/IMPLEMENTATION_HANDOFF.md` for progress and the next action; consult `docs/IMPLEMENTATION_HISTORY.md` only for relevant past evidence. Read `docs/REQUIREMENTS.md` before changing product behavior, then only the relevant architecture/scenario sections. Do not require the planning conversation or reread every document on every turn.
 
 The user's current instructions govern the work. Approved product requirements are recorded in REQUIREMENTS; ARCHITECTURE is the proposed technical baseline and contains validation gates. A user request to implement a milestone authorizes that milestone: do not ask for a second approval merely because historical documents call the architecture proposed. Resolve routine reversible engineering choices, record them, and continue. Surface material conflicts with requirements or verified blockers.
 
@@ -54,6 +54,6 @@ Before committing or declaring implementation or changes to requirements, permis
 
 ## Leave a usable handoff
 
-At milestone completion or a handoff, update IMPLEMENTATION_HANDOFF with the commit, completed criteria, executed tests, remaining limitations and next bounded action. Keep requirements and README accurate; record material design changes in `docs/decisions/` when needed. Preserve working user changes.
+At milestone completion or a handoff, replace superseded status in IMPLEMENTATION_HANDOFF; keep the entire file within **800 whitespace-separated words and 80 lines**, enforced by `corepack.cmd pnpm check:docs`. Retain the revision/uncommitted boundary, current criteria and evidence links, active limitations/resources and one next bounded action. Preserve detailed records in task reports or IMPLEMENTATION_HISTORY, never by appending history to the snapshot. Keep requirements and README accurate; record material design changes in `docs/decisions/` when needed. Preserve working user changes.
 
 Keep progress concise and concrete. Prioritize a visible, playable vertical slice over speculative infrastructure. Creating or publishing external repositories and starting separate user-owned tasks require the user's request; gameplay-agent support does not itself authorize those actions.

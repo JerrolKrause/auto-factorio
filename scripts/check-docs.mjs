@@ -5,6 +5,17 @@ import path from 'node:path';
 const files = execFileSync('git', ['ls-files', '--cached', '--others', '--exclude-standard', '-z'], { encoding: 'utf8' }).split('\0').filter(file => file.endsWith('.md'));
 const errors = [];
 let links = 0;
+// Count the whole snapshot, including headings/links; exclude only its final newline.
+const handoffPath = 'docs/IMPLEMENTATION_HANDOFF.md';
+try {
+  const handoff = await readFile(handoffPath, 'utf8');
+  const words = handoff.trim().split(/\s+/u).filter(Boolean).length;
+  const lines = handoff === '' ? 0 : handoff.replace(/\r?\n$/, '').split(/\r?\n/).length;
+  if (words > 800 || lines > 80) errors.push(`${handoffPath}: snapshot exceeds cap (${words}/800 words, ${lines}/80 lines); replace superseded status and move details to task reports or IMPLEMENTATION_HISTORY.md.`);
+} catch (error) {
+  if (error.code !== 'ENOENT') throw error;
+  errors.push(`${handoffPath}: required current snapshot is missing`);
+}
 for (const file of files) {
   let text;
   try { text = await readFile(file, 'utf8'); }
