@@ -1,4 +1,6 @@
 import { spawn } from 'node:child_process';
+// This pre-build launcher runs on required Node 24, which loads the typed source directly.
+import { readPrompt } from '../../agents/prompts.ts';
 import { createInterface } from 'node:readline';
 import { readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
@@ -129,7 +131,7 @@ export async function selectTask({ tasksFile, taskId, model, effort, reason, sta
   await event('budget', 1, { decision: admission.decision });
   await writeNewJson(path.join(evidence, 'admission.json'), admission);
   if (!admission.admitted) return { ...preview, blocked: true, admission, evidence: path.relative(root, evidence).split(path.sep).join('/') };
-  const prompt = `Apply authorized OpenSpec task ${taskId}: ${task.description}\nUse ${tasksFile} and the linked change artifacts. Escalate when: ${task.escalateWhen}. Stay within this task; do not mark it complete without its acceptance evidence.`;
+  const prompt = readPrompt('developer/author', 'task', { taskId, description: task.description, tasksFile, escalateWhen: task.escalateWhen });
   const promptFile = path.join(evidence, 'prompt.txt'); await writeFile(promptFile, prompt, { encoding: 'utf8', flag: 'wx' });
   const record = { ...preview, ...(correctionProof ? { correctionAdmission: correctionProof } : {}), started: null, discovery, evidence: path.relative(root, evidence).split(path.sep).join('/'), launchOutcome: 'unknown' };
   await writeNewJson(path.join(evidence, 'launch.json'), record);

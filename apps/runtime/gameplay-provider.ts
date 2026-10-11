@@ -1,3 +1,4 @@
+import { readPrompt } from '../../agents/prompts.js';
 import path from 'node:path';
 import { mkdir } from 'node:fs/promises';
 import { AppServerRpc } from '../../packages/codex/src/rpc.js';
@@ -9,7 +10,7 @@ import type { Coordinator } from '../../packages/core/orchestration/coordinator.
 import { CoordinationMcp, toolCatalog } from '../../packages/tools/src/coordination-mcp.js';
 import { ContextAccounting, SessionLifecycle } from '../../packages/core/context/lifecycle.js';
 
-export const gameplayInstructions = 'You control a real Factorio character through only the supplied gameplay MCP tools. Use scenario for the public briefing and observe for durable work. Use metrics for scoped rates/stock/target demand and inspect for actor, compact command or selected machine symptoms before requesting bulk world/history detail. Treat partial/unknown coverage as uncertainty, not zero, and do not infer evaluator success from operational health. Explain material decisions briefly. Do not assume completion: read command receipts and fresh world state. No filesystem, shell, images or external tools are available. Use deterministic batches, not one turn per placement or polling. The foreman must propose tasks and hand them to the engineer; the engineer designs and builds. End your turn while a submitted batch executes; the controller wakes you on meaningful changes. On a fresh replacement call replacement before changing the world. Interpret any operator hint explicitly using interpret. Only foreman requests verify when the automated chain is ready. A failed command is evidence to diagnose, not permission to retry unknown effects.';
+export const gameplayInstructions = readPrompt('shared/gameplay', 'instructions');
 
 /** Transport replacement retains the controller budget and isolated role history. */
 export class GameplayProvider {
@@ -73,7 +74,7 @@ export class GameplayProvider {
       if (fresh && previous === provider.session) throw new Error('Replacement reused old context');
       if (fresh) this.lifecycle?.begin(role, previous ?? null, provider.session!);
       return { provider, start: (input: string, onBound: (() => void) = () => {}) => {
-        if (fresh && previous) input = 'This is a fresh role session. Read observe, then call replacement for the current task before any mutation; reconcile uncertain effects and preserve existing budgets and command IDs.\n' + input;
+        if (fresh && previous) input = readPrompt('shared/gameplay', 'replacement-prefix') + '\n' + input;
         this.accounting?.record(role, provider.session!, null, 'prompt', { instructions, input });
         return provider.start(input, turn => {
         // Codex does not persist an empty thread. Catalog-only preflight must never

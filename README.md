@@ -30,6 +30,8 @@ Phase 13's legal S2 reference and all required negative controls passed in Facto
 
 ## Design and development
 
+Agent instructions and turn templates live in readable [agent prompt files](agents/README.md), including the blueprint designer, scorer/reviewer and learnings roles. Edit the relevant `PROMPTS.md`, then restart through `npm start` to load changes.
+
 | Document | Purpose |
 | --- | --- |
 | [AGENTS.md](AGENTS.md) | Concise instructions for coding agents |

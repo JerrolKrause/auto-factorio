@@ -1,3 +1,4 @@
+import { readPrompt } from '../agents/prompts.js';
 import { appendFileSync } from 'node:fs';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
@@ -187,7 +188,7 @@ try {
         }
         try {
           if (trialControl(operator.state()) !== 'run') continue;
-          await prepared.start(replace ? 'Your old context has been replaced. First call replacement for your assigned task (area 0, offset 0), reconcile pending work and continue without duplicating actions. Finish the turn if the batch is still running.' : 'Continue the S1 objective using scenario and observe, assigned work, receipts and messages. Interpret any received operator hint. Plan or act when useful; end the turn while deterministic work runs.', () => {
+          await prepared.start(replace ? readPrompt('shared/gameplay', 'replacement-turn') : readPrompt('shared/gameplay', 'turn'), () => {
             if (replace && replacement) {
               replacement.pendingAtBinding = pending().map(x => x.batch.commandId); replacement.budgetAtBinding = c.budget.snapshot();
               runtime.record('trial/replacement-bound', [{ entity: 'runs', id: 'replacement', value: { ...replacement } }]);

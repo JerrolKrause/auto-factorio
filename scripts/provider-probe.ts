@@ -1,3 +1,4 @@
+import { readPrompt } from '../agents/prompts.js';
 import { mkdir, mkdtemp, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { appendFileSync } from 'node:fs';
@@ -86,8 +87,8 @@ try {
   if (live) {
     // Four planned turns; six remains a hard ceiling, never an automatic retry allowance.
     const starts = await Promise.allSettled([
-      foreman.provider.start('Private foreman marker: FOREMAN_PRIVATE_27. Call handoff with text "Compute 20 + 22 and report the result." Then explain the handoff in one sentence. Do not include the private marker in tools.', id => gateway.bind(foreman.token, id)),
-      engineer.provider.start('Private engineer marker: ENGINEER_PRIVATE_53. Call checkpoint now so the operator can test steering and interruption. Do not finish before that call. Do not include the private marker in tools.', id => gateway.bind(engineer.token, id)),
+      foreman.provider.start(readPrompt('diagnostics/provider', 'foreman-turn'), id => gateway.bind(foreman.token, id)),
+      engineer.provider.start(readPrompt('diagnostics/provider', 'engineer-turn'), id => gateway.bind(engineer.token, id)),
     ]);
     const rejected = starts.find(result => result.status === 'rejected');
     if (rejected?.status === 'rejected') throw rejected.reason;
@@ -100,18 +101,18 @@ try {
       const body = object(await response.json());
       if (object(body.result).isError !== true) throw new Error('Live gateway bypass accepted');
     }
-    await engineer.provider.steer('After resumption, observe the foreman handoff and report the arithmetic result. This message tests acknowledged steering.');
+    await engineer.provider.steer(readPrompt('diagnostics/provider', 'steering'));
     budget.closeTurn(engineer.provider.turn!, 'probe_interrupt');
     await waitFor(() => engineer.provider.turn!.finished && engineer.provider.turn!.interrupt === 'confirmed');
     await waitFor(() => foreman.provider.turn!.finished);
     if (!gateway.messages.some(m => m.from === 'foreman')) throw new Error('Missing synthetic handoff');
     foreman.provider.close(); engineer.provider.close();
     const resumed = await prepare('engineer', true);
-    await resumed.provider.start('Resume the synthetic task: observe your messages, compute the requested sum, report the answer with report, then finish in one sentence.', id => gateway.bind(resumed.token, id));
+    await resumed.provider.start(readPrompt('diagnostics/provider', 'resume-turn'), id => gateway.bind(resumed.token, id));
     await waitFor(() => resumed.provider.turn!.finished);
     if (!gateway.messages.some(m => m.from === 'engineer' && /42/.test(m.text))) throw new Error('Engineer report missing');
     const final = await prepare('foreman', true);
-    await final.provider.start('Observe the engineer report and acknowledge completion in one sentence.', id => gateway.bind(final.token, id));
+    await final.provider.start(readPrompt('diagnostics/provider', 'final-turn'), id => gateway.bind(final.token, id));
     await waitFor(() => final.provider.turn!.finished);
     for (const [role, session] of Object.entries(sessions)) {
       const active = role === 'foreman' ? final : resumed;

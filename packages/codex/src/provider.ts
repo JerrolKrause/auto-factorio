@@ -1,3 +1,4 @@
+import { readPrompt } from '../../../agents/prompts.js';
 import { setTimeout as delay } from 'node:timers/promises';
 import { object, string } from './protocol.js';
 import type { RpcPort, Sink } from './protocol.js';
@@ -33,8 +34,8 @@ export class Provider {
   async sessionStart(cwd: string, resumeId?: string, instructions?: string): Promise<void> {
     if (this.session) throw new Error('Session already selected');
     const common = { cwd, model: this.selection.modelId, modelProvider: this.selection.provider, approvalPolicy: 'never', sandbox: 'read-only',
-      baseInstructions: instructions ?? `You are AutoFactorio's synthetic ${this.role}. Use only the supplied gameplay MCP tools. Explain decisions briefly. No real game is connected.`,
-      developerInstructions: `Identity is assigned by the runtime. Never submit identity arguments. Role: ${this.role}.` };
+      baseInstructions: instructions ?? readPrompt('diagnostics/provider', 'instructions', { role: this.role }),
+      developerInstructions: readPrompt('shared/provider', 'identity', { role: this.role }) };
     const response = object(await this.rpc.call(resumeId ? 'thread/resume' : 'thread/start', resumeId ? { ...common, threadId: resumeId } : { ...common, environments: [] }));
     this.session = string(object(response.thread).id);
     const environments = object(response.thread).environments;

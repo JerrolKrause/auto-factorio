@@ -1,3 +1,4 @@
+import { readPrompt } from '../../agents/prompts.js';
 import { object } from '../../packages/codex/src/protocol.js';
 
 /** Expand bounded declarative repetition, never execute model-authored code. */
@@ -58,4 +59,4 @@ export function summarizeDesignerDiagnostics(value:unknown):unknown {
   return {totalRows:rows.length,groups:ordered.slice(0,20),omittedGroups:Math.max(0,groups.size-20),sampled:true,interpretation:'Point-in-time states ordered for diagnosis, not proof of a bottleneck. Correlate with measured windows, inventories and inserter endpoints; waiting can be normal.',fixtures:data.fixtures};
 }
 
-export const repetitionInstructions='For repeated rows, prefer compact entityGroups:[{count:positiveInteger,step:{x:dx,y:dy},entities:[{name,position:{x,y},direction,...}]}] alongside entities:[] for unique connectors. The host expands each template count times by index*step and assigns identities; do not hand-enumerate hundreds of repeated entities. Expanded groups cannot be referenced by explicit wires; ordinary poles auto-connect. This is declarative data, not JavaScript. A yellow belt carries 15 items/s total, 7.5 per lane; inserters on the same side all load one lane. Red belts carry 30 total and blue express belts 45 total. Use allowed faster belts for input trunks, output trunks and row lanes whenever yellow capacity would equal or fall below the required flow. Size every bottleneck above the target, including the very first belt after each source and the last belt before the sink. Plan both lanes and enough machines and inserters, with headroom above the requested rate.';
+export const repetitionInstructions=readPrompt('workshop/designer', 'repetition');
