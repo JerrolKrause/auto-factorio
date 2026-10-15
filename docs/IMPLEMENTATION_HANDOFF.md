@@ -42,6 +42,10 @@ The prior handoff body is preserved verbatim in history. AGENTS and development 
 
 Executed checks passed: 7/7 focused checker tests, documentation (206 files / 579 links), scoped ESLint, whitespace and exact archival-body preservation. Independent combined review: 0 findings; refreshed source-matched contract `handoff-cap-review-002` is ready. The first review stopped on a concurrent edit and remains retained. Closeout changes only this status prose under the author-run documentation exception. No browser/game/provider checks were run or required for this developer-documentation gate change.
 
+## Isolated spec-review PR - 15 October 2026
+
+Branch `codex/spec-review-evidence-policy` starts at `f14c8b9`; concurrent main-checkout work is excluded. [Decision 024](decisions/024-spec-review-evidence.md) records provisional routing and evidence requirements. Documentation, strict OpenSpec, artifact and whitespace checks passed. Review evidence: `.runtime/spec-review-policy/` in the isolated worktree. Future review observations remain 0/3; the imported test-policy proposal remains deferred. This status addition uses author-run documentation checks. Independent workflow review: clean; spec review: one P2 fixed, fresh follow-up clean. Next: owner PR review; no product milestone or automatic merge.
+
 ## Next bounded action
 
 Await a separate production-chain implementation request, then start S1 with a finite shared plan and current prerequisite evidence. This maintenance approval does not start a product milestone.

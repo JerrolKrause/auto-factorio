@@ -59,6 +59,10 @@ The first command writes a new `.runtime/preflight/check-*/manifest.json`, runs 
 
 Use [routing-outcome.template.json](examples/routing-outcome.template.json) for the next separately authorized ordinary task. Preserve unknown model/usage fields as `null`, link aggregate sessions and acceptance/rework evidence, and avoid comparative reruns. One observation may refine guidance but cannot establish savings from a model label.
 
+For the first three separately authorized ordinary tasks that use spec review after this policy is adopted, extend the same routing-outcome record with `specReview`: `status` (`pending`, `closed` or `not-applicable`), `runs` and `laterEscapes`. Each run records assignment/result references, requested and observed model/effort, observed duration and usage (or `null`), author-accepted/rejected finding IDs with severity and evidence, and unresolved coverage. Link later escapes to the original review and discovery evidence; deduplicate refinements by invariant. This is descriptive template data, not a new runner or contract schema.
+
+Count one observation per separately authorized task, even with multiple slices/reviews; exclude this policy rollout. Include failed or abandoned tasks when closed, retain open tasks as pending and never replace an expensive failure with a successful sample. The third task closeout summarizes benefits, misses, false positives, time and available usage and recommends keep/adjust without automatically changing routes. Keep the count and record links in the existing task report/handoff; no separate tracker, comparative reruns or new work to obtain samples. The existing next-task routing pilot uses this same record when applicable.
+
 ## Local observations
 
 `dev:usage` reads only selected roots, proven descendants and explicit run mappings, including nested rollout directories. Report v2 separates aggregate validity from response/model/phase attribution; monotonic cumulative-only totals can be valid while fine detail remains unknown. Counter resets and representation conflicts remain gaps. Cached input and reasoning are subsets.
