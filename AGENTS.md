@@ -6,7 +6,7 @@ Keep all future edits to this file as context-efficient as possible: concise rul
 
 ## Begin with the current task
 
-Before using agent-graph-kit skills, read the repository [kit profile](.claude/stack.md), including matching-version script resolution. Repository model routing, authorization, verification and independent-review rules remain authoritative.
+Before loading, announcing or using any agent-graph-kit skill, first read the repository [kit profile](.claude/stack.md), including matching-version script resolution. Repository model routing, authorization, verification and independent-review rules remain authoritative.
 
 OpenSpec is a pinned project dev dependency. After `corepack.cmd pnpm install --frozen-lockfile`, run `corepack.cmd pnpm exec openspec <args>` on Windows (`corepack pnpm exec openspec <args>` elsewhere). Treat bare `openspec` in generated skills as shorthand for this command; do not rely on a global PATH entry.
 
@@ -14,7 +14,11 @@ Read the current snapshot in `docs/IMPLEMENTATION_HANDOFF.md` for progress and t
 
 The user's current instructions govern the work. Approved product requirements are recorded in REQUIREMENTS; ARCHITECTURE is the proposed technical baseline and contains validation gates. A user request to implement a milestone authorizes that milestone: do not ask for a second approval merely because historical documents call the architecture proposed. Resolve routine reversible engineering choices, record them, and continue. Surface material conflicts with requirements or verified blockers.
 
-For an authorized milestone, work autonomously through implementation, project dependency installation, tests, dedicated local game runs, fixes and documentation. Continue through routine decisions without renewed confirmation. Ask only for material scope changes, spending, publishing, destructive changes to existing user data, or a blocker requiring user input, subject to enforced tool permissions. Keep prerequisite upgrades user-managed and use project-scoped game data. This standing instruction does not start a milestone by itself.
+- For an authorized milestone, work autonomously through implementation, project dependency installation, tests, dedicated local game runs, fixes and documentation.
+- Continue through routine decisions without renewed confirmation.
+- Ask only for material scope changes, spending, publishing, destructive changes to existing user data, or a blocker requiring user input, subject to enforced tool permissions.
+- Keep prerequisite upgrades user-managed and use project-scoped game data.
+- This standing instruction does not start a milestone by itself.
 
 ## Keep work on the acceptance path
 
@@ -42,7 +46,7 @@ Follow the [model-selection guide](docs/MODEL_SELECTION.md) for developer work. 
 
 Use the architecture's TypeScript/Lua boundaries and a small modular application. Validate the subscription and game connection before expanding infrastructure. Inspect applicable upstream code and notices before rewriting or copying game mechanics.
 
-Use the repository's scripts and lockfile; report only executed results. Before editing code, read and follow the [development workflow](docs/DEVELOPMENT_WORKFLOW.md), including its maintainability guidance. Preserve non-obvious invariants in local comments and broader rationale in linked decision records.
+Use the repository's scripts and lockfile; report only executed results. Before the first code or test edit, read the complete [development workflow](docs/DEVELOPMENT_WORKFLOW.md), not a truncated preview, and follow its maintainability guidance. Preserve non-obvious invariants in local comments and broader rationale in linked decision records.
 
 Test important failure paths with fakes; verify legal movement, inventory accounting, placement, cancellation and save/load in Factorio itself. Keep model-backed tests deliberate and budgeted. Report exactly what ran, what passed, and what remains unverified.
 
