@@ -8,6 +8,15 @@ import { executeManifest, commandIdentity } from './verification.mjs';
 import { createEvidenceDirectory, sha256, writeNewJson } from './safe-artifacts.mjs';
 
 const exec = promisify(execFile);
+export function standardAdmissionAlternative(plan) {
+  const counts = plan.limits.filter(limit => limit.unit === 'admissions');
+  const countOnly = counts.length > 0 && !plan.limits.some(limit => limit.unit === 'wallMs');
+  return {
+    reason: 'No provider inference: deterministic checks retain the shared plan limits, admission history and cleanup controls',
+    maxAdmissions: counts.length ? Math.min(...counts.map(limit => limit.value)) : 60,
+    ...(countOnly ? {} : { deadlineMs: Date.parse(plan.startTime) + 14280000 }),
+  };
+}
 const software = [
   ['build', 'node_modules/typescript/bin/tsc', '-b', '--stopBuildOnErrors', '--force'],
   ['dashboard-build', 'node_modules/vite/bin/vite.js', 'build', 'apps/dashboard'],
@@ -91,7 +100,7 @@ export async function standardVerification(args = [], { root = process.cwd(), st
     const retained = JSON.parse(await readFile(path.join(base, file), 'utf8'));
     for (const check of checks) if (!check.freshRequired && !check.retainedReceipt && retained[check.id]) check.retainedReceipt = retained[check.id];
   }
-  const manifest = { version: 1, change: 'standard-verification', slice: 'standard', candidate, owner: 'standard-owner', criteria: checks.map(check => check.id), checks, resources, tools, plan, sharedAdmission: true, usageReport: { sessions: [], usage: { input: 0, output: 0 }, coverage: { complete: false, aggregate: false } }, unknownAlternative: { reason: 'No provider inference: finite deterministic checks under the persistent shared session wall limit and sixty admissions, with separate cleanup reserve', maxAdmissions: 60, deadlineMs: Date.parse(plan.startTime) + 14280000 }, cleanupReserveMs: 120000 };
+  const manifest = { version: 1, change: 'standard-verification', slice: 'standard', candidate, owner: 'standard-owner', criteria: checks.map(check => check.id), checks, resources, tools, plan, sharedAdmission: true, usageReport: { sessions: [], usage: { input: 0, output: 0 }, coverage: { complete: false, aggregate: false } }, unknownAlternative: standardAdmissionAlternative(plan), cleanupReserveMs: 120000 };
   const { stdout: revision } = await exec('git', ['rev-parse', 'HEAD'], { cwd: root });
   await writeNewJson(path.join(prepared, 'manifest.json'), manifest);
   const { assignment } = await prepareContract({ version: 2, execution: { manifestSha256: sha256(JSON.stringify(manifest)), reusePolicy: 'matching-receipt-only' }, role: 'verification', objective: 'Execute fixed standard verification composition', criteria: manifest.criteria.map(id => ({ id, description: id })), revision: revision.trim(), sourcePaths: [...sourcePaths, artifact('manifest.json')], scope: sourcePaths.map(file => ({ path: file, boundary: 'whole input' })), checks: [...checks.map(check => ({ id: check.id, command: commandIdentity(check), expected: 'Passing exit and declared observation' })), ...resources.flatMap(resource => resource.cleanup.map((command, index) => ({ id: `${resource.id}-cleanup-${index}`, command: commandIdentity(command), expected: 'Exact owned profile cleanup' })))], allowedActions: ['Execute this manifest within declared effects and resources'], additionalChecks: 'forbidden', resources: resources.map(row => ({ id: row.id, owner: manifest.owner, cleanup: 'Identity-matched owned profile cleanup' })), budget: { timeSeconds: 3600, providerCalls: 0 }, stopConditions: ['Stop new checks on failure, changed inputs, interrupted outcome or exhausted admission'], returnConditions: ['Return criterion outcomes and cleanup observations'], outputRoot: relative(prepared) }, root);

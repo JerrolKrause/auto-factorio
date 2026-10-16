@@ -22,6 +22,9 @@ function runtime() {
 }
 const scope = (id = 'scope-a', revision = 1) => ({ schema: OBSERVATION_SCHEMA, id, revision, task: `task-${id}`, surface: 'nauvis', area: [{ x: 0, y: 0 }, { x: 10, y: 10 }] as [{ x: number; y: number }, { x: number; y: number }], entityLimit: 100 });
 const reading = (kind: 'production' | 'stock', total: number) => ({ kind, name: 'iron-gear-wheel', quality: 'normal', surface: 'nauvis', total, method: 'fixture-v1', coverage: 'complete' as const, evidence: ['fixture'] });
+const ingestCadence = (store: OperationalStore, visibility: ReturnType<typeof taskVisibility>, from: number, to: number, readingsAt: (tick: number) => ReturnType<typeof reading>[], membershipHash = 'm') => {
+  for (let tick = from; tick <= to; tick += 60) store.ingest({ schema: 1, epoch: 'epoch', scopeId: 'scope-a', scopeRevision: 1, membershipHash, tick, readings: readingsAt(tick) }, visibility);
+};
 
 describe('decision-focused operational context', () => {
   it('keeps interval-skew tolerance nonnegative for stock depletion', () => {
@@ -45,30 +48,30 @@ describe('decision-focused operational context', () => {
     const r = runtime(); const store = new OperationalStore(r); const visibleA = taskVisibility('task-scope-a'); const visibleB = taskVisibility('task-scope-b');
     store.register(scope('scope-a'), visibleA); store.register(scope('scope-b'), visibleB);
     for (const [id, visibility, amount] of [['scope-a', visibleA, 60], ['scope-b', visibleB, 120]] as const) {
-      store.ingest({ schema: 1, epoch: 'epoch', scopeId: id, scopeRevision: 1, membershipHash: 'members', tick: 0, readings: [reading('production', 0)] }, visibility);
-      store.ingest({ schema: 1, epoch: 'epoch', scopeId: id, scopeRevision: 1, membershipHash: id === 'scope-a' ? 'changed' : 'members', tick: 600, readings: [reading('production', amount)] }, visibility);
+      for (let tick = 0; tick <= 600; tick += 60) store.ingest({ schema: 1, epoch: 'epoch', scopeId: id, scopeRevision: 1, membershipHash: id === 'scope-a' && tick === 600 ? 'changed' : 'members', tick, readings: [reading('production', amount * tick / 600)] }, visibility);
     }
     expect(store.metrics('scope-a', 600)[0]).toMatchObject({ coverage: 'unknown', reason: 'scope_membership_changed', rate: null });
     expect(store.metrics('scope-b', 600)[0]).toMatchObject({ coverage: 'complete', rate: 12 });
   });
   it('does not hide an intermediate membership change or counter reset when endpoints match', () => {
     const r = runtime(); const store = new OperationalStore(r); const visibility = taskVisibility('task-scope-a'); store.register(scope(), visibility);
-    store.ingest({ schema: 1, epoch: 'epoch', scopeId: 'scope-a', scopeRevision: 1, membershipHash: 'm', tick: 0, readings: [reading('production', 100)] }, visibility);
-    store.ingest({ schema: 1, epoch: 'epoch', scopeId: 'scope-a', scopeRevision: 1, membershipHash: 'recipe-changed', tick: 300, readings: [{ ...reading('production', 0), coverage: 'unknown', reason: 'counter_reset' }] }, visibility);
-    store.ingest({ schema: 1, epoch: 'epoch', scopeId: 'scope-a', scopeRevision: 1, membershipHash: 'm', tick: 600, readings: [reading('production', 10)] }, visibility);
+    for (let tick = 0; tick <= 600; tick += 60) {
+      const middle = tick === 300;
+      store.ingest({ schema: 1, epoch: 'epoch', scopeId: 'scope-a', scopeRevision: 1, membershipHash: middle ? 'recipe-changed' : 'm', tick, readings: [middle ? { ...reading('production', 0), coverage: 'unknown', reason: 'counter_reset' } : reading('production', tick === 0 ? 100 : tick === 600 ? 10 : 100)] }, visibility);
+    }
     expect(store.metrics('scope-a', 600)[0]).toMatchObject({ coverage: 'unknown', reason: 'scope_membership_changed', rate: null });
   });
   it('reports stable stock independently from nonzero production flow', () => {
     const r = runtime(); const store = new OperationalStore(r); store.register(scope(), taskVisibility('task-scope-a'));
-    store.ingest({ schema: 1, epoch: 'epoch', scopeId: 'scope-a', scopeRevision: 1, membershipHash: 'm', tick: 0, readings: [reading('production', 0), reading('stock', 50)] }, taskVisibility('task-scope-a'));
-    store.ingest({ schema: 1, epoch: 'epoch', scopeId: 'scope-a', scopeRevision: 1, membershipHash: 'm', tick: 600, readings: [reading('production', 100), reading('stock', 50)] }, taskVisibility('task-scope-a'));
+    const visibility = taskVisibility('task-scope-a');
+    ingestCadence(store, visibility, 0, 600, tick => [reading('production', tick / 6), reading('stock', 50)]);
     expect(store.metrics('scope-a', 600).find(m => m.kind === 'production')).toMatchObject({ quantity: 100, rate: 10, coverage: 'complete' });
     expect(store.metrics('scope-a', 600).find(m => m.kind === 'stock')).toMatchObject({ quantity: 0, rate: null, coverage: 'complete' });
   });
   it('keeps item quality distinct and rejects readings from another surface', () => {
     const r = runtime(); const store = new OperationalStore(r); const visibility = taskVisibility('task-scope-a'); store.register(scope(), visibility);
     const qualities = (tick: number, normal: number, uncommon: number) => ({ schema: 1 as const, epoch: 'epoch', scopeId: 'scope-a', scopeRevision: 1, membershipHash: 'm', tick, readings: [reading('production', normal), { ...reading('production', uncommon), quality: 'uncommon' }] });
-    store.ingest(qualities(0, 0, 0), visibility); store.ingest(qualities(600, 60, 30), visibility);
+    for (let tick = 0; tick <= 600; tick += 60) store.ingest(qualities(tick, tick / 10, tick / 20), visibility);
     expect(store.metrics('scope-a', 600, undefined, ['production'], ['iron-gear-wheel']).map(metric => [metric.quality, metric.rate])).toEqual([['normal', 6], ['uncommon', 3]]);
     expect(() => store.ingest({ ...qualities(660, 66, 33), readings: [{ ...reading('production', 66), surface: 'orbit' }] }, visibility)).toThrow('outside scope surface');
   });

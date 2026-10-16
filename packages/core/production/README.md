@@ -1,0 +1,57 @@
+# Production planning
+
+`facts.ts` loads public effective installed prototypes through bounded `production-facts`
+pages. The Lua checksum is only a refresh hint; the normalized full catalog receives a
+SHA-256 identity. Mutable research, bonuses and surface conditions have a separate revision.
+Availability changing during export is rejected instead of combining inconsistent pages.
+
+`production_search` rechecks server identity before each query and before delivery. It
+pages producer records, so one product may appear several times with distinct recipes.
+Product, recipe and machine selectors narrow details that exceed the response budget.
+Opaque cursors bind the caller, query, profile and both fact revisions, and expire after
+60 seconds. A partial result never claims completeness or executable feasibility.
+
+Fluid compatibility uses one-to-one matching, including box type, filter, temperature,
+index and exposed connection geometry. Category agreement alone is insufficient.
+Returned public facts use explicit nested allowlists; no evaluator state is consulted.
+Exports are validated before caching. Fractional-output probabilities, spoilage percentages
+and fluid-box multipliers are retained, including zero-amount stochastic products.
+Unsupported multi-box ingredients remain discoverable with a compatibility blocker.
+
+Focused regressions: `tests/production-facts.test.ts`. Installed-data evidence:
+`corepack.cmd pnpm game:production-facts-probe`, after a successful build. This diagnostic
+creates a dedicated project profile, uses authenticated production MCP tools without
+inference, and cleans up its own server. It accepts no save or profile arguments.
+## Calculated plans
+
+`request.ts` validates the public boundary; `graph.ts` records selected routes and shared stages; `rational.ts` / `solver.ts` solve bounded exact nonnegative material balances. `planner.ts` computes sizing without effects. `service.ts` stores immutable revision-qualified journal records and provides the shared gameplay/workshop adapter. Calculation and inspection never create tasks or game effects. Edits to an already committed plan close affected tasks through the existing cancellation fences; replacement reconstruction gates apply before such edits.
+
+Requests explicitly declare sources, finite stock, electricity, construction equipment, sinks, recipe/machine/fuel selections and optional product transport capacities/lane rates. The suggested route policy prefers available ordinary Nauvis processing before recycling/barreling and then stable recipe ID; explicit choices override suggestions. Shared recipe stages count once. Selected cycles, stochastic/spoilage mechanics, nonzero bonuses and missing effective facts block sizing. Source and co-product sink capacities are constraints; finite tanks and finite initial stock cannot prove sustained feasibility. The fixed-route objective minimizes total crafts, followed by recipe-ID lexicographic rates; this is not global route optimization.
+
+Rates use exact rational game-second quantities, capped at 512-bit arithmetic, 64 stages, 128 products, 512 edges, depth 40, 3000 solver pivots and five solver seconds. Headroom is applied once to target demand. Machine counts round up. Working-load utility lower bounds and rounded full-duty upper bounds are separate: below the lower bound is infeasible, between bounds is incomplete, at least the validated upper bound is conservatively feasible. Recipe coal and burner coal share one capacity. Known idle drain is included; unknown drain or fuel behavior blocks feasibility. Transport capacities and lane requirements describe aggregate flow, not connectivity or measured pipe/inserter performance.
+
+Quantity estimates use whole crafts, aggregate shared demand before rounding, disclose stock use and leftovers as accumulated material, and reject coupled co-product calculations. Finite stock can fully supply a batch boundary without an external source, including stocked manufactured intermediates; only remaining demand expands into production. Insufficient raw stock requires a declared source. Default raw ore, coal, crude-oil and water boundaries report unsupported extraction rather than selecting barrel or ice conversions; an explicit conversion route still uses installed facts. Stock never supplies a sustained rate. Batch utility totals and completion time remain unknown, so material estimates are never executable rate plans. Exploration returns no sizing. Nondefault-temperature flow sizing requires a thermal model and is explicitly unsupported; discovery retains the full temperature facts.
+
+Stored plans retain exact requests, assumptions, fingerprints and stage meaning hashes. Replacement retrieves the same revision; edits create new immutable revisions, preserve unchanged stage IDs and invalidate changed stages' dependent evidence. Prototype or availability changes are reported as stale, never silently rewriting history. Detail is limited to eight stages / 24 KB per page with caller/selector/revision/source-bound 60-second cursors; bounded subgraph depth is six. `production_inspect` with `view=request` pages exact normalized request JSON, including its boundaries and choices. Retention admits at most 200 revisions per run and 2 MB per artifact, without deleting old evidence. Summaries disclose omitted blocker/evidence details.
+
+After building emitted code, diagnostic `corepack.cmd pnpm game:production-planning-probe` creates its own disposable game, pins an ordinary zero-productivity installed-data snapshot, and calls actual production MCP tools for sulfur, processing units and utility science at 1 item/game second. An independent fraction oracle checks effective recipe flows and machine rounding; advanced refining and both cracking stages carry positive flow. The probe checks replacement, immutable revision retrieval, stale availability and revocation, then cleans its exact profile. It accepts no save/profile arguments and performs no model inference. This is calculation evidence; physical construction/production acceptance remains a later slice. Ordinary users still launch with `npm start`.
+
+## Stage commitments
+
+`commit.ts` connects `production_commit` to the existing coordinator and journal. Only planning roles can commit their own latest feasible executable revision. New admission revalidates facts and availability after the asynchronous query, current session authority, task references/revisions/manager, scheduler graph and ownership release. Unknown or ongoing effects block new commitments. A selected task's plan reference must match its stage, or match a retained binding with the same meaning. At most 64 stages, 64 KB input, 24 KB response and 200 immutable commitments per run are admitted. The stage mapping and all new task proposals enter one SQLite event transaction; no character grant or batch is created.
+
+`requestId` is scoped to the authenticated owner. Exact retries recover the original immutable acknowledgement without fresh task admission, including after a later plan revision; changed payload conflicts. Stop, revoked identity and replacement reconstruction still close tool admission. New tasks use `committedPlan="<plan id>.<revision>/<stage>"`; existing tasks use `{id,revision}`. Handoff, reservations and legal batches use their existing tools. Bodyless managers acquire no character authority.
+
+Material suppliers are separate from explicit scheduler dependencies. `production_inspect` returns bounded linked construction progress, with commissioning and health unknown and the scenario verdict not evaluated. A completed command/message can prove construction only. Assigned engineers may inspect an explicitly named linked stage at depth zero; its summary exposes stage identity and public source revisions only. Owner target, demand, global status/counts and aggregate product balances remain private alongside whole-plan/request retrieval and neighboring stages. Assignment authorization is reapplied after asynchronous facts refresh. Bounded briefings and replacement delivery include current plan/stage/task identity links; operator recovery retains all immutable commitments and bindings.
+
+Plan persistence and revision reconciliation share one transaction. Changed stage meaning and dependent stages lose active bindings and close affected pending tasks before any cancellation await. The ordinary coordinator then revokes ownership and reconciles receipts; conflicting work remains held until acknowledgement. Unchanged bindings carry forward only for matching current task revision/epoch, and succeeded construction requires still-valid exact evidence. Restore discontinuities require fresh task authorization and never promote old receipts into new-world health. No budget, receipt ledger, execution lane or ownership system is replaced. Focused fake-adapter coverage lives in `tests/production-coordination.test.ts`; physical cancellation/save-load evidence remains a later acceptance gate.
+
+## Ordinary stage health
+
+`status.ts` joins authorized committed stages to ordinary recipe/machine scopes through `production_status`. Names sent to the game are engine names, while durable plan references retain catalog IDs. Assigned engineers must name their own stage; owner requests, aggregate balances, neighboring evidence and supplier graphs stay private. Status does not execute construction or establish an evaluator verdict. Construction completion, measured health and scenario success remain separate.
+
+The sampler derives gross recipe production and consumption from local completed crafts, independently of item/fluid stock. Fluid rates use units per game second; items use items per game second. Consumption bounds allow one in-flight craft at each endpoint, plus documented fluid rounding. Deficits require the measured upper bound below planned demand; overlapping bounds and unsupported bonuses/qualities/amounts remain unknown. Recipe/membership changes, missing cadence, counter resets and restore epochs invalidate windows. Old-epoch frames remain evidence but never establish current health or block a rolled-back sampling clock.
+
+Existing watches require sustained complete fresh measurements, preserve active sequences, and reset pending transitions across unknown intervals or Stop. Scope/watch caps fail explicitly, including retries after partial registration. Status pages contain at most four stages, 24 measurements and 24 planned flows within 23 KB; explicit omissions and continuation offsets bound delivery. The Scenarios activity panel retrieves ordinary stage/task evidence and survives browser replacement. Live plan events refresh its bounded current page while preserving the selected immutable revision; a manual plan refresh provides recovery. Hypothesized input/output/power causes remain unproved until inspected.
+
+After a successful build, `corepack.cmd pnpm game:production-observations-probe` creates an isolated diagnostic game and calibrates furnace, sulfur, advanced-refining and tank observations against independent inventory/fluid endpoints. It checks recipe changes, unsupported modules and actual status tool delivery, then cleans its exact profile. It accepts no save/profile arguments and starts no model inference. Its finite disconnected fixtures establish measurement calibration; physical automated-chain acceptance belongs to S5. Regression coverage: `tests/production-observations.test.ts`, `tests/production-status.test.ts` and `tests/ui/production-chain.spec.ts`.

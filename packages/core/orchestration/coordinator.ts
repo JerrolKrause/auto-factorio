@@ -119,16 +119,28 @@ export class Coordinator {
     const t: CoordinatedTask = { ...structuredClone(input), manager: who, owner: null, revision: 1, status: 'proposed', evidence: [], wait: null, epoch: this.runtime.context().epoch };
     this.checkGraph(t); this.saveTask(t, 'task/proposed', [this.history(who, 'proposed', input, t)]); return t;
   }
-  private validate(input: TaskInput, who: string): void {
+  /** Prepare an atomic group without writes or grants. Committers include these changes in one journal event. */
+  prepareProposals(who: string, inputs: TaskInput[]): CoordinatedTask[] {
+    this.budget.tick();
+    if (this.held() || this.budget.state.closed || !this.agent(who).definition.tools.includes('plan')) throw new Error('Planning admission closed');
+    const tasks = inputs.map(input => ({ ...structuredClone(input), manager: who, owner: null, revision: 1, status: 'proposed' as const, evidence: [], wait: null, epoch: this.runtime.context().epoch }));
+    const all = new Map(this.tasks().map(t => [t.id, t]));
+    for (const t of tasks) { id(t.id); if (all.has(t.id)) throw new Error('Task already exists'); all.set(t.id, t); }
+    const lookup = (key: string) => { const t = all.get(key); if (!t) throw new Error('Unknown dependency'); return t; };
+    for (const t of tasks) { this.validate(t, who, lookup); this.checkGraph(t, tasks); }
+    return tasks;
+  }
+  constructionComplete(t: CoordinatedTask): boolean { return t.status === 'succeeded' && this.qualifies(t, t.evidence); }
+  private validate(input: TaskInput, who: string, lookup = (key: string) => this.task(key)): void {
     if (!input.goal || !Array.isArray(input.dependencies) || !Array.isArray(input.criteria) || !input.criteria.length || input.criteria.some(c => !['command-completed', 'message-delivered'].includes(c.kind) || typeof c.id !== 'string' || !c.id)) throw new Error('Task requires supported deterministic criteria');
     if (new Set(input.dependencies).size !== input.dependencies.length) throw new Error('Duplicate dependency');
-    for (const dep of [...input.dependencies, ...(input.parent ? [input.parent] : [])]) { this.scoped(who, this.task(dep)); }
+    for (const dep of [...input.dependencies, ...(input.parent ? [input.parent] : [])]) { this.scoped(who, lookup(dep)); }
     if (input.actor === null && input.reservations.length) throw new Error('Bodyless task cannot reserve game resources');
     if (input.productionTarget !== undefined) validateProductionTarget(input.productionTarget);
     if (input.actor) validateAssignment({ id: input.id, owner: who, task: input.id, revision: 1, actor: input.actor, resources: input.reservations.map(resource => ({ resource, grant: { id: resourceKey(resource), generation: 1 } })) });
   }
-  private checkGraph(candidate: CoordinatedTask): void {
-    const all = new Map(this.tasks().map(t => [t.id, t])); all.set(candidate.id, candidate);
+  private checkGraph(candidate: CoordinatedTask, peers: CoordinatedTask[] = []): void {
+    const all = new Map([...this.tasks(), ...peers].map(t => [t.id, t])); all.set(candidate.id, candidate);
     const visiting = new Set<string>(); const done = new Set<string>();
     const visit = (key: string) => {
       if (visiting.has(key)) throw new Error('Dependency or parent cycle'); if (done.has(key)) return;
@@ -224,16 +236,21 @@ export class Coordinator {
       if (controlErrors.length) throw new AggregateError(controlErrors, 'Ownership cancellation unconfirmed');
       await this.runtime.execution.reconcile();
       for (const scope of this.operational.scopes()) {
-        const afterTick = this.operational.samples(scope.id, scope.revision).at(-1)?.tick ?? -1;
+        const afterTick = this.operational.samples(scope.id, scope.revision, this.runtime.context().epoch).at(-1)?.tick ?? -1;
         const response = await this.runtime.query({ op: 'operational-read', scopeId: scope.id, scopeRevision: scope.revision, afterTick });
-        for (const sample of Array.isArray(response.samples) ? response.samples : []) this.operational.ingest(sample as never, { kind: 'restricted', agents: [], roles: [], tasks: [scope.task] });
+        for (const sample of (Array.isArray(response.samples) ? response.samples : []).filter(s => s.epoch === this.runtime.context().epoch)) this.operational.ingest(sample as never, { kind: 'restricted', agents: [], roles: [], tasks: [scope.task] });
       }
       for (const watch of this.watches.list()) {
         const scope = this.operational.scope(watch.scopeId);
         if (!scope || scope.revision !== watch.scopeRevision) continue;
         const metrics = this.operational.metrics(scope.id, Math.max(600, this.operational.limits.sampleTicks), undefined, [watch.metric.kind], [watch.metric.name]);
-        const metric = metrics.find(m => m.quality === watch.metric.quality && m.surface === watch.metric.surface);
-        if (metric?.coverage === 'complete' && metric.rate !== null) this.watches.evaluate(watch.id, metric.endTick, metric.rate, { kind: 'restricted', agents: [], roles: [], tasks: [watch.task] });
+        const metric = metrics.find(m => (m.productKind ?? 'item') === (watch.metric.productKind ?? 'item') && m.quality === watch.metric.quality && m.surface === watch.metric.surface);
+        const visibility = { kind: 'restricted' as const, agents: [], roles: [], tasks: [watch.task] };
+        const task = this.task(watch.task), bounds = metric?.rateBounds;
+        const uncertain = bounds && bounds.lower < watch.threshold && bounds.upper >= watch.threshold || bounds && bounds.lower < watch.recovery && bounds.upper >= watch.recovery;
+        const ready = !this.held() && !this.budget.state.closed && metric?.coverage === 'complete' && metric.ageTicks <= this.operational.limits.sampleTicks && metric.rate !== null && task.revision === watch.scopeRevision && task.epoch === this.runtime.context().epoch && !['cancelled', 'superseded', 'failed'].includes(task.status);
+        if (!ready || uncertain) this.watches.invalidate(watch.id, metric?.endTick ?? 0, visibility);
+        else this.watches.evaluate(watch.id, metric!.endTick, bounds?.upper !== undefined && bounds.upper < watch.threshold ? bounds.upper : bounds?.lower ?? metric!.rate!, visibility);
       }
       if (this.held()) return;
       // Reconciliation can discover a failure for the first time. Stop its queued remainder before dispatch.

@@ -18,6 +18,8 @@ Run `dev:preflight` before experiment spending. Serialize game profiles, browser
 
 A compact handoff contains revision/fingerprints, current decisions, remaining criteria, evidence paths and exits, session-plan state, resource cleanup, limitations and one next bounded action. Keep automatic compaction defaults. A fresh author context at an accepted boundary receives this packet with stable invariant/finding IDs and the same plan balance; no mandatory per-check compaction or global settings changes.
 
+An explicitly authorized deadline removal can use an integer `admissions` plan limit instead of `wallMs`. Unknown-accounting alternatives may omit `deadlineMs` only when that plan has an admission limit and no wall limit; finite count caps and all other declared limits still apply. Changing the plan fingerprint requires locked carry-forward of every spent admission with immutable original-record hashes, never a fresh allowance. Keep the original start, unknown telemetry, inference restrictions and per-process timeout/cleanup controls.
+
 `node scripts/dev/handoff.mjs --input <runtime.json>` accepts a v2 `manifest`, `startSlice`, hash-pinned ledger `records`, optional `usageReport`, bounded `decisions`, `nextAction` and runtime `outputRoot`. It validates current accepted predecessors, captures assignment/result hashes and source fingerprint references, findings, resource cleanup and the unchanged plan/balance into an immutable `packet.json`. Missing usage remains unknown; a stop packet is a truthful handoff, never renewed authority. Detailed source/evidence stays behind the captured references.
 
 ## Change readiness

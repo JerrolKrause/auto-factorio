@@ -292,9 +292,10 @@ describe('workshop game client preflight',()=>{
     const source=LiveWorkshopGame.prototype.preflight.toString();
     const mutated=source.replace(/await this\.ensureVisibleClient\?\.\(\);?/, '');expect(mutated).not.toBe(source);
     type Preflight=(this:{ensureVisibleClient:()=>Promise<void>;builderConnected:()=>Promise<boolean>},value:WorkshopAssignment)=>Promise<void>;
-    const check=async(method:Preflight)=>{const ensure=vi.fn().mockResolvedValue(undefined);for(const mode of ['direct','character'] as const)await method.call({ensureVisibleClient:ensure,builderConnected:async()=>true},assignment(mode));expect(ensure).toHaveBeenCalledTimes(2);};
-    const original=vm.runInNewContext(`({${source}}).preflight`) as Preflight,missing=vm.runInNewContext(`({${mutated}}).preflight`) as Preflight;
-    await check(original);await expect(check(missing)).rejects.toThrow();
+    const check=async(method:Preflight)=>{const ensure=vi.fn().mockResolvedValue(undefined);for(const mode of ['direct','character'] as const)await method.call({ensureVisibleClient:ensure,builderConnected:async()=>true},assignment(mode));if(ensure.mock.calls.length!==2)throw new Error(`ensureVisibleClient callback called ${ensure.mock.calls.length} times; expected 2`);};
+    const context={requireExecutableMode:(value:WorkshopAssignment)=>{if(value.productionMode==='chain')throw new Error('Chain workshop execution is not yet available');}};
+    const original=vm.runInNewContext(`({${source}}).preflight`,context) as Preflight,missing=vm.runInNewContext(`({${mutated}}).preflight`,context) as Preflight;
+    await check(original);await expect(check(missing)).rejects.toThrow('ensureVisibleClient callback called 0 times; expected 2');
   });
 });
 

@@ -28,6 +28,7 @@ export type GameRequest =
   | { op: 'operational-register'; scope: import('./operational.js').ObservationScope; sampleTicks: number; historySamples: number }
   | { op: 'operational-read'; scopeId: string; scopeRevision: number; afterTick: number }
   | { op: 'recipe'; name: string }
+  | { op: 'production-facts'; section: 'products' | 'recipes' | 'machines' | 'availability'; offset: number; limit: number }
   | { op: 'submit'; batch: Batch }
   | { op: 'receipt'; commandId: string }
   | { op: 'cancel'; commandId: string; epoch: string; session: string };
@@ -45,13 +46,14 @@ export function validateRequest(v: unknown): GameRequest {
   switch(r.op) {
     case 'observe': keys(r,['op','surface','area','offset','limit']); name(r.surface); if(!Array.isArray(r.area)||r.area.length!==2)throw new Error('Invalid area'); r.area.forEach(position); if(r.area[0].x>r.area[1].x||r.area[0].y>r.area[1].y)throw new Error('Reversed area'); integer(r.offset,0,10000); integer(r.limit,1,50); break;
     case 'operational-register': {
-      keys(r,['op','scope','sampleTicks','historySamples']); const s=record(r.scope); keys(s,['schema','id','revision','task','surface','area','entityLimit']);
+      keys(r,['op','scope','sampleTicks','historySamples']); const s=record(r.scope); keys(s,['schema','id','revision','task','surface','area','entityLimit',...['recipe','machine','membershipHash'].filter(k=>k in s)]); for(const k of ['recipe','machine','membershipHash']) if(k in s) name(s[k]);
       integer(s.schema,1,1); name(s.id); name(s.task); name(s.surface); integer(s.revision,1,2147483647); integer(s.entityLimit,1,100000);
       if(!Array.isArray(s.area)||s.area.length!==2)throw new Error('Invalid area');s.area.forEach(position);if(s.area[0].x>s.area[1].x||s.area[0].y>s.area[1].y)throw new Error('Reversed area');
       integer(r.sampleTicks,1,3600);integer(r.historySamples,2,10000);break;
     }
     case 'operational-read': keys(r,['op','scopeId','scopeRevision','afterTick']);name(r.scopeId);integer(r.scopeRevision,1,2147483647);integer(r.afterTick,-1,2147483647);break;
     case 'recipe': keys(r,['op','name']); name(r.name); break;
+    case 'production-facts': keys(r,['op','section','offset','limit']); if (!['products','recipes','machines','availability'].includes(String(r.section))) throw new Error('Invalid production section'); integer(r.offset,0,20000); integer(r.limit,1,50); break;
     case 'receipt': keys(r,['op','commandId']); name(r.commandId); break;
     case 'cancel': keys(r,['op','commandId','epoch','session']); name(r.commandId); name(r.epoch); name(r.session); break;
     case 'submit': {

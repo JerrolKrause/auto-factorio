@@ -257,13 +257,14 @@ export function validatePlan(plan) {
   if (!finite(plan.checkpointCadenceMs) || plan.checkpointCadenceMs <= 0) throw new Error('invalid checkpoint cadence');
   if (!Array.isArray(plan.limits) || plan.limits.length === 0) throw new Error('session plan needs limits');
   for (const limit of plan.limits) {
-    if (!['tokens', 'wallMs', 'estimatedCost', 'allowance'].includes(limit.unit) || !finite(limit.value) || limit.value <= 0 || !finite(limit.closeoutReserve) || limit.closeoutReserve >= limit.value) throw new Error(`invalid limit: ${limit.unit ?? 'unknown'}`);
+    if (!['tokens', 'wallMs', 'estimatedCost', 'allowance', 'admissions'].includes(limit.unit) || !finite(limit.value) || limit.value <= 0 || !finite(limit.closeoutReserve) || limit.closeoutReserve >= limit.value) throw new Error(`invalid limit: ${limit.unit ?? 'unknown'}`);
+    if (limit.unit === 'admissions' && (!Number.isSafeInteger(limit.value) || !Number.isSafeInteger(limit.closeoutReserve))) throw new Error('admission limits must be whole counts');
     if (limit.unit === 'allowance' && (!finite(limit.freshnessMs) || limit.freshnessMs <= 0)) throw new Error('allowance limit needs freshnessMs');
   }
   return plan;
 }
 
-export function evaluatePlan(plan, report, now = Date.now()) {
+export function evaluatePlan(plan, report, now = Date.now(), admissions = null) {
   validatePlan(plan); const reasons = []; let unknown = false; let checkpoint = false; let stop = false;
   const selected = new Set((report.sessions ?? []).map(session => session.sessionId));
   const planned = [plan.sessions.author, ...plan.sessions.workers, ...plan.sessions.runs.map(run => typeof run === 'string' ? run : run.sessionId)];
@@ -274,6 +275,7 @@ export function evaluatePlan(plan, report, now = Date.now()) {
     let spent;
     if (limit.unit === 'tokens') spent = report.coverage.complete ? spentTokens : null;
     if (limit.unit === 'wallMs') spent = Number.isFinite(wallMs) ? wallMs : null;
+    if (limit.unit === 'admissions') spent = Number.isSafeInteger(admissions) && admissions >= 0 ? admissions : null;
     if (limit.unit === 'estimatedCost') spent = report.estimate?.complete ? report.estimate.knownSubtotal : null;
     if (limit.unit === 'allowance') {
       const observation = report.account;

@@ -93,6 +93,31 @@ describe('phase 07 durable coordination', () => {
     await f.c.pump(); expect(count()).toBe(initial + 1);
     await f.c.pump(); expect(count()).toBe(initial + 1); f.close();
   });
+  it('keeps an unresolved execution fence until the running receipt is reconciled despite a later direct terminal receipt', async () => {
+    const f = await fixture(); team().forEach(a => f.c.register(a)); await assigned(f);
+    const first = batch(f);
+    f.c.submit('engineer', first); await f.c.pump();
+    expect(f.sends()).toBe(1);
+    expect(f.runtime.execution.pending().find(command => command.batch.commandId === first.commandId)?.receipt?.status).toBe('running');
+
+    Object.assign(f.control.ledger[first.commandId]!, { status: 'completed', completed: 1, unexecuted: 0, endedTick: 101 });
+    const next = { ...batch(f), commandId: 'task-command-next' };
+    expect(() => f.c.submit('engineer', next)).toThrow('Unresolved effects block conflicting work');
+    const intents = () => f.runtime.journal.events().filter(event => event.type === 'command/intent');
+    expect(intents()).toHaveLength(1);
+    expect(f.sends()).toBe(1);
+
+    await f.c.pump();
+    expect(f.runtime.execution.pending().find(command => command.batch.commandId === first.commandId)?.receipt?.status).toBe('completed');
+    f.c.submit('engineer', next); await f.c.pump();
+    expect(f.sends()).toBe(2);
+    expect(intents()).toHaveLength(2);
+    expect(f.runtime.execution.pending().find(command => command.batch.commandId === first.commandId)?.receipt?.status).toBe('completed');
+    await f.c.pump();
+    expect(f.sends()).toBe(2);
+    expect(intents()).toHaveLength(2);
+    f.close();
+  });
   it('renews current authority before slow reconciliation and still fails closed on a stale heartbeat', async () => {
     const f = await fixture(); team().forEach(a => f.c.register(a)); const operator = new Operator(f.c);
     await operator.control('resume'); let heartbeat = false;

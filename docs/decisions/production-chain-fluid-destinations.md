@@ -1,0 +1,9 @@
+# Chain fluid destinations
+
+The production-chain preset revision 2 pins the physical fixture behavior established while implementing the S5 reference probes. Component preset revisions stay unchanged. Old chain attestations remain readable but cannot inherit compatibility with the new profile.
+
+The target port's rate is a required measured delivery rate. It is not a disposal ceiling: capping a destination at exactly its acceptance threshold prevents a conservative observation from proving that threshold. A fluid target destination therefore has a finite full-duty drain bound calculated from the request's declared equipment allowances and the installed planned recipes/machine speeds. This bound is independent of candidate layout and remains determined by the full request and installed profile already included in evaluation-boundary identity. External source capacities and explicit co-product outlet capacities remain as declared. No process supply or disposal outlet is added by this policy.
+
+Fluid target measurements use the existing calibrated co-product policy: 0.001-unit quantum, 0.002-unit production/delivery errors and stock drawdown bound, and 0.01-unit balance residual bound. Evaluation still subtracts errors and rounds down: observed delivery at exactly the requested amount cannot pass its conservative lower bound. Stage production/consumption requirements remain independently enforced.
+
+Declared chain feeds remain empty during construction until successful measurement admission. Connected Factorio 2.0 segments use native fluid insertion/removal: assigning a tank's local read back into its fluidbox replaces the segment total and loses fluid. Delivery credits only actual native removal, and bounded sinks retain unused rounding quota across ticks. The diagnostic `game:production-chain-probe` exercises physical references; complete S5 acceptance also requires ordinary gameplay, negative controls and recovery evidence.

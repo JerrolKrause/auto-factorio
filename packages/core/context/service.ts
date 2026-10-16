@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
 import { DEFAULT_OPERATIONAL_LIMITS, OBSERVATION_SCHEMA, targetRequirements } from '@autofactorio/contracts';
-import type { CoordinatedTask, InterventionRecord, MetricKind, ObservationScope, ProductionTarget, RunManifest } from '@autofactorio/contracts';
+import type { CoordinatedTask, InterventionRecord, MetricKind, MachineSymptom, ObservationScope, OperationalMetric, ProductionTarget, RunManifest } from '@autofactorio/contracts';
 import type { Coordinator, SessionBinding } from '../orchestration/coordinator.js';
 import { privateTo } from './authorization.js';
 import { ContextArchive, DEFAULT_LIMITS, bytes, entityCost, limits, offset, paginate } from './archive.js';
@@ -96,6 +96,10 @@ export class AgentContext {
     // Purpose-built release of the public objective; seed, reference plans and operator manifest stay private.
     const objective: Entry = { ref: { entity: 'runs', id: runtime.run }, value: { objective: manifest?.objective ?? 'Complete assigned tasks', scenario: manifest?.scenario ?? null } };
     const work = tasks.map(e => ({ ref: e.ref, value: pick(e.value as Record<string, unknown>, ['id', 'goal', 'owner', 'manager', 'revision', 'committedPlan', 'status', 'wait', 'scope', 'reservations', 'dependencies', 'evidence', 'productionTarget']) }));
+    // Release only the plan/stage identity of visible tasks, not another role's request or graph.
+    const productionLinks: Entry[] = runtime.journal.list<{ active: boolean; task: string; taskRevision: number; planId: string; revision: number; stage: string }>(runtime.run, 'productionBindings')
+      .filter(b => b.active && visibleTasks.some(t => t.ref.id === b.task && (t.value as { revision: number }).revision === b.taskRevision))
+      .map(b => ({ ref: { entity: 'tasks', id: b.task }, value: { kind: 'production-link', planId: b.planId, planRevision: b.revision, stage: b.stage, task: b.task, taskRevision: b.taskRevision } }));
     // Release ownership status/grants for an already visible current task, excluding raw requests and receipts.
     const reservations: Entry[] = runtime.ownership.list().filter(r => tasks.some(t => t.ref.id === r.task)).map(r => ({ ref: { entity: 'tasks', id: r.task }, value: { kind: 'reservation', id: r.id, state: r.state, revision: r.revision, actor: r.actor, resources: r.resources } }));
     const steering = this.archive.entries('interventions').filter(e => {
@@ -124,7 +128,7 @@ export class AgentContext {
       transitionFields: 'watch|sequence|state|tick|gap|metric', transitionCount: pendingConditions.transitions.length, transitions: encode(pendingConditions.transitions.map(t => [t.watch, t.sequence, t.state, t.tick, t.gap, t.metric])), gap: pendingConditions.gap,
     } }] : [];
     const view: Entry = { ref: { entity: 'agents', id: p.agent }, value: { kind: 'role-view', role: p.role, priorities: p.role === 'foreman' ? ['targets', 'measured supply', 'stock trends', 'dependencies', 'exceptions'] : p.role === 'engineer' ? ['objective', 'ownership', 'actor', 'unresolved commands', 'local symptoms'] : ['targets', 'ownership', 'actor', 'unresolved commands', 'exceptions'], actor: this.coordinator.agent(p.agent).actors.length ? { available: true, inspect: { view: 'actor' } } : { available: false, bodyless: true } } };
-    const page = paginate([objective, view, ...work, ...conditions, ...steering, ...reservations, ...pending, ...outcomes, ...messages], start, this.cap);
+    const page = paginate([objective, view, ...work, ...productionLinks, ...conditions, ...steering, ...reservations, ...pending, ...outcomes, ...messages], start, this.cap);
     // Objective and reservation projections are explicit declassifications; provenance stays in operator telemetry.
     const result = this.delivered(page, { kind: 'replacement-briefing', page, epoch: runtime.context().epoch }, [...tasks, ...commands, ...steering, ...messages].map(t => t.ref));
     const deliveredConditions = page.items.some(item => item.ref.id === `conditions.${p.agent}` && (item.value as Record<string, unknown>)?.kind === 'operational-conditions');
@@ -229,25 +233,37 @@ export class AgentContext {
     return this.delivered(output, telemetry ?? output, [{ entity: 'tasks', id: taskId }]);
   }
   async machines(taskId: string, areaIndex: number, start: number, names?: string[], fields: string[] = ['name', 'quality', 'position', 'unit', 'status', 'recipe', 'inventories', 'power'], cursor?: string, subarea?: [{ x: number; y: number }, { x: number; y: number }]) {
-    return this.world(taskId, areaIndex, start, { types: ['assembling-machine'], ...(names ? { names } : {}), fields, ...(subarea ? { subarea } : {}) }, cursor);
+    return this.world(taskId, areaIndex, start, { types: ['assembling-machine', 'furnace'], ...(names ? { names } : {}), fields, ...(subarea ? { subarea } : {}) }, cursor);
   }
-  private async ensureOperationalScope(taskId: string, areaIndex: number) {
-    const { task, area } = this.authorizedArea(taskId, areaIndex); const id = `${task.id}.area.${areaIndex}`;
+  private async ensureOperationalScope(taskId: string, areaIndex: number, stage?: { recipe: string; machine: string; targets: { name: string; productKind: 'item' | 'fluid'; rate: number }[] }) {
+    const { task, area } = this.authorizedArea(taskId, areaIndex); const id = stage ? `stage.${createHash('sha256').update(JSON.stringify([task.id, areaIndex, stage])).digest('hex').slice(0, 40)}` : `${task.id}.area.${areaIndex}`;
     let scope = this.operational.scope(id);
     if (!scope || scope.revision !== task.revision) {
-      const next: ObservationScope = { schema: OBSERVATION_SCHEMA, id, revision: task.revision, task: task.id, surface: area.surface, area: area.bounds, entityLimit: this.operational.limits.maxEntities };
+      const next: ObservationScope = { schema: OBSERVATION_SCHEMA, id, revision: task.revision, task: task.id, surface: area.surface, area: area.bounds, entityLimit: this.operational.limits.maxEntities, ...(stage ? { recipe: stage.recipe, machine: stage.machine } : {}) };
       await this.coordinator.runtime.query({ op: 'operational-register', scope: next, sampleTicks: this.operational.limits.sampleTicks, historySamples: this.operational.limits.historySamples });
       this.recheckTask(task); scope = this.operational.register(next, { kind: 'restricted', agents: [], roles: [], tasks: [task.id] });
-      if (task.productionTarget && !this.watches.list().some(w => w.scopeId === scope!.id && w.task === task.id && w.scopeRevision === scope!.revision)) {
-        const role = task.owner ?? task.manager;
-        this.watches.register({ id: `target.${scope.id}`, role, task: task.id, scopeId: scope.id, scopeRevision: scope.revision, metric: { kind: 'production', name: task.productionTarget.name, quality: task.productionTarget.quality, surface: task.productionTarget.surface }, threshold: task.productionTarget.rate * 0.95, recovery: task.productionTarget.rate * 1.05, persistenceTicks: this.operational.limits.watchPersistenceTicks }, { kind: 'restricted', agents: [], roles: [], tasks: [task.id] });
-      }
     }
-    const prior = this.operational.samples(id, scope.revision).at(-1)?.tick ?? -1;
+    // A failed watch admission must remain a failure on retry, even after scope registration.
+    if (stage) for (const target of stage.targets.filter(t => t.rate > 0)) {
+      const watchId = 'output.' + scope.id + '.' + createHash('sha256').update(target.productKind + ':' + target.name).digest('hex').slice(0, 12);
+      if (this.watches.list().some(w => w.id === watchId && w.scopeRevision === scope.revision)) continue;
+      this.watches.register({ id: watchId, role: task.owner ?? task.manager, task: task.id, scopeId: scope.id, scopeRevision: scope.revision, metric: { kind: 'production', name: target.name, productKind: target.productKind, quality: 'normal', surface: area.surface }, threshold: target.rate * 0.95, recovery: target.rate, persistenceTicks: this.operational.limits.watchPersistenceTicks }, { kind: 'restricted', agents: [], roles: [], tasks: [task.id] });
+    }
+    if (task.productionTarget && !this.watches.list().some(w => w.scopeId === scope!.id && w.task === task.id && w.scopeRevision === scope!.revision)) {
+      const role = task.owner ?? task.manager;
+      this.watches.register({ id: `target.${scope.id}`, role, task: task.id, scopeId: scope.id, scopeRevision: scope.revision, metric: { kind: 'production', name: task.productionTarget.name, quality: task.productionTarget.quality, surface: task.productionTarget.surface }, threshold: task.productionTarget.rate * 0.95, recovery: task.productionTarget.rate * 1.05, persistenceTicks: this.operational.limits.watchPersistenceTicks }, { kind: 'restricted', agents: [], roles: [], tasks: [task.id] });
+    }
+    const prior = this.operational.samples(id, scope.revision, this.coordinator.runtime.context().epoch).at(-1)?.tick ?? -1;
     const response = await this.coordinator.runtime.query({ op: 'operational-read', scopeId: id, scopeRevision: scope.revision, afterTick: prior });
     this.recheckTask(task);
-    for (const raw of Array.isArray(response.samples) ? response.samples : []) this.operational.ingest(raw as never, { kind: 'restricted', agents: [], roles: [], tasks: [task.id] });
+    for (const raw of (Array.isArray(response.samples) ? response.samples : []).filter(s => s.epoch === this.coordinator.runtime.context().epoch)) this.operational.ingest(raw as never, { kind: 'restricted', agents: [], roles: [], tasks: [task.id] });
     return { scope, tick: Number(response.tick ?? prior) };
+  }
+  async stageMetrics(taskId: string, areaIndex: number, windowTicks: number, stage: { recipe: string; machine: string; targets: { name: string; productKind: 'item' | 'fluid'; rate: number }[] }): Promise<{ scope: { id: string; revision: number }; tick: number; metrics: OperationalMetric[]; symptoms: MachineSymptom[]; symptomsOmitted: number }> {
+    if (!Number.isSafeInteger(windowTicks) || windowTicks < this.operational.limits.sampleTicks || windowTicks > this.operational.limits.sampleTicks * (this.operational.limits.historySamples - 1)) throw new Error('Invalid production status window');
+    const { scope, tick } = await this.ensureOperationalScope(taskId, areaIndex, stage);
+    const latest = this.operational.samples(scope.id, scope.revision, this.coordinator.runtime.context().epoch).at(-1);
+    return { scope: { id: scope.id, revision: scope.revision }, tick, metrics: this.operational.metrics(scope.id, windowTicks, tick), symptoms: latest?.symptoms ?? [], symptomsOmitted: latest?.symptomsOmitted ?? 0 };
   }
   async metrics(taskId: string, areaIndex: number, windowTicks: number, kinds?: MetricKind[], items?: string[]) {
     const { scope, tick } = await this.ensureOperationalScope(taskId, areaIndex);

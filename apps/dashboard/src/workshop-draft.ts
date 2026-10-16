@@ -1,5 +1,8 @@
+import { isWorkshopChainSetup } from '../../../packages/contracts/src/workshop-chain-setup.js';
+import type { WorkshopChainSetup } from '@autofactorio/contracts';
 export const WORKSHOP_DRAFT_KEY = 'autofactorio.workshop.draft.v1';
 export interface WorkshopDraftValues {
+  productionMode?: 'component' | 'chain'; chainSetup?: WorkshopChainSetup; chainProfile?: string;
   objective: string; profile: string; construction: 'direct' | 'character'; libraryAccess: boolean;
   attempts: number; earlyStop: boolean; checkpoints: { brief: boolean; afterScore: boolean; libraryAdmission: boolean; learningActivation: boolean };
   model: string; effort: string; designerModel: string; designerEffort: string; scorerModel: string; scorerEffort: string; learningsModel: string; learningsEffort: string;
@@ -18,7 +21,10 @@ function validDraft(value: unknown): value is WorkshopDraftValues {
   const numbers = ['attempts','settling','windowTicks','windows','wallMinutes','turns','toolCalls','learningBatch','learningCandidates','learningAttempts','learningTurns'];
   const booleans = ['libraryAccess','earlyStop','autoActivate'];
   const checkpoints = v.checkpoints as Record<string, unknown> | null;
-  return strings.every(key => typeof v[key] === 'string') && numbers.every(key => typeof v[key] === 'number' && Number.isFinite(v[key])) &&
+  return (v.productionMode === undefined || v.productionMode === 'component' || v.productionMode === 'chain') &&
+    (v.chainSetup === undefined || isWorkshopChainSetup(v.chainSetup)) && (v.chainProfile === undefined || typeof v.chainProfile === 'string') &&
+    (v.productionMode !== 'chain' || (isWorkshopChainSetup(v.chainSetup) && typeof v.chainProfile === 'string')) &&
+    strings.every(key => typeof v[key] === 'string') && numbers.every(key => typeof v[key] === 'number' && Number.isFinite(v[key])) &&
     booleans.every(key => typeof v[key] === 'boolean') && (v.construction === 'direct' || v.construction === 'character') &&
     (v.improveRevision === null || typeof v.improveRevision === 'string') && (v.selectedGroupId === null || typeof v.selectedGroupId === 'string') && !!checkpoints && typeof checkpoints === 'object' &&
     ['brief','afterScore','libraryAdmission','learningActivation'].every(key => typeof checkpoints[key] === 'boolean');

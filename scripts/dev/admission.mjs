@@ -5,15 +5,20 @@ import { safeRuntimePath, sha256, writeNewJson } from './safe-artifacts.mjs';
 
 /** Local admission only; external reasoning/direct commands remain outside enforcement. */
 export function admitWork(plan, report, { now = Date.now(), admissions = 0, alternative } = {}) {
-  let checkpoint = evaluatePlan(plan, report, now);
+  let checkpoint = evaluatePlan(plan, report, now, admissions);
   if (checkpoint.decision !== 'stop' && report.coverage?.aggregate !== true) checkpoint = { ...checkpoint, decision: 'unknown', reasons: [...checkpoint.reasons, { unit: 'tokens', reason: 'aggregate-accounting-unknown' }] };
   if (checkpoint.decision !== 'stop' && report.version === 2 && (!Number.isFinite(Date.parse(report.observedAt)) || now - Date.parse(report.observedAt) > plan.checkpointCadenceMs || now < Date.parse(report.observedAt))) checkpoint = { ...checkpoint, decision: 'unknown', reasons: [...checkpoint.reasons, { unit: 'tokens', reason: 'usage-checkpoint-stale-or-unknown' }] };
   const result = { ...checkpoint, advisory: false, enforcement: 'managed-admission-only', directCommandsCovered: false, alreadyRunningReasoningCovered: false, cleanupAllowed: true };
+  if (!Number.isSafeInteger(admissions) || admissions < 0) return { ...result, admitted: false, reason: 'invalid-admission-count' };
   if (checkpoint.decision === 'stop') return { ...result, admitted: false };
   if (checkpoint.decision === 'unknown') {
-    const valid = alternative && typeof alternative.reason === 'string' && alternative.reason.trim() && Number.isSafeInteger(alternative.maxAdmissions) && alternative.maxAdmissions > 0 && Number.isSafeInteger(alternative.deadlineMs) && alternative.deadlineMs > now;
+    // A deadline may be omitted only with an explicit durable admission-count
+    // limit and no wall limit. Existing time-bounded plans still require it.
+    const countOnly = plan.limits.some(limit => limit.unit === 'admissions') && !plan.limits.some(limit => limit.unit === 'wallMs');
+    const deadlineValid = alternative?.deadlineMs === undefined ? countOnly : Number.isSafeInteger(alternative.deadlineMs) && alternative.deadlineMs > now;
+    const valid = alternative && typeof alternative.reason === 'string' && alternative.reason.trim() && Number.isSafeInteger(alternative.maxAdmissions) && alternative.maxAdmissions > 0 && deadlineValid;
     if (!valid || admissions >= alternative.maxAdmissions) return { ...result, admitted: false, reason: 'unknown-accounting-needs-bounded-alternative' };
-    return { ...result, admitted: true, alternative: { reason: alternative.reason, maxAdmissions: alternative.maxAdmissions, deadlineMs: alternative.deadlineMs } };
+    return { ...result, admitted: true, alternative: { reason: alternative.reason, maxAdmissions: alternative.maxAdmissions, ...(alternative.deadlineMs === undefined ? {} : { deadlineMs: alternative.deadlineMs }) } };
   }
   return { ...result, admitted: true };
 }

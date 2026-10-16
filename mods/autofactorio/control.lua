@@ -7,6 +7,7 @@ local S=require("first_shift")
 local SM=require("first_shift_measurement")
 local O=require("operational")
 local W=require("workshop")
+local P=require("production")
 local function setup()
  if remote.interfaces.freeplay then
   remote.call("freeplay","set_skip_intro",true);remote.call("freeplay","set_disable_crashsite",true);remote.call("freeplay","set_created_items",{})
@@ -140,6 +141,7 @@ local function gameplay(r)
   if r.op=="cancel" then C.keys(r,{"op","commandId","epoch","session"});C.check(r.epoch==storage.af.epoch and r.session==storage.af.session,"stale_epoch_or_session") else C.keys(r,{"op","commandId"}) end;C.id(r.commandId);local o=storage.af.orders[r.commandId]
   if r.op=="cancel" and o and (o.status=="accepted" or o.status=="running" or o.status=="suspended") then done(o,"cancelled","operator_cancelled");o.pending=nil end
   return {ok=true,receipt=receipt(o)}
+ elseif r.op=="production-facts" then return P.read(r)
  elseif r.op=="recipe" then
  C.keys(r,{"op","name"});C.id(r.name);local recipe=game.forces.player.recipes[r.name];C.check(recipe,"recipe_not_found")
   return {ok=true,tick=game.tick,mods=script.active_mods,recipe={name=recipe.name,energy=recipe.energy,category=recipe.category,ingredients=recipe.ingredients,products=recipe.products,enabled=recipe.enabled}}

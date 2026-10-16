@@ -68,8 +68,11 @@ function M.tick(p,o,s)
   local e=entity(p,s);F.box(o.batch,e.bounding_box);C.check(e.minable,"not_minable");p.update_selected_entity(e.position);C.check(p.selected==e,"selection_blocked");p.mining_state={mining=true,position=e.position};return false
  elseif s.kind=="rotate" then local e=entity(p,s);local box=e.prototype.collision_box;local radius=math.max(math.abs(box.left_top.x),math.abs(box.left_top.y),math.abs(box.right_bottom.x),math.abs(box.right_bottom.y));F.box(o.batch,{left_top={x=e.position.x-radius,y=e.position.y-radius},right_bottom={x=e.position.x+radius,y=e.position.y+radius}});C.check(e.rotate{by_player=p},"rotation_failed");return true
  elseif s.kind=="recipe" then
-  local e=entity(p,s);C.check(e.type=="assembling-machine","not_assembler");local recipe=p.force.recipes[s.recipe];C.check(recipe and recipe.enabled,"recipe_unavailable")
+  local e=entity(p,s);C.check(e.type=="assembling-machine" or e.type=="furnace","not_assembler");local recipe=p.force.recipes[s.recipe];C.check(recipe and recipe.enabled,"recipe_unavailable")
   F.box(o.batch,e.bounding_box)
+  -- Furnaces choose recipes from inputs. Preserve a compatible construction
+  -- hint without calling the assembler-only setter or claiming production.
+  if e.type=="furnace" then C.check(e.prototype.crafting_categories[recipe.category],"recipe_unavailable");return true end
   local returned=e.set_recipe(s.recipe,"normal");for _,i in pairs(returned) do local n=p.insert(i);if n<i.count then p.surface.spill_item_stack{position=p.position,stack={name=i.name,quality=i.quality,count=i.count-n},enable_looted=true,force=p.force} end end
   C.check(e.get_recipe() and e.get_recipe().name==s.recipe,"recipe_failed");return true
  elseif s.kind=="transfer" then

@@ -7,6 +7,11 @@ import { CoordinationGateway, operations } from './coordination.js';
 import { ContextAccounting } from '../../core/context/lifecycle.js';
 
 const descriptions: Record<string, string> = {
+  production_status: 'Inspect current plan/stage task links, calculated local required rates, recipe/machine-scoped ordinary metrics and honest unknowns. Supply id, revision; optional stage, area (task area index, default 0), windowTicks (60..7140, default 600), offset. Assigned executors must name their stage. Returns at most four stages and 24 metrics each with explicit omissions. Read-only observation may register existing durable watches; no build, evaluator success or causal certainty is granted.',
+  production_commit: 'Atomically commit selected stages of your latest feasible executable plan into existing coordinator task proposals. Supply requestId, id, revision, assignments [{stage,task}]. task is a full proposal with committedPlan="<plan id>.<revision>/<stage>" or an existing {id,revision} managed by you. Exact retries return the original mapping; changed payload conflicts. Construction dependencies are explicit and separate from continuous supply. Handoff and legal character build use existing tools; no game effects or production success are granted.',
+  production_plan: 'Calculate and store an immutable production plan from a public schema-1 request and refreshed facts. Modes explore/rate/quantity; declare target, sources/caps, finite stock, electricity, construction equipment, sinks, routes, machines and fuels. Optional prior {id,revision} creates a new revision. Returns bounded summary and explicit blockers. Creates no gameplay tasks or game effects; nominal capacity is not measured success.',
+  production_inspect: 'Retrieve bounded exact stages and balances for your stored {id,revision}; optional stage and depth (0..6) select a subgraph. view=request returns paged exact normalized public-request JSON; concatenate requestChunk.text in offset order and parse after the last page. Use opaque cursor for continuation. Unchanged revisions survive session replacement; stale facts/availability require explicit revalidation. No execution authority is granted.',
+  production_search: 'Search installed products by name or aliases (blue circuits, yellow science, petroleum gas). Returns producing recipes, compatible machine geometry/fluid ports and current research/profile blockers. Results page producer records; product identities can repeat for distinct routes. Use product (item:name or fluid:name), recipe (recipe:name) and machine (machine:name) for bounded exact detail; use the opaque cursor for continuation. Profile restricts recipes/equipment; it never unlocks research.',
   scenario: 'Read the public scenario briefing, finite kit, terminals, collector and rules.',
   observe: 'Read bounded durable objective, tasks, ownership, pending commands, receipts and messages.',
   propose: 'Create a task. task fields: id, goal, parent (null or id), dependencies (ids), scope (object), resources (item-count object), successCriteria (strings), deadline (game tick or null), committedPlan (string), actor (builder-1 or null), reservations (resource objects), criteria ({kind: command-completed or message-delivered, id}). Reserve character {kind:actor,actor:builder-1}, inventory {kind:items,actor:builder-1}, and area {kind:area,surface:nauvis,bounds:[{x,y},{x,y}]}. Inspect scenario for site bounds. A message-delivered criterion can name the engineer final report message id.',
@@ -21,9 +26,9 @@ const descriptions: Record<string, string> = {
   interpret: 'Acknowledge an operator hint with interpretation and resultingTasks/supersededTasks arrays. Exact advice remains recorded independently.',
   report: 'Request task completion using deterministic evidence IDs matching task criteria; this does not claim the scenario passed.',
 };
-const strings = new Set(['task', 'commandId', 'query', 'name', 'id', 'interpretation', 'view', 'cursor']);
-const numbers = new Set(['revision', 'deadline', 'area', 'offset', 'windowTicks']);
-const arrays = new Set(['steps', 'evidence', 'refs', 'resultingTasks', 'supersededTasks', 'types', 'names', 'fields', 'kinds', 'items', 'subarea']);
+const strings = new Set(['requestId', 'task', 'commandId', 'query', 'name', 'id', 'interpretation', 'view', 'cursor', 'product', 'recipe', 'machine', 'stage']);
+const numbers = new Set(['revision', 'deadline', 'area', 'offset', 'windowTicks', 'depth']);
+const arrays = new Set(['assignments', 'steps', 'evidence', 'refs', 'resultingTasks', 'supersededTasks', 'types', 'names', 'fields', 'kinds', 'items', 'subarea']);
 export function toolCatalog(c: Coordinator, role: string) {
   return Object.entries(operations).filter(([name, op]) => name !== 'submit' && c.agent(role).definition.tools.includes(op.group)).map(([name, op]) => ({
     name, description: descriptions[name] ?? `Bounded ${name} operation on authorized durable records.`,

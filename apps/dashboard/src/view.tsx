@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import type { DashboardSnapshot } from '../../runtime/dashboard-types.js';
 import type { Event } from '../../../packages/core/execution/durable.js';
 import { applyEvent, roleState } from './state.js';
+import { ProductionActivity } from './production.js';
 import { WorkshopPanel } from './workshop.js';
 import { MainNavigation, useNavigation } from './navigation.js';
 import { RunDetail, RunHistory } from './history.js';
@@ -11,6 +12,7 @@ const show = (v: unknown) => v === null || v === undefined ? 'Unknown' : String(
 export function App() {
   const { page, runId, navigate } = useNavigation();
   const [data, setData] = useState<DashboardSnapshot>();
+  const [productionPlanVersion, setProductionPlanVersion] = useState(0);
   const [connection, setConnection] = useState('Connecting');
   const [error, setError] = useState(''); const [detail, setDetail] = useState<unknown>();
   const [libraryDetail,setLibraryDetail]=useState<unknown>();
@@ -41,7 +43,7 @@ export function App() {
     const connect = async () => {
       try {
         const initial = await api('snapshot') as DashboardSnapshot;
-        if (closed) return; setData(initial); setConnection('Live');
+        if (closed) return; setData(initial); setProductionPlanVersion(initial.cursor); setConnection('Live');
         const response = await fetch('/api/events?after=' + initial.cursor, { signal: abort.signal });
         if (!response.ok || !response.body) throw new Error('Event stream unavailable');
         const reader = response.body.getReader(); const decoder = new TextDecoder(); let buffer = '';
@@ -52,7 +54,7 @@ export function App() {
           while ((end = buffer.indexOf('\n\n')) >= 0) {
             const frame = buffer.slice(0, end); buffer = buffer.slice(end + 2);
             const line = frame.split('\n').find(l => l.startsWith('data: '));
-            if (line) { const event = JSON.parse(line.slice(6)) as Event; setData(prior => prior ? applyEvent(prior, event) : prior); }
+            if (line) { const event = JSON.parse(line.slice(6)) as Event; if (event.changes.some(change => change.entity === 'productionPlans')) setProductionPlanVersion(event.sequence); setData(prior => prior ? applyEvent(prior, event) : prior); }
           }
         }
       } catch (e) { if (!closed) { setConnection('Disconnected · reconnecting'); setError(String(e)); timer = setTimeout(() => void connect(), 1500); } }
@@ -119,6 +121,7 @@ export function App() {
       <section className="panel"><div className="sectiontitle"><h2>Agent roster</h2><span>{agents.length} roles</span></div><div className="roster">{agents.map(a => <article className="agent" key={show(a.id)}><span className="agenticon">{show(a.id).slice(0, 1).toUpperCase()}</span><h3>{show(a.id)}</h3><p className="badge">{data ? roleState(a, data) : 'Unknown activity'}</p><p>{a.assignment ? 'Task: ' + show(a.assignment) : 'No current assignment'}</p><button onClick={() => setDetail(a)}>Inspect role →</button></article>)}</div></section>
       <section className="panel"><div className="sectiontitle"><h2>Committed work</h2><span>Dependencies & revisions</span></div>{!tasks.length && <p className="empty">No tasks committed yet.</p>}{tasks.map(t => <article className="task" key={show(t.id)}><div><strong>{show(t.goal)}</strong><p>{show(t.id)} · revision {show(t.revision)} · {show(t.owner)} · {show(t.status)} {t.wait ? ' / ' + show(t.wait) : ''}</p><p>Depends on: {(t.dependencies as string[] ?? []).join(' → ') || 'No dependencies'}</p></div><button onClick={() => setDetail(t)}>Evidence</button><button onClick={() => { const goal = prompt('Revised goal', show(t.goal)); if (goal) void command('reprioritize', { task: t.id, revision: t.revision, goal, committedPlan: t.committedPlan }); }}>Reprioritize</button></article>)}</section>
       <section className="panel"><h2>Batch progress</h2>{!(data?.projections.commands?.length) && <p className="empty">No construction batches submitted.</p>}{data?.projections.commands?.map((c, i) => { const b = c.batch as { commandId: string; steps: unknown[] }; const r = c.receipt as { status: string; completed: number } | null; return <article className="task" key={i}><div><strong>{b.commandId}</strong><p>{r?.status ?? show(c.state)} · {r?.completed ?? 0}/{b.steps.length} steps</p><progress max={b.steps.length} value={r?.completed ?? 0} /></div><button onClick={() => setDetail(c)}>Inputs / results</button></article>; })}</section>
+      <ProductionActivity api={api} inspect={setDetail} planVersion={productionPlanVersion} />
       <section className="panel"><div className="sectiontitle"><h2>Production & measurements</h2><span>Engine evidence</span></div>{!data?.projections.measurements?.length && <p className="empty">Measurement telemetry unavailable.</p>}{data?.projections.measurements?.map((m, i) => <article className="measurement" key={i}><strong>{show(m.name)}</strong><small>Tick {show(m.gameTick)} · {m.complete ? 'Recorded' : 'Telemetry unavailable'} · {show(m.scoring ?? 'Independent measurement')}</small><pre>{json(m.value)}</pre></article>)}</section>
       <section className="panel"><div className="sectiontitle"><h2>Correlated timeline</h2><button onClick={() => { void api('history?after=' + historyCursor.current).then(v => { const page = v as Event[]; historyCursor.current = page.at(-1)?.sequence ?? historyCursor.current; setHistory(prior => [...prior, ...page]); }).catch(e => setError(String(e))); }}>Load durable history</button></div><p className="hint">{history.length ? 'Paged history from run start' : 'Latest 200 events; older evidence remains in durable history'}</p><div className="timeline">{events.slice().reverse().map(e => <button className="event" key={e.sequence} onClick={() => setDetail(e)}><span>#{e.sequence}</span><strong>{e.type}</strong><small>{e.wallTime.slice(11, 19)} · tick {show(e.gameTick)}</small></button>)}</div></section>
     </div><aside>

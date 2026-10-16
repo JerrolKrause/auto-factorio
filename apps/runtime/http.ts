@@ -6,6 +6,7 @@ import type { ServerResponse } from 'node:http';
 import type { Operator } from './operator.js';
 import type { TaskInput } from '../../packages/core/orchestration/coordinator.js';
 import { entities } from '../../packages/storage/src/journal.js';
+import { operatorPlans, operatorStages } from '../../packages/core/production/operator.js';
 import type { DashboardSnapshot } from './dashboard-types.js';
 import { validateWorkshopAssignment } from '@autofactorio/contracts';
 import { composeWorkshop } from './workshop-composition.js';
@@ -52,10 +53,12 @@ export function dashboard(operator: Operator, assets = path.resolve('apps/dashbo
   app.get('/api/snapshot', () => {
     // No await between projections and cursor: one Node writer gives an atomic read boundary.
     const cursor = runtime.journal.cursor();
-    const projections = Object.fromEntries(entities.map(e => [e, runtime.journal.rows(runtime.run, e)]));
+    const projections = Object.fromEntries(entities.filter(e => !['productionPlans', 'productionStatuses'].includes(e)).map(e => [e, runtime.journal.rows(runtime.run, e)]));
     const snapshot: DashboardSnapshot = { run: runtime.run, cursor, control: operator.state(), projections, events: runtime.journal.page(runtime.run, Math.max(0, cursor - 100), 100) };
     return snapshot;
   });
+  app.get('/api/production/plans', request => operatorPlans(operator.coordinator, Number(record(request.query).offset ?? 0)));
+  app.get('/api/production/plans/:id/:revision/stages', request => { const params = record(request.params); return operatorStages(operator.coordinator, text(params.id), Number(params.revision), Number(record(request.query).offset ?? 0), operator.state().gameTick ?? undefined); });
   const cursor = (query: unknown) => {
     const raw = record(query).after ?? '0';
     if (typeof raw !== 'string' || !/^\d+$/.test(raw)) throw new Error('Invalid cursor');
@@ -108,7 +111,7 @@ export function dashboard(operator: Operator, assets = path.resolve('apps/dashbo
     try{return readInvocationPage(invocationFile(directory,sourceId,invocationId),invocationId,part as 'instructions'|'context'|'messages'|'output',Number(query.offset??0),Number(query.limit??16000));}
     catch(error){if((error as NodeJS.ErrnoException).code==='ENOENT')return reply.code(404).send({unavailable:'not-retained'});throw error;}
   });
-  app.get('/api/workshop/options', () => ({ provider:'openai', models:options.managedModels ?? [], profiles:['starter-assembly','advanced-assembly','electromagnetic-production'], presets:runtime.journal.list<Record<string,unknown>>(runtime.run,'workshopProfiles').filter(v=>v.kind==='preset'), defaults:{construction:'direct',attempts:5,earlyStop:true,requestedSpeed:'10',settlingTicks:600,windowTicks:3600,windows:5,checkpoints:{brief:false,afterScore:false,libraryAdmission:false,learningActivation:false},learning:{cadence:'after-session',candidateCap:3,attemptCap:2}} }));
+  app.get('/api/workshop/options', () => ({ provider:'openai', models:options.managedModels ?? [], profiles:['starter-assembly','advanced-assembly','electromagnetic-production'], chainProfiles:['starter-assembly','advanced-assembly','production-chain'], presets:runtime.journal.list<Record<string,unknown>>(runtime.run,'workshopProfiles').filter(v=>v.kind==='preset'), defaults:{construction:'direct',attempts:5,earlyStop:true,requestedSpeed:'10',settlingTicks:600,windowTicks:3600,windows:5,checkpoints:{brief:false,afterScore:false,libraryAdmission:false,learningActivation:false},learning:{cadence:'after-session',candidateCap:3,attemptCap:2}} }));
   app.get('/api/workshop/profile', async (request,reply) => {if(!options.profileReader)return reply.code(503).send({unavailable:'installed-game-profile-unavailable'});const profileId=text(record(request.query).profileId);if(!['starter-assembly','advanced-assembly','electromagnetic-production'].includes(profileId))throw new Error('Unknown workshop profile');const installed=await options.profileReader(profileId);return{profileId:installed.profileId,profileRevision:installed.profileRevision,gameVersion:installed.gameVersion,allowedEquipment:installed.allowedEquipment,technologies:installed.technologies,modules:installed.modules,beacons:installed.beacons};});
   app.post('/api/workshop/preset',async request=>{if(!options.workshopHost)throw new Error('Workshop execution host unavailable');const input=record(request.body);const id=text(input.id);const assignment=validateWorkshopAssignment(await options.workshopHost.resolve(input.assignment));runtime.record('workshop/preset-saved',[{entity:'workshopProfiles',id:'preset-'+id,value:{id,kind:'preset',assignment}}]);return{id,assignment};});
   app.post('/api/workshop/launch', async (request,reply) => {if(!workshopRuntime)throw new Error('Workshop execution host unavailable');const input=record(request.body),raw=record(input.assignment);const supplied=raw.learning&&typeof raw.learning==='object'?record(raw.learning):{};const assignment={...raw,learning:{cadence:supplied.cadence??'after-session',batchSessions:supplied.batchSessions??5,candidateCap:supplied.candidateCap??3,attemptsPerCandidate:supplied.attemptsPerCandidate??2,autoActivate:supplied.autoActivate??true}},selectedGroupId=typeof input.selectedGroupId==='string'?input.selectedGroupId:null;
@@ -125,6 +128,7 @@ export function dashboard(operator: Operator, assets = path.resolve('apps/dashbo
     return workshopRuntime?workshopRuntime.stop(id,reason):workshop.stop(id,reason);
   });
   app.get('/api/workshop/library',request=>{const query=record(request.query);const search=typeof query.q==='string'?query.q.toLowerCase():'';const after=typeof query.after==='string'&&/^\d+$/.test(query.after)?Number(query.after):0;const rows=library.search({limit:100,offset:0}).map(value=>{const entry={...value} as Partial<typeof value>;delete entry.directory;return entry;}).filter(v=>!search||JSON.stringify(v).toLowerCase().includes(search));return{items:rows.slice(after,after+50),next:after+50<rows.length?after+50:null,total:rows.length};});
+  app.get('/api/workshop/library/:id',request=>{const value=library.get(text(record(request.params).id));return{entry:{...value.entry,directory:undefined},provenance:value.evidence.provenance??null};});
   app.get('/api/workshop/library/:id/export',request=>{const value=library.get(text(record(request.params).id));return{entry:{...value.entry,directory:undefined},blueprint:value.blueprint,portable:value.portable};});
   app.post('/api/workshop/learning',request=>{const input=record(request.body),action=text(input.action);if(action==='rollback')return learning.rollback(text(input.hash),text(input.operationId));if(action==='quarantine')return learning.quarantine(text(input.hash),text(input.reason));throw new Error('Unknown learning control');});
   app.get('/api/events', (request, reply) => {

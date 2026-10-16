@@ -16,6 +16,14 @@ The user's current instructions govern the work. Approved product requirements a
 
 For an authorized milestone, work autonomously through implementation, project dependency installation, tests, dedicated local game runs, fixes and documentation. Continue through routine decisions without renewed confirmation. Ask only for material scope changes, spending, publishing, destructive changes to existing user data, or a blocker requiring user input, subject to enforced tool permissions. Keep prerequisite upgrades user-managed and use project-scoped game data. This standing instruction does not start a milestone by itself.
 
+## Keep work on the acceptance path
+
+- Name the next acceptance criterion to close, its concrete blockers and the required proof. Choose the next action from those blockers.
+- Prioritize working end-to-end behavior and required failure paths. Defer optional polish, generalization, adjacent features and workflow tooling until ticket acceptance passes.
+- Use existing runners and the minimum required evidence records. Avoid additional checkpoint/reporting frameworks; reuse dependency-matched results instead of rerunning unaffected checks. Preserve all required verification and independent review.
+- Compile new or changed test fixtures before repeated behavioral runs. Diagnose fixture and selector failures locally; do not broaden product scope or weaken assertions to make tests pass.
+- Report completed acceptance criteria and remaining blockers, not activity volume. Mark tasks when their full criteria pass. If a work session closes no criterion, explain the impediment and revise the next bounded plan.
+
 ## Preserve the project intent
 
 - Use deterministic code for execution, calculations, measurements, scheduling and routine monitoring. Use model reasoning for planning, design and unfamiliar diagnosis.

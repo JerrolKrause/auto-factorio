@@ -1,4 +1,4 @@
-import { normalizeEffectReceipt, resolveWorkshopModels, validateWorkshopAssignment } from '@autofactorio/contracts';
+import { assertWorkshopLibraryPolicy, normalizeEffectReceipt, resolveWorkshopModels, validateWorkshopAssignment } from '@autofactorio/contracts';
 import type { EffectReceipt, ModelSelection, WorkshopAssignment, WorkshopCandidateRef, WorkshopEvaluationReport, WorkshopScore, WorkshopCritique } from '@autofactorio/contracts';
 import type { LibraryAdmission, LibraryEntry } from './library.js';
 import { BlueprintLibrary } from './library.js';
@@ -48,6 +48,7 @@ export class WorkshopRuntime {
   constructor(private orchestrator:WorkshopOrchestrator,private host:WorkshopRuntimeHost,private library:BlueprintLibrary,private available:()=>ModelSelection[],private bundleHash:(sessionId:string)=>string,private listSessions:()=>WorkshopSessionState[],private publish:(entry:LibraryEntry)=>void,private history?:{admit:(id:string,input:unknown)=>{request:WorkspaceRequest;newlyAdmitted:boolean};owns:(id:string)=>boolean;stopIntent:(id:string,reason:string)=>WorkspaceRequest|null;stopRequested:(id:string)=>boolean;stopRetired?:(id:string,reason:string)=>WorkspaceRequest|null;transition:(id:string,state:WorkspaceRequest['state'],reason?:string|null)=>WorkspaceRequest;begin:(assignment:WorkshopAssignment,selectedGroupId:string|null)=>{group:WorkspaceGroupIdentity;run:WorkspaceRunIdentity};journaled:(runId:string)=>void}){}
   /** Fast durable admission for HTTP. Preparation continues without browser ownership. */
   accept(input:unknown,selectedGroupId:string|null=null):WorkspaceRequest {
+    assertWorkshopLibraryPolicy(input);
     if(!this.history)throw new Error('Workspace coordinator unavailable');
     const id=this.inputId(input),admitted=this.history.admit(id,{assignment:input,selectedGroupId});
     if(admitted.newlyAdmitted){
@@ -59,6 +60,7 @@ export class WorkshopRuntime {
     return admitted.request;
   }
   async launch(input:unknown,selectedGroupId:string|null=null):Promise<WorkshopSessionState>{
+    assertWorkshopLibraryPolicy(input);
     if(this.history){
       const id=this.inputId(input),admitted=this.history.admit(id,{assignment:input,selectedGroupId});
       if(!admitted.newlyAdmitted){
@@ -150,7 +152,7 @@ export class WorkshopRuntime {
   private enqueue(id:string):void{if(this.closing||this.active.has(id))return;const task=Promise.resolve().then(()=>this.run(id)).catch(error=>{const current=this.orchestrator.get(id);if(error instanceof WorkshopStopRequested||current.stopRequested)return;if(!['complete','held','stopped'].includes(current.stage)){const reason=String(error),unknown=error instanceof WorkshopEffectOutcomeError&&error.outcome==='unknown'||reason.includes('Workshop effect outcome unknown');if(unknown)this.orchestrator.holdInFlight(id,`workshop_runtime_held:${reason}`);else this.orchestrator.fail(id,`workshop_runtime_failed:${reason}`);}}).finally(()=>{this.active.delete(id);const session=this.orchestrator.get(id);if(session.stage==='complete')this.history?.transition(id,'completed');else if(session.stage==='held')this.history?.transition(id,'held',session.stopReason);else if(session.stage==='stopped')this.history?.transition(id,session.stopReason?.includes('failed')?'failed':'cancelled',session.stopReason);});this.active.set(id,task);}
   private async run(id:string):Promise<void>{
     for(;;){
-      let session=this.orchestrator.get(id);if(['complete','held','stopped'].includes(session.stage))return;this.guard(id);if(session.stage==='checkpoint'){this.track(id);return;}
+      let session=this.orchestrator.get(id);if(['complete','held','stopped'].includes(session.stage))return;this.guard(id);assertWorkshopLibraryPolicy(session.assignment);if(session.stage==='checkpoint'){this.track(id);return;}
       if(session.stage==='configured'){this.orchestrator.preflight(id,this.available());continue;}
       if(session.stage==='preflight'){this.orchestrator.beginIteration(id);continue;}
       const iteration=session.activeIteration;if(iteration===null)throw new Error('Workshop iteration identity missing');
@@ -175,6 +177,7 @@ export class WorkshopRuntime {
         const finalization=await this.effect(id,`${id}:finalization`,()=>this.host.finalization(session),()=>this.reconcile(session,`${id}:finalization`));this.guard(id);
         if(finalization.admission&&session.assignment.checkpoints.libraryAdmission&&this.orchestrator.requestCheckpoint(id,'libraryAdmission','finalizing')){this.track(id);return;}
         if(finalization.admission){
+          if(session.assignment.productionMode==='chain'&&(!finalization.admission.proof.provenance?.chain||JSON.stringify(finalization.admission.proof.provenance.assignment)!==JSON.stringify(session.assignment)))throw new Error('Chain library admission requires exact authoritative assignment and plan provenance');
           const admission=finalization.admission;
           const entry=await this.effect(id,`${id}:library-admit`,
             async()=>this.library.admit(admission),

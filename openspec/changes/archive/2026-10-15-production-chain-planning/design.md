@@ -90,13 +90,18 @@ Matching-boundary Improve restores the exact public request and plan provenance,
 
 ### 7. Acceptance and slice boundaries
 
-Tasks assign every delta scenario to one slice. Each slice must have current source-matched verification and independent review before dependent expansion, following [development efficiency](../../../docs/DEVELOPMENT_EFFICIENCY.md). No scenario-builder implementation is a prerequisite.
+Tasks assign every delta scenario to one slice. Each slice must have current source-matched verification and independent review before dependent expansion, following [development efficiency](../../../../docs/DEVELOPMENT_EFFICIENCY.md). No scenario-builder implementation is a prerequisite.
 
 - S1: live facts/search and bounded identity-aware retrieval.
 - S2: complete calculated rate plans for sulfur, processing units and utility science; explicit route and boundary failures, co-products, combined recipe/fuel source capacities, uncertain utility bounds, quantity semantics, and persistence.
 - S3: authorized stage commitments through production MCP/task entrypoints, restart/revision/cancellation, and continuous supply versus construction state.
-- S4: production observations, multi-recipe workshop resolution, minimal activity UI, boundary-aware library admission/comparison/Improve and compatibility behavior.
+- S4A: production observations, stage status/watches and minimal activity UI (S4-01..04).
+- S4B: multi-recipe workshop resolution, both construction paths and component/chain setup (S4-05..07).
+- S4C: boundary-aware library admission/comparison/Improve and combined S4 compatibility acceptance (S4-08..09).
+
 - S5: physical sulfur chain at 1 item/game-second from crude oil and water, supplied power/equipment and allowed research, no modules/bonuses. Use basic refining to avoid a gratuitous disposal fixture. Validate through both workshop construction modes and a legal-character ordinary gameplay task/tool path. Require five consecutive 60-game-second windows of fresh production and delivery at >=60 sulfur each, with upstream production/consumption evidence and no undeclared source. Separately probe advanced refining/cracking under declared heavy/light/petroleum demands in Factorio to verify co-product behavior and fluid configuration; full yellow-science layout is not required.
+
+These three groups each require source-matched delegated verification and fresh combined review before user-managed compaction and dependent expansion. Each scenario has one owner; later groups revalidate affected predecessor evidence rather than relabeling it. S5 requires accepted S4A/S4B/S4C. The user removed the shared deadline; the original start, spent usage, 120-admission cap and zero provider inference remain. Per-process timeouts still bound execution and cleanup. S4B must reject chain library access/admission/Improve through UI and direct runtime entrypoints before inference/game effects, while preserving ordinary component behavior. This interim gate prevents automatic finalization from reaching component-era comparison/admission. S4C replaces it only with verified canonical boundary/provenance and safe admission; unknown/incompatible boundaries remain fail-closed.
 
 Physical references are deterministic engineering fixtures, not autonomous model success claims. A scripted client exercising the production MCP catalog and task/plan contracts proves delivery without inference. A future separately budgeted gameplay comparison can measure reasoning improvement; no provider inference is required for this change's acceptance. Negative probes remove a required supply, block a required oil output, and attempt preload/undeclared-intermediate credit. Restore and lost-response cases establish no duplicate task/build effects.
 

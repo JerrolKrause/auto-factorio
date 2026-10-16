@@ -3,7 +3,7 @@ import type { Position, RecipeFacts } from './game.js';
 export const OBSERVATION_SCHEMA = 1 as const;
 export type MetricKind = 'production' | 'consumption' | 'boundary-delivery' | 'stock' | 'configured-supply' | 'nominal-capacity' | 'target-demand';
 export type MetricCoverage = 'complete' | 'partial' | 'unknown';
-export interface ItemIdentity { name: string; quality: string; surface: string }
+export interface ItemIdentity { productKind?: 'item' | 'fluid'; name: string; quality: string; surface: string }
 export interface ProductionTarget extends ItemIdentity { rate: number; unit: 'items-per-game-second'; recipe: string }
 export interface OperationalLimits {
   sampleTicks: number; historySamples: number; maxScopes: number; maxEntities: number;
@@ -19,19 +19,19 @@ export const DEFAULT_OPERATIONAL_LIMITS: OperationalLimits = {
 };
 export interface ObservationScope {
   schema: typeof OBSERVATION_SCHEMA; id: string; revision: number; task: string; surface: string;
-  area: [Position, Position]; entityLimit: number; membershipHash?: string;
+  area: [Position, Position]; entityLimit: number; membershipHash?: string; recipe?: string; machine?: string;
 }
 export interface OperationalReading extends ItemIdentity {
-  kind: MetricKind; total: number | null; stock?: number | null; method: string;
+  kind: MetricKind; errorBound?: number; total: number | null; stock?: number | null; method: string;
   coverage: MetricCoverage; reason?: string; evidence: string[];
 }
 export interface OperationalSample {
   schema: typeof OBSERVATION_SCHEMA; epoch: string; scopeId: string; scopeRevision: number;
-  membershipHash: string; tick: number; readings: OperationalReading[];
+  membershipHash: string; tick: number; readings: OperationalReading[]; symptoms?: MachineSymptom[]; symptomsOmitted?: number;
 }
 export interface OperationalMetric extends ItemIdentity {
   schema: typeof OBSERVATION_SCHEMA; scopeId: string; scopeRevision: number; epoch: string;
-  kind: MetricKind; quantity: number | null; rate: number | null; unit: 'items-per-game-second';
+  kind: MetricKind; quantity: number | null; rate: number | null; stock?: number | null; errorBound?: number; rateBounds?: { lower: number; upper: number } | null; unit: 'items-per-game-second' | 'units-per-game-second';
   startTick: number; endTick: number; ageTicks: number; coverage: MetricCoverage; reason?: string;
   method: string; evidence: string[];
 }
@@ -77,6 +77,8 @@ export function validateObservationScope(value: ObservationScope): ObservationSc
   identifier(value.id, 'scope id'); identifier(value.task, 'scope task'); identifier(value.surface, 'scope surface'); positive(value.revision, 'scope revision');
   if (!Array.isArray(value.area) || value.area.length !== 2 || value.area.some(p => !p || !Number.isFinite(p.x) || !Number.isFinite(p.y)) || value.area[0].x > value.area[1].x || value.area[0].y > value.area[1].y) throw new Error('Invalid scope area');
   positive(value.entityLimit, 'scope entity limit', 100_000);
+  if (value.recipe !== undefined) identifier(value.recipe, 'scope recipe');
+  if (value.machine !== undefined) identifier(value.machine, 'scope machine');
   if (value.membershipHash !== undefined) identifier(value.membershipHash, 'membership hash');
   return structuredClone(value);
 }

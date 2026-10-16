@@ -30,6 +30,19 @@ export interface WorkshopAssignment {
   requestedSpeed: Rational; settlingTicks: number; throughput: ThroughputRule[];
   rubric: { version: string; weights: Record<string, Rational>; materiality: Record<string, Rational>; directions: Record<string, 'maximize'|'minimize'> };
   iterations: IterationPolicy; checkpoints: WorkshopCheckpoints; budgets: WorkshopBudgets; models: WorkshopModelOptions; learning: WorkshopLearningPolicy;
+  /** Absence preserves the original component boundary and serialized history. */
+  productionMode?: 'component' | 'chain';
+  chainRequest?: import('./production.js').ProductionRequest;
+}
+
+/** Validate mode/source consistency before resolution; the host verifies boundary provenance. */
+export function assertWorkshopLibraryPolicy(input: unknown): void {
+  if (!input || typeof input !== 'object' || Array.isArray(input)) throw new Error('Invalid workshop request');
+  const value = input as Record<string, unknown>;
+  if (value.productionMode !== undefined && value.productionMode !== 'component' && value.productionMode !== 'chain') throw new Error('Invalid workshop production mode');
+  if (value.chainRequest !== undefined && value.productionMode !== 'chain') throw new Error('Chain request requires chain mode');
+  const source = value.source as Record<string, unknown> | undefined;
+  if (source?.kind === 'revision' && (!value.improveRevision || source.id !== value.improveRevision || value.libraryAccess !== true)) throw new Error('Improve requires exact revision source and library access');
 }
 export interface WorkshopInvocationProvenance {
   role: WorkshopRole | 'private-comparison' | 'learning-review'; session: string; selection: ModelSelection;
@@ -53,6 +66,8 @@ export interface BlueprintRevisionMetadata {
   schema: typeof WORKSHOP_SCHEMA; familyId: string; variantId: string; revisionHash: string; parentHash: string|null;
   label: string; product: ProductIdentity; profileId: string; gameFingerprint: string; statuses: ('draft'|'export-valid'|'production-verified'|'character-build-verified')[];
   footprint: { width:number; height:number }; machines:string[]; rate:Rational; provenance:string[]; evidence:string[];
+  /** Attestations are addressed separately from portable blueprint content. */
+  attestationId?: string; boundaryHash?: string | null; boundaryStatus?: 'known' | 'unknown';
 }
 export interface WorkshopScore {
   schema: typeof WORKSHOP_SCHEMA; candidate: WorkshopCandidateRef; rubricVersion: string; eligible: boolean;
@@ -67,6 +82,21 @@ export interface WorkshopWindowMeasurement {
   schema:typeof WORKSHOP_SCHEMA; attemptId:string; index:number; startTick:number; endTick:number; interval:'(startTick,endTick]';
   ports:WorkshopPortMeasurement[]; stageCoverage:'complete'|'partial'|'unknown'; energyCoverage:'complete'|'partial'|'unknown';
   contamination:string[]; mutationsFrozen:boolean; connected:boolean; evidence:string[];
+  stages?: WorkshopStageMeasurement[];
+}
+export interface WorkshopStageRequirement {
+  id: string; recipe: string; machine: string; craftsPerSecond: Rational;
+  /** Selected native fuel; its consumption is measured separately from crafts. */
+  fuel?: { name: string };
+  inputs: { kind: ProductKind; name: string; amount: Rational }[];
+  outputs: { kind: ProductKind; name: string; amount: Rational }[];
+}
+export interface WorkshopStageMeasurement {
+  id: string; recipe: string; machine: string; crafts: Rational;
+  coverage: 'complete' | 'partial' | 'unknown';
+  inputs: { kind: ProductKind; name: string; amount: Rational; error: Rational }[];
+  outputs: { kind: ProductKind; name: string; amount: Rational; error: Rational }[];
+  evidence: string[];
 }
 export interface WorkshopEvaluationReport {
   schema:typeof WORKSHOP_SCHEMA; attemptId:string; valid:boolean; passed:boolean; reasons:string[];
@@ -135,7 +165,9 @@ function validateIdentity(value: unknown): ProductIdentity {
 }
 export function validateWorkshopAssignment(value: unknown): WorkshopAssignment {
   const v = object(value, 'workshop assignment');
-  exactKeys(v, ['schema','id','revision','comparisonSeries','objective','source','ports','profileId','profileRevision','gameFingerprint','footprint','construction','libraryAccess','improveRevision','requestedSpeed','settlingTicks','throughput','rubric','iterations','checkpoints','budgets','models'], ['learning']);
+  assertWorkshopLibraryPolicy(v);
+  exactKeys(v, ['schema','id','revision','comparisonSeries','objective','source','ports','profileId','profileRevision','gameFingerprint','footprint','construction','libraryAccess','improveRevision','requestedSpeed','settlingTicks','throughput','rubric','iterations','checkpoints','budgets','models'], ['learning','productionMode','chainRequest']);
+  if (v.productionMode === 'chain' && (!v.chainRequest || typeof v.chainRequest !== 'object' || Array.isArray(v.chainRequest) || JSON.stringify(v.chainRequest).length > 131072)) throw new Error('Bounded production request required for chain mode');
   if (v.schema !== WORKSHOP_SCHEMA) throw new Error('Unsupported workshop schema');
   const source = object(v.source, 'assignment source'); exactKeys(source, ['kind','id'], ['numericTargetText']);
   if (!['brief','preset','revision'].includes(String(source.kind)) || source.id !== null && typeof source.id !== 'string') throw new Error('Invalid assignment source');
@@ -197,5 +229,7 @@ export function validateWorkshopAssignment(value: unknown): WorkshopAssignment {
     const match = /^\s*(\d+(?:\.\d+)?)\s*(?:\/|per\s+)(second|minute)\s*$/i.exec(source.numericTargetText as string);
     if (match) { const prose = rationalFromDecimal(match[1]!, match[2]!.toLowerCase() as 'second'|'minute'); const required = ports.find(p => p.direction === 'output' && p.required)!; if (compareRational(prose, required.rate) !== 0) throw new Error('Contradictory numeric target'); }
   }
+  if (v.productionMode !== undefined) result.productionMode = v.productionMode as 'component' | 'chain';
+  if (v.chainRequest !== undefined) result.chainRequest = structuredClone(v.chainRequest) as import('./production.js').ProductionRequest;
   return result;
 }

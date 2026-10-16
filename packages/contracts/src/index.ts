@@ -32,3 +32,5 @@ export * from './effects.js';
 export * from './workspace.js';
 export * from './workspace-lifecycle.js';
 export * from './workshop-critique.js';
+export * from './production.js';
+export * from './workshop-chain-setup.js';

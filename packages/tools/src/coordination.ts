@@ -9,8 +9,20 @@ import type { Reference } from '../../core/execution/durable.js';
 import { entities } from '../../storage/src/journal.js';
 import { Interventions } from '../../core/orchestration/interventions.js';
 import { SessionLifecycle } from '../../core/context/lifecycle.js';
+import { ProductionFacts } from '../../core/production/facts.js';
+import type { ProductionSearchInput, ProductionPlanInput, ProductionInspectInput } from '@autofactorio/contracts';
+import { ProductionPlanService } from '../../core/production/service.js';
+import { ProductionStatusService } from '../../core/production/status.js';
+import type { ProductionStatusInput } from '@autofactorio/contracts';
+import { ProductionCommitter } from '../../core/production/commit.js';
+import type { ProductionCommitInput } from '@autofactorio/contracts';
 
 export const operations: Record<string, { group: ToolGroup; keys: string[]; optional?: string[] }> = {
+  production_search: { group: 'observe', keys: ['query'], optional: ['cursor', 'product', 'recipe', 'machine', 'profile'] },
+  production_plan: { group: 'observe', keys: ['request'], optional: ['prior'] },
+  production_inspect: { group: 'observe', keys: ['id', 'revision'], optional: ['stage', 'depth', 'cursor', 'view'] },
+  production_status: { group: 'observe', keys: ['id', 'revision'], optional: ['stage', 'area', 'windowTicks', 'offset'] },
+  production_commit: { group: 'plan', keys: ['requestId', 'id', 'revision', 'assignments'] },
   observe: { group: 'observe', keys: [] }, propose: { group: 'plan', keys: ['task'] },
   revise: { group: 'plan', keys: ['task', 'revision'] }, cancel: { group: 'plan', keys: ['task', 'revision'] },
   message: { group: 'message', keys: ['message'] }, report: { group: 'message', keys: ['task', 'revision', 'evidence'] },
@@ -26,7 +38,7 @@ export const operations: Record<string, { group: ToolGroup; keys: string[]; opti
   interpret: { group: 'message', keys: ['id', 'interpretation', 'resultingTasks', 'supersededTasks'] },
 };
 const taskKeys = ['id', 'goal', 'parent', 'dependencies', 'scope', 'resources', 'successCriteria', 'deadline', 'committedPlan', 'actor', 'reservations', 'criteria'];
-const mutatingOperations = new Set(['propose', 'revise', 'cancel', 'message', 'report', 'submit', 'build', 'verify', 'interpret']);
+const mutatingOperations = new Set(['production_commit', 'propose', 'revise', 'cancel', 'message', 'report', 'submit', 'build', 'verify', 'interpret']);
 function exact(value: unknown, keys: string[], optional: string[] = []) {
   const input = object(value);
   if (Object.keys(input).some(k => !keys.includes(k) && !optional.includes(k)) || keys.some(k => !(k in input))) throw new Error('Identity spoofing or unsupported arguments');
@@ -41,9 +53,18 @@ function reference(value: unknown): Reference {
 export class CoordinationGateway {
   private grants = new Map<string, SessionBinding>();
   private recipes = new RecipeCache();
+  private production = new ProductionFacts();
+  private plans: ProductionPlanService;
+  private commits: ProductionCommitter;
+  private status: ProductionStatusService;
   private lifecycle: SessionLifecycle;
   constructor(private coordinator: Coordinator, private limits: Limits = DEFAULT_LIMITS,
-    private scenario?: { briefing: unknown; verify: () => unknown }) { this.lifecycle = new SessionLifecycle(coordinator.runtime); }
+    private scenario?: { briefing: unknown; verify: () => unknown }) {
+    this.lifecycle = new SessionLifecycle(coordinator.runtime);
+    this.commits = new ProductionCommitter(coordinator);
+    this.plans = new ProductionPlanService(coordinator.runtime, this.production, undefined, undefined, this.commits);
+    this.status = new ProductionStatusService(coordinator, this.plans, this.commits, this.production);
+  }
   issue(binding: SessionBinding): string {
     this.coordinator.authenticate(binding, 'observe');
     const token = randomBytes(32).toString('hex'); this.grants.set(token, structuredClone(binding)); return token;
@@ -70,6 +91,12 @@ export class CoordinationGateway {
       const input = exact(args, op.keys, op.optional); let result: unknown;
       const context = new AgentContext(this.coordinator, b, this.limits, this.recipes);
       switch (name) {
+        case 'production_search': result = this.production.search({ key: token, authorize: () => { if (this.grants.get(token) !== b) throw new Error('Unauthenticated identity'); this.coordinator.authenticate(b, 'observe'); }, query: request => this.coordinator.runtime.query(request) }, input as unknown as ProductionSearchInput); break;
+        case 'production_plan': case 'production_inspect': case 'production_commit': case 'production_status': {
+          const access = { owner: a.id, key: token, authorize: () => { if (this.grants.get(token) !== b) throw new Error('Unauthenticated identity'); this.coordinator.authenticate(b, op.group); if (name === 'production_commit' || name === 'production_plan' && input.prior) this.lifecycle.mutation(b); }, query: (request: Extract<import('@autofactorio/contracts').GameRequest, { op: 'production-facts' }>) => this.coordinator.runtime.query(request) };
+          const retry = name === 'production_commit' ? this.commits.retry(a.id, input as unknown as ProductionCommitInput) : undefined;
+          result = name === 'production_status' ? this.status.status(access, input as unknown as ProductionStatusInput, context) : retry ?? (name === 'production_plan' ? this.plans.plan(access, input as unknown as ProductionPlanInput) : name === 'production_inspect' ? this.plans.inspect(access, input as unknown as ProductionInspectInput) : this.plans.executable(access, String(input.id), Number(input.revision), plan => this.commits.commit(a.id, plan, input as unknown as ProductionCommitInput))); break;
+        }
         case 'scenario': if (!this.scenario) throw new Error('No scenario connected'); result = this.scenario.briefing; break;
         case 'verify': if (!this.scenario) throw new Error('No evaluator connected'); result = this.scenario.verify(); break;
         case 'build': {

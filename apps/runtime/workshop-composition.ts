@@ -36,7 +36,7 @@ export function composeWorkshop(runtime:Pick<DurableRuntime,'directory'|'run'|'j
     begin:(assignment:import('@autofactorio/contracts').WorkshopAssignment,selectedGroupId:string|null)=>options.workspaceCatalog!.beginWorkshop(runtime.directory,runtime.run,assignment,selectedGroupId),
     journaled:(id:string)=>options.workspaceCatalog!.journaled(id),
   }:undefined;
-  const controller=options.workshopHost?new WorkshopRuntime(orchestrator,options.workshopHost,library,available,id=>options.workshopBundleHash??learning.pin(id).hash,sessions,entry=>{if(runtime.journal.get(runtime.run,'libraryEntries',entry.revisionHash))return;const publicEntry={...entry} as Partial<typeof entry>;delete publicEntry.directory;runtime.record('workshop/library-admitted',[{entity:'libraryEntries',id:entry.revisionHash,value:{...publicEntry}}]);},history):null;
+  const controller=options.workshopHost?new WorkshopRuntime(orchestrator,options.workshopHost,library,available,id=>options.workshopBundleHash??learning.pin(id).hash,sessions,entry=>{const identity=entry.attestationId??entry.revisionHash;if(runtime.journal.get(runtime.run,'libraryEntries',identity))return;const publicEntry={...entry} as Partial<typeof entry>;delete publicEntry.directory;runtime.record('workshop/library-admitted',[{entity:'libraryEntries',id:identity,value:{...publicEntry}}]);},history):null;
   controller?.recover();
   return{orchestrator,learning,usage,library,controller,available,sessions};
 }

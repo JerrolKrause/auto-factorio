@@ -10,7 +10,7 @@ import type { DurableRuntime } from '../../../apps/runtime/durable-runtime.js';
 import type { Visibility } from '../execution/durable.js';
 import { privateTo } from './authorization.js';
 
-const metricId = (r: Pick<OperationalReading, 'kind' | 'surface' | 'name' | 'quality'>) => `${r.kind}/${r.surface}/${r.name}/${r.quality}`;
+const metricId = (r: Pick<OperationalReading, 'kind' | 'surface' | 'name' | 'quality' | 'productKind'>) => `${r.kind}/${r.surface}/${r.productKind ?? 'item'}/${r.name}/${r.quality}`;
 const sampleId = (s: OperationalSample, slot: number) => `${s.scopeId}.${s.scopeRevision}.${slot}`;
 const finiteTotal = (value: number | null) => value === null || (typeof value === 'number' && Number.isFinite(value) && value >= 0);
 
@@ -22,8 +22,10 @@ export function validateOperationalSample(value: OperationalSample): Operational
     const key = metricId(reading);
     if (seen.has(key)) throw new Error('Duplicate operational reading'); seen.add(key);
     if (![reading.name, reading.quality, reading.surface].every(v => typeof v === 'string' && /^[\w.-]{1,100}$/.test(v)) || !['production', 'consumption', 'boundary-delivery', 'stock', 'configured-supply', 'nominal-capacity', 'target-demand'].includes(reading.kind) || !['complete', 'partial', 'unknown'].includes(reading.coverage) || !finiteTotal(reading.total) || (reading.stock !== undefined && !finiteTotal(reading.stock)) || !reading.method || !Array.isArray(reading.evidence)) throw new Error('Invalid operational reading');
+    if (reading.productKind !== undefined && !['item', 'fluid'].includes(reading.productKind) || reading.errorBound !== undefined && (typeof reading.errorBound !== 'number' || !Number.isFinite(reading.errorBound) || reading.errorBound < 0)) throw new Error('Invalid metric identity or precision');
     if (reading.coverage === 'unknown' && !reading.reason) throw new Error('Unknown reading requires reason');
   }
+  if (value.symptoms !== undefined && (!Array.isArray(value.symptoms) || value.symptoms.length > 16 || value.symptoms.some(m => !Number.isSafeInteger(m.unit) || !Number.isSafeInteger(m.tick) || m.tick !== value.tick || !m.position || !Number.isFinite(m.position.x) || !Number.isFinite(m.position.y) || typeof m.name !== 'string' || !['complete', 'partial', 'unknown'].includes(m.coverage) || m.status !== null && typeof m.status !== 'string' || m.recipe !== null && m.recipe !== undefined && typeof m.recipe !== 'string' || m.power !== null && m.power !== undefined && (typeof m.power !== 'number' || !Number.isFinite(m.power) || m.power < 0) || !Array.isArray(m.evidence))) || value.symptomsOmitted !== undefined && (!Number.isSafeInteger(value.symptomsOmitted) || value.symptomsOmitted < 0)) throw new Error('Invalid ordinary machine symptoms');
   return structuredClone(value);
 }
 
@@ -46,21 +48,25 @@ export class OperationalStore {
     if (!scope || scope.revision !== sample.scopeRevision) throw new Error('Unknown or stale operational scope');
     if (sample.readings.some(reading => reading.surface !== scope.surface)) throw new Error('Operational reading outside scope surface');
     const history = this.samples(scope.id, scope.revision);
-    const last = history.at(-1);
+    // Restores may roll the game clock back; only the same epoch is monotonic.
+    const last = history.filter(s => s.epoch === sample.epoch).at(-1);
     if (last && sample.tick <= last.tick) throw new Error('Operational sample tick did not advance');
     const slot = Math.floor(sample.tick / this.limits.sampleTicks) % this.limits.historySamples;
     this.runtime.record('operational/sample', [{ entity: 'operationalSamples', id: sampleId(sample, slot), value: { ...sample }, visibility, sources: [{ entity: 'operationalScopes', id: scope.id }] }], visibility, sample.tick);
     return sample;
   }
-  samples(scopeId: string, revision?: number): OperationalSample[] {
+  samples(scopeId: string, revision?: number, epoch?: string): OperationalSample[] {
     return this.runtime.journal.list<OperationalSample>(this.runtime.run, 'operationalSamples')
-      .filter(s => s.scopeId === scopeId && (revision === undefined || s.scopeRevision === revision))
+      .filter(s => s.scopeId === scopeId && (revision === undefined || s.scopeRevision === revision) && (epoch === undefined || s.epoch === epoch))
       .sort((a, b) => a.tick - b.tick);
   }
   metrics(scopeId: string, windowTicks: number, nowTick?: number, kinds?: MetricKind[], items?: string[]): OperationalMetric[] {
     if (!Number.isSafeInteger(windowTicks) || windowTicks < this.limits.sampleTicks) throw new Error('Invalid metric window');
     const scope = this.scope(scopeId); if (!scope) throw new Error('Unknown operational scope');
-    const samples = this.samples(scopeId, scope.revision); const end = samples.at(-1);
+    const all = this.samples(scopeId, scope.revision);
+    const current = all.filter(s => s.epoch === this.runtime.context().epoch);
+    // Old frames remain evidence, but cannot establish health in a restored epoch.
+    const samples = current.length ? current : all; const end = samples.at(-1);
     if (!end) return [];
     const requested = new Map(end.readings.filter(r => (!kinds || kinds.includes(r.kind)) && (!items || items.includes(r.name))).map(r => [metricId(r), r]));
     const start = [...samples].reverse().find(s => s.tick <= end.tick - windowTicks);
@@ -68,11 +74,13 @@ export class OperationalStore {
     const age = Math.max(0, (nowTick ?? end.tick) - end.tick);
     return [...requested.values()].map(current => {
       const base = start?.readings.find(r => metricId(r) === metricId(current));
-      const epochChanged = interval.some(sample => sample.epoch !== end.epoch);
+      const epochChanged = end.epoch !== this.runtime.context().epoch || interval.some(sample => sample.epoch !== end.epoch);
       const membershipChanged = interval.some(sample => sample.membershipHash !== end.membershipHash);
-      const discontinuity = !start || epochChanged || membershipChanged;
+      const missingSample = interval.some((sample, index) => index > 0 && sample.tick - interval[index - 1]!.tick > this.limits.sampleTicks);
+      const discontinuity = !start || epochChanged || membershipChanged || missingSample;
       const intervalReadings = interval.map(sample => sample.readings.find(r => metricId(r) === metricId(current)));
-      const unsupported = intervalReadings.some(reading => !reading || reading.coverage === 'unknown');
+      const counterReset = intervalReadings.some((reading, index) => current.kind !== 'stock' && index > 0 && reading?.total != null && intervalReadings[index - 1]?.total != null && reading.total < intervalReadings[index - 1]!.total!);
+      const unsupported = counterReset || intervalReadings.some(reading => !reading || reading.coverage === 'unknown' || reading.method !== current.method);
       const partial = intervalReadings.some(reading => reading?.coverage === 'partial');
       const deltaTicks = start ? end.tick - start.tick : 0;
       const stock = current.kind === 'stock';
@@ -80,8 +88,8 @@ export class OperationalStore {
       const rate = stock ? null : quantity === null || deltaTicks <= 0 ? null : quantity / (deltaTicks / 60);
       const coverage = discontinuity || unsupported ? 'unknown' : partial || deltaTicks < windowTicks ? 'partial' : 'complete';
       const unknownReading = intervalReadings.find(reading => reading?.coverage === 'unknown');
-      const reason = discontinuity ? (!start ? 'insufficient_history' : epochChanged ? 'epoch_changed' : 'scope_membership_changed') : unsupported ? unknownReading?.reason ?? current.reason ?? base?.reason ?? 'missing_or_unsupported_interval' : partial || deltaTicks < windowTicks ? 'partial_interval' : undefined;
-      return { schema: OBSERVATION_SCHEMA, scopeId, scopeRevision: scope.revision, epoch: end.epoch, kind: current.kind, name: current.name, quality: current.quality, surface: current.surface, quantity, rate, unit: 'items-per-game-second', startTick: start?.tick ?? end.tick, endTick: end.tick, ageTicks: age, coverage, ...(reason ? { reason } : {}), method: current.method, evidence: [...new Set([...(base?.evidence ?? []), ...current.evidence])] } satisfies OperationalMetric;
+      const reason = discontinuity ? (epochChanged ? 'epoch_changed' : !start ? 'insufficient_history' : membershipChanged ? 'scope_membership_changed' : 'missing_sample_tick') : unsupported ? counterReset ? 'counter_reset' : unknownReading?.reason ?? current.reason ?? base?.reason ?? 'missing_or_unsupported_interval' : partial || deltaTicks < windowTicks ? 'partial_interval' : undefined;
+      return { schema: OBSERVATION_SCHEMA, scopeId, scopeRevision: scope.revision, epoch: end.epoch, kind: current.kind, name: current.name, quality: current.quality, surface: current.surface, quantity, rate, unit: current.productKind === 'fluid' ? 'units-per-game-second' : 'items-per-game-second', startTick: start?.tick ?? end.tick, endTick: end.tick, ageTicks: age, coverage, ...(reason ? { reason } : {}), productKind: current.productKind ?? 'item', ...(stock ? { stock: current.coverage === 'unknown' ? null : current.total } : {}), errorBound: (base?.errorBound ?? 0) + (current.errorBound ?? 0), rateBounds: rate === null ? null : { lower: Math.max(0, rate - ((base?.errorBound ?? 0) + (current.errorBound ?? 0)) * 60 / deltaTicks), upper: rate + ((base?.errorBound ?? 0) + (current.errorBound ?? 0)) * 60 / deltaTicks }, method: current.method, evidence: [...new Set([...(base?.evidence ?? []), ...current.evidence, ...(start ? ['operationalSamples:' + sampleId(start, Math.floor(start.tick / this.limits.sampleTicks) % this.limits.historySamples)] : []), 'operationalSamples:' + sampleId(end, Math.floor(end.tick / this.limits.sampleTicks) % this.limits.historySamples)])] } satisfies OperationalMetric;
     });
   }
 }
@@ -110,7 +118,7 @@ export class ObservationSnapshots {
 }
 
 export interface OperationalWatch {
-  id: string; role: string; task: string; scopeId: string; scopeRevision: number; metric: { kind: MetricKind; name: string; quality: string; surface: string };
+  id: string; role: string; task: string; scopeId: string; scopeRevision: number; metric: { kind: MetricKind; productKind?: 'item' | 'fluid'; name: string; quality: string; surface: string };
   threshold: number; recovery: number; persistenceTicks: number; state: 'healthy' | 'pending-active' | 'active' | 'pending-recovery'; sinceTick: number; sequence: number;
 }
 export interface WatchTransition { watch: string; sequence: number; state: 'active' | 'recovered'; tick: number; gap: boolean; metric: number }
@@ -138,6 +146,13 @@ export class OperationalWatches {
     else if (watch.state === 'pending-recovery' && tick - watch.sinceTick >= watch.persistenceTicks) { next = { ...watch, state: 'healthy', sequence: watch.sequence + 1 }; transition = { watch: id, sequence: next.sequence, state: 'recovered', tick, gap: false, metric }; }
     if (JSON.stringify(next) !== JSON.stringify(watch)) this.runtime.record('operational/watch-state', [{ entity: 'operationalWatches', id, value: { ...next }, visibility }, ...(transition ? [{ entity: 'watchTransitions' as const, id: `${id}.${transition.sequence}`, value: { ...transition }, visibility }] : [])], visibility, tick);
     return transition;
+  }
+  /** Unknown intervals cannot count toward a sustained activation or recovery. */
+  invalidate(id: string, tick: number, visibility: Visibility): void {
+    const watch = this.runtime.journal.get<OperationalWatch>(this.runtime.run, 'operationalWatches', id);
+    if (!watch || !['pending-active', 'pending-recovery'].includes(watch.state)) return;
+    const value = { ...watch, state: watch.state === 'pending-active' ? 'healthy' as const : 'active' as const, sinceTick: tick };
+    this.runtime.record('operational/watch-gap', [{ entity: 'operationalWatches', id, value, visibility }], visibility, tick);
   }
   pending(role: string): { transitions: WatchTransition[]; gap: boolean } {
     const all = this.runtime.journal.list<WatchTransition>(this.runtime.run, 'watchTransitions').filter(t => this.list().some(w => w.id === t.watch && w.role === role));

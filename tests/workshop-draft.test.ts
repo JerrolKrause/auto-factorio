@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { validateWorkshopChainSetup } from '@autofactorio/contracts';
 import { clearWorkshopDraft, readWorkshopDraft, saveWorkshopDraft, WORKSHOP_DRAFT_KEY } from '../apps/dashboard/src/workshop-draft.js';
 import type { WorkshopDraftValues } from '../apps/dashboard/src/workshop-draft.js';
 
@@ -20,4 +21,24 @@ describe('local workshop setup draft',()=>{
     expect(saveWorkshopDraft(invalid,values)).toContain('must not write');
     expect(readWorkshopDraft({getItem:()=>{throw new Error('blocked');},setItem:()=>{},removeItem:()=>{}})).toMatchObject({values:null,writable:true,message:expect.stringContaining('memory')});
     expect(WORKSHOP_DRAFT_KEY).toContain('.v1');});
+  it('keeps schema1 component drafts readable without chain fields',()=>{
+    let stored=JSON.stringify({schema:1,values});
+    const storage={getItem:()=>stored,setItem:(_key:string,value:string)=>{stored=value;},removeItem:()=>{stored=null as unknown as string;}};
+    expect(readWorkshopDraft(storage).values).toEqual(values);
+    expect(readWorkshopDraft(storage).values).not.toHaveProperty('productionMode');
+  });
+  it('restores optional chain fields and rejects a damaged chain block without replacing it',()=>{
+    const chainSetup={target:'sulfur',rate:'2.5',inputs:'crude-oil 100\nwater 100',sinks:'light-oil 25\nheavy-oil 10',electricityMW:'10',equipment:'oil-refinery 5\nchemical-plant 10',oilRoute:'basic' as const};
+    let stored=JSON.stringify({schema:1,values:{...values,productionMode:'chain',chainSetup,chainProfile:'production-chain'}});
+    const storage={getItem:()=>stored,setItem:(_key:string,value:string)=>{stored=value;},removeItem:()=>{stored='';}};
+    expect(readWorkshopDraft(storage).values).toMatchObject({productionMode:'chain',chainSetup,chainProfile:'production-chain'});
+    const invalidEdit=JSON.stringify({schema:1,values:{...values,productionMode:'chain',chainSetup:{...chainSetup,rate:'Infinity'},chainProfile:'production-chain'}});
+    stored=invalidEdit;
+    expect(readWorkshopDraft(storage).values).toMatchObject({productionMode:'chain',chainSetup:{...chainSetup,rate:'Infinity'}});
+    expect(()=>validateWorkshopChainSetup({...chainSetup,rate:'Infinity'})).toThrow('positive decimal');
+    const damaged=JSON.stringify({schema:1,values:{...values,productionMode:'chain',chainSetup:{...chainSetup,rate:5},chainProfile:'production-chain'}});
+    stored=damaged;
+    expect(readWorkshopDraft(storage)).toMatchObject({values:null,writable:false,message:expect.stringContaining('damaged')});
+    expect(stored).toBe(damaged);
+  });
 });

@@ -2,18 +2,32 @@ import { record } from '@autofactorio/contracts';
 import type { BlueprintDocument, Position, ProductIdentity, WorkshopWindowMeasurement } from '@autofactorio/contracts';
 import type { CapabilityProfile } from '../../core/workshop/profiles.js';
 import { normalizeBlueprint } from '../../core/workshop/blueprint.js';
+import { ProductionFacts } from '../../core/production/facts.js';
+import { installedChainContext } from '../../core/workshop/installed-chain.js';
+import type { InstalledChainPreset, InstalledChainContext } from '../../core/workshop/installed-chain.js';
 import type { CommandPort } from './rcon.js';
 import { wrapper } from './rcon.js';
 
-export interface WorkshopFixture { id:string;kind:'source'|'sink'|'power';position:Position;product:{kind:'item'|'fluid';name:string;quality:'normal'};rate:number;transport?:'belt'|'pipe'|'chest'|'power';facing?:number }
-export interface WorkshopSetup { id:string;surface:string;force:string;profile:CapabilityProfile;area:[Position,Position];maxTiles:number;fixtures:WorkshopFixture[] }
+export interface WorkshopFixture { id:string;kind:'source'|'sink'|'power';position:Position;product:{kind:'item'|'fluid';name:string;quality:'normal'};rate:number;transport?:'belt'|'pipe'|'chest'|'power';facing?:number;bounded?:boolean }
+export interface WorkshopSetup { id:string;surface:string;force:string;profile:CapabilityProfile;area:[Position,Position];maxTiles:number;fixtures:WorkshopFixture[];boundaryFingerprint?:string }
 export interface InstalledWorkshopProfile { gameVersion:string;mods:Record<string,string>;profileId:string;profileRevision:number;surface:string;technologies:string[];allowedEquipment:string[];modules:string[];beacons:string[];recipe:{id:string;category:string;energy:number;ingredients:{type:'item'|'fluid';name:string;amount:number;temperature?:number}[];products:{type:'item'|'fluid';name:string;amount:number;temperature?:number}[]};machine:string;machineFacts?:{craftingSpeed:number;energyWatts:number;burner:boolean;coalFuelJoules:number};equipmentFacts?:unknown[] }
 export class WorkshopOperationRejected extends Error {}
 export class WorkshopControl {
+  private chainFacts = new ProductionFacts();
   constructor(private port:CommandPort){}
-  private async rpc(request:Record<string,unknown>){const response=record(JSON.parse(await this.port.command(wrapper(request,true))));if(response.ok===false&&typeof response.error==='string')throw new WorkshopOperationRejected(response.error);if(response.ok!==true)throw new Error('Workshop operation unacknowledged');return response;}
+  async installedChainProfile(profileId:string):Promise<InstalledChainContext>{
+    const response=await this.rpc({op:'workshop-profile',profileId,chain:true});
+    const list=(value:unknown):string[]=>Array.isArray(value)?value:value&&typeof value==='object'&&Object.keys(value).length===0?[]:(()=>{throw new Error('Incomplete installed chain preset');})();
+    const preset={...response,technologies:list(response.technologies),recipes:list(response.recipes),allowedEquipment:list(response.allowedEquipment)} as unknown as InstalledChainPreset;
+    if(preset.profileId!==profileId)throw new Error('Installed chain preset identity changed');
+    // Production facts use the ordinary public channel. Operator authority must
+    // not widen that export or route it through lifecycle-control operations.
+    const snapshot=await this.chainFacts.snapshot({key:`workshop-profile:${profileId}`,authorize(){},query:request=>this.rpc(request,false)});
+    return installedChainContext(preset,snapshot);
+  }
+  private async rpc(request:Record<string,unknown>,operator=true){const response=record(JSON.parse(await this.port.command(wrapper(request,operator))));if(response.ok===false&&typeof response.error==='string')throw new WorkshopOperationRejected(response.error);if(response.ok!==true)throw new Error('Workshop operation unacknowledged');return response;}
   async installedProfile(profileId:string,product:string):Promise<InstalledWorkshopProfile>{const response=await this.rpc({op:'workshop-profile',profileId,product}),list=(value:unknown)=>Array.isArray(value)?value:value&&typeof value==='object'&&Object.keys(value).length===0?[]:null;for(const key of ['gameVersion','profileId','surface','machine'] as const)if(typeof response[key]!=='string')throw new Error('Incomplete installed workshop profile');for(const key of ['technologies','allowedEquipment','modules','beacons'] as const){const values=list(response[key]);if(!values)throw new Error('Incomplete installed workshop profile');response[key]=values;}const recipe=record(response.recipe);for(const key of ['ingredients','products'] as const){const values=list(recipe[key]);if(!values)throw new Error('Incomplete installed workshop recipe');recipe[key]=values;}return response as unknown as InstalledWorkshopProfile;}
-  setup(input:WorkshopSetup){return this.rpc({op:'workshop-setup',id:input.id,surface:input.surface,force:input.force,profileFingerprint:input.profile.fingerprint,technologies:input.profile.technologies,recipes:input.profile.recipes,allowedEquipment:input.profile.allowedEquipment,surfaceProperties:input.profile.surfaceProperties??{},area:input.area,maxTiles:input.maxTiles,fixtures:input.fixtures});}
+  setup(input:WorkshopSetup){return this.rpc({op:'workshop-setup',id:input.id,surface:input.surface,force:input.force,profileFingerprint:input.profile.fingerprint,technologies:input.profile.technologies,recipes:input.profile.recipes,allowedEquipment:input.profile.allowedEquipment,surfaceProperties:input.profile.surfaceProperties??{},area:input.area,maxTiles:input.maxTiles,fixtures:input.fixtures,...(input.boundaryFingerprint?{boundaryFingerprint:input.boundaryFingerprint}:{})});}
   expand(id:string,generation:number,area:[Position,Position]){return this.rpc({op:'workshop-expand',id,generation,area});}
   screenshot(id:string,generation:number,token:string){return this.rpc({op:'workshop-screenshot',id,generation,token});}
   async observe(id:string,generation:number,stop=false){const result=await this.rpc({op:'workshop-observe',id,generation,stop});if(typeof result.running!=='boolean'||typeof result.paused!=='boolean'||!Number.isFinite(result.speed)||result.running===result.paused)throw new Error('Workshop observation unacknowledged');return result.running;}
@@ -35,12 +49,36 @@ export class WorkshopControl {
   }
   enter(id:string,actor:string){return this.rpc({op:'workshop-enter',id,actor});}
   actor(id:string,actor:string){return this.rpc({op:'workshop-actor',id,actor});}
-  async provision(id:string,actor:string,operationId:string,items:{name:string;quality:'normal';count:number}[]){const response=await this.rpc({op:'workshop-provision',id,actor,operationId,items});if(response.operationId!==operationId||!Number.isSafeInteger(response.tick)||!Array.isArray(response.before)||!Array.isArray(response.after))throw new Error('Incomplete provision receipt');return response;}
+  async provision(id:string,actor:string,operationId:string,items:{name:string;quality:'normal';count:number}[]){
+    const response=await this.rpc({op:'workshop-provision',id,actor,operationId,items});
+    // An empty native inventory is serialized as {}; populated maps are not
+    // inventory sequences and must remain an unconfirmed provisioning receipt.
+    const inventory=(value:unknown):unknown[]|null=>Array.isArray(value)?value:value&&typeof value==='object'&&Object.keys(value).length===0?[]:null;
+    const before=inventory(response.before),after=inventory(response.after);
+    if(response.operationId!==operationId||!Number.isSafeInteger(response.tick)||!before||!after)throw new Error('Incomplete provision receipt');
+    return {...response,before,after};
+  }
   materialize(id:string,generation:number,operationId:string,input:BlueprintDocument){const document=normalizeBlueprint(input);return this.rpc({op:'workshop-materialize',id,generation,operationId,entities:document.entities.map(e=>({id:e.id,name:e.name,position:e.position,direction:e.direction,quality:e.quality,recipe:e.recipe??false,modules:e.modules??{},filters:e.filters??[],inventoryBar:e.inventoryBar??false,undergroundType:e.undergroundType??false,settings:e.settings??{}})),wires:document.wires.map(w=>({from:{entityId:w.from.entityId,connector:Number(w.from.connector)},to:{entityId:w.to.entityId,connector:Number(w.to.connector)}}))});}
-  measureConfigure(input:{id:string;generation:number;attemptId:string;settlingTicks:number;windowTicks:number;windows:number;requestedSpeed:number;ports:{id:string;fixtureId:string;product:Pick<ProductIdentity,'kind'|'name'|'quality'>}[]}){return this.rpc({op:'workshop-measure-configure',...input});}
+  measureConfigure(input:{id:string;generation:number;attemptId:string;settlingTicks:number;windowTicks:number;windows:number;requestedSpeed:number;ports:{id:string;fixtureId:string;product:Pick<ProductIdentity,'kind'|'name'|'quality'>}[];chain?:{boundaryFingerprint:string;candidateFingerprint:string;stages:{id:string;recipe:string;machine:string;units:number[];fuel?:string}[]}}){return this.rpc({op:'workshop-measure-configure',...input});}
   async measureStatus(id:string,attemptId:string){const response=await this.rpc({op:'workshop-measure-status',id,attemptId});if(response.attemptId!==attemptId||typeof response.present!=='boolean'||typeof response.state!=='string'||typeof response.finished!=='boolean'||(response.present===false&&(response.state!=='not-admitted'||response.finished!==true)))throw new Error('Incomplete workshop measurement status');return{attemptId,present:response.present,state:response.state,finished:response.finished};}
   async measureAbort(id:string,attemptId:string){const response=await this.rpc({op:'workshop-measure-abort',id,attemptId});if(response.attemptId!==attemptId||response.finished!==true||!['aborted','finished','invalid'].includes(String(response.state))||!Number.isFinite(response.restoredSpeed)||typeof response.restoredPaused!=='boolean')throw new Error('Incomplete workshop measurement abort receipt');return{attemptId,state:String(response.state),finished:true,restoredSpeed:Number(response.restoredSpeed),restoredPaused:response.restoredPaused};}
-  async measureRead(id:string,attemptId:string,after:number){const response=await this.rpc({op:'workshop-measure-read',id,attemptId,after});const samples=Array.isArray(response.samples)?response.samples:Object.keys(record(response.samples)).length===0?[]:null;if(!samples||!Number.isSafeInteger(response.tick)||typeof response.state!=='string'||typeof response.finished!=='boolean')throw new Error('Incomplete workshop measurement response');return{tick:Number(response.tick),state:response.state,finished:response.finished,samples:samples as WorkshopWindowMeasurement[],requestedSpeed:Number(response.requestedSpeed),achievedSpeed:Number(response.achievedSpeed)};}
+  async measureRead(id:string,attemptId:string,after:number){
+    const response=await this.rpc({op:'workshop-measure-read',id,attemptId,after});
+    // Empty Lua sequences arrive as {}. Normalize declared sequence fields;
+    // nonempty objects must fail rather than hiding contamination from scoring.
+    const sequence=(value:unknown):unknown[]=>{
+      if(Array.isArray(value))return value;
+      if(value&&typeof value==='object'&&Object.keys(value).length===0)return [];
+      throw new Error('Incomplete workshop measurement sequence');
+    };
+    const samples=sequence(response.samples).map(raw=>{
+      const sample=record(raw),contamination=sequence(sample.contamination);
+      if(contamination.some(value=>typeof value!=='string'))throw new Error('Incomplete workshop measurement contamination');
+      return{...sample,contamination} as unknown as WorkshopWindowMeasurement;
+    });
+    if(!Number.isSafeInteger(response.tick)||typeof response.state!=='string'||typeof response.finished!=='boolean')throw new Error('Incomplete workshop measurement response');
+    return{tick:Number(response.tick),state:response.state,finished:response.finished,samples,requestedSpeed:Number(response.requestedSpeed),achievedSpeed:Number(response.achievedSpeed)};
+  }
 }
 export class WorkshopMeasurementSession {
   state:'active'|'complete'|'invalid'|'closed'='active';readonly samples:WorkshopWindowMeasurement[]=[];reason:string|null=null;private after=-1;

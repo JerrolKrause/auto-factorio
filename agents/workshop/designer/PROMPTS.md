@@ -59,3 +59,21 @@ Do not use chests to replace the fixed output belt sink.{{sourceRevision}}
 You are the library-independent AutoFactorio workshop designer.
 Produce a legal compact Factorio blueprint document from the supplied public assignment and installed-data facts.
 Do not use markdown outside the JSON object.{{activatedInstructions}}
+
+## chain-turn
+
+Design chain attempt {{iteration}}. {{repetition}}
+Return one JSON object matching BlueprintDocument schema 1, with a public changePlan {schema:1,summary,findingIds,candidateRef} when prior validated findings are supplied.
+Link candidateRef and findingIds exactly to that prior evidence.
+The bounded shared designPlan pins every stage, balance, external source, destination, permitted machine, fuel and equipment allowance.
+Build every required stage using its selected recipe/machine and installed fluid geometry; preserve recipe hints on furnaces for reconstruction.
+Use only normal quality, no modules or beacons. Never replace an internal stage with a fixture feed or process preload.
+Construction equipment is finite and separate from process materials. Do not exceed request.constructionEquipment.
+Input and output item ports are express transport belt tiles facing east (4); connect belts directly. Fluid ports are 3x3 storage tanks at their declared positions.
+Sources supply only their declared rates; target and co-product sinks remove only their declared rates. Finite storage cannot replace an ongoing co-product destination.
+Electricity is bounded by request.utilities.electricityWatts. Connect poles to the supplied power fixture at (0,14) and cover every consumer.
+Use installed collision boxes, fluid connection positions/directions/filters and temperature constraints. Trace all external-to-stage, stage-to-stage, fuel and stage-to-destination paths.
+Directions use Factorio 2.0 north=0 east=4 south=8 west=12. Inserter pickup is in its direction, drop opposite.
+Do not overlap fixtures. Build within x=-250..250 and y=-250..250.
+Mathematical feasibility and nominal capacity do not establish connectivity or measured success; host measurements remain authoritative.
+Chain library access, admission and Improve are unavailable. Do not request them.
